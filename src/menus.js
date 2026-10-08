@@ -46,6 +46,8 @@ const CSS = `
   user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
 }
 .fm-main *, .fm-ov *, .fm-modal *, .fm-toasts *, .fm-fx *, .fm-boxov *, .fm-plov *, .fm-resov * { box-sizing: border-box; }
+.fm-lastc { display: block; margin: 0 auto 6px; padding: 5px 14px; border-radius: 12px; border: 2px solid rgba(255, 255, 255, 0.5); background: rgba(13, 31, 60, 0.55); color: #fff; font-size: 12.5px; letter-spacing: 0.03em; text-shadow: none; cursor: pointer; }
+.fm-lastc:empty { display: none; }
 /* button reset at ZERO class specificity (:where) so every class rule (.fm-tchip { color }, .fm-lastc { margin }, ...) wins over it */
 :where(.fm-main, .fm-ov, .fm-modal, .fm-boxov, .fm-plov, .fm-resov, .fm-wheel) button {
   font-family: inherit; font-weight: inherit; letter-spacing: inherit; margin: 0; color: inherit; text-shadow: inherit; -webkit-appearance: none; appearance: none;
@@ -3346,7 +3348,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     try {
       const l = lastGet();
       const nm = !l ? '' : l.k === 'rush' ? 'YETİ RUSH' : l.k === 'cigE' ? 'ÇIĞ SONSUZ' : l.k === 'cigL' ? 'ÇIĞ Sv ' + l.n : l.k === 'arena' ? 'KARTOPU ARENA' : 'MACERA ' + l.n;
-      r.lastChip.textContent = nm ? '↻ SON OYNANAN: ' + nm : '';
+      r.lastChip.textContent = nm ? '↻ Tekrar oyna: ' + nm : '';
       r.lastChip.style.display = nm ? '' : 'none';
     } catch { /* ignore */ }
   }
