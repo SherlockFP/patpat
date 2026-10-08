@@ -1056,7 +1056,7 @@ export class AgarMode {
         // EAT_K: how much heavier you must be to eat (was 1.25 — with the bounce that read as "I can't eat it, we just collide")
         if (ca.m > cb.m * EAT_K && d2 < Math.pow(ca.r - cb.r * 0.25, 2)) this.eatCell(ca, cb);
         else if (cb.m > ca.m * EAT_K && d2 < Math.pow(cb.r - ca.r * 0.25, 2)) this.eatCell(cb, ca);
-        else if (this.mp !== 'client' && ca.m <= cb.m * EAT_K && cb.m <= ca.m * EAT_K) this.cellBump(ca, cb, d2, rs);
+        // near-equal balls just pass through each other (agar.io) — bumping them read as "we can't eat each other, we only collide"
       }
     }
     // food, crystals, power-ups
