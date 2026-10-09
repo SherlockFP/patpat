@@ -223,6 +223,9 @@ export function fallbackMass(radius) {
 export const LABEL = {
   w_snowman_mini: 'MİNİ KARDAN ADAM', w_sled_wood: 'KIZAK', w_gift_big: 'HEDİYE KUTUSU', w_noel_tree: 'NOEL AĞACI', w_ice_statue: 'BUZ HEYKELİ',
   w_hut_winter: 'KULÜBE', w_tram: 'TRAMVAY', w_snowman_giant: 'DEV KARDAN ADAM', w_snowman_gold: 'ALTIN KARDAN ADAM',
+  w_snow_pile: 'KARTOPU YIĞINI', w_glove: 'ELDİVEN', w_cocoa: 'SICAK ÇİKOLATA', w_penguin_baby: 'PENGUEN YAVRUSU', w_ice_crystal: 'BUZ KRİSTALİ',
+  w_candy_cane: 'ŞEKER KAMIŞI', w_ski_set: 'KAYAK SETİ', w_heater: 'ISINMA SOBASI', w_santa_sleigh: 'NOEL BABA KIZAĞI',
+  w_ice_castle: 'DEV BUZ KALESİ', w_lift_station: 'TELESİYEJ İSTASYONU', w_hotel_wing: 'KAYAK OTELİ KANADI',
   person: 'İNSAN', skier: 'KAYAKÇI', snowman: 'KARDAN ADAM', penguin: 'PENGUEN', deer: 'GEYİK',
   car: 'ARABA', car_blue: 'ARABA', snowmobile: 'KAR MOTORU', kiosk: 'KULÜBE', yeti: 'YETİ',
   boulder: 'KAYA', cabin: 'DAĞ EVİ', bus: 'OTOBÜS', lift_pylon: 'TELEFERİK DİREĞİ',

@@ -16,7 +16,7 @@ export const TIER_HINT = ['', 'Arabaları ve ağaçları yutabilirsin', 'Evler v
 export const tierOfM = (m) => { let t = 0; for (let i = 1; i < TIER_M.length; i++) if (m >= TIER_M[i]) t = i; return t; };
 
 const PGS = 40, PGN = 55; // same grid as the arena food grid
-const PMAX = 2800, STK = 32, PULLCAP = 96, EXTRA = 72;
+const PMAX = 3400, STK = 32, PULLCAP = 96, EXTRA = 72;
 const KP = 1.0, CAPG = 0.15; // gain = tons * 253 / sqrt(mass) (marginal CIG volume -> arena mass), at most 15% of the ball per prop
 
 const G_SMALL = ['pebble', 'pebble', 'bush_small', 'bush_small', 'penguin', 'rabbit', 'gift', 'traffic_cone', 'k_present_a', 'k_present_b', 'k_candy_cane', 'k_rock_small', 'person', 'person', 'skier', 'snowman', 'k_snowman', 'k_gingerbread'];
@@ -30,9 +30,15 @@ const G_ROCK = ['boulder', 'k_rock_a', 'k_rock_b', 'k_rock_c', 'k_rock_d', 'k_ro
 const G_DOWN = ['apartment', 'apartment', 'hotel', 'clocktower', 'water_tower', 'house_tall', 'apartment', 'shop'];
 const EXTRA_NAMES = ['rock_big', 'hotel', 'apartment', 'clocktower', 'gondola_station', 'water_tower', 'lift_pylon', 'cabin', 'sled', 'skier', 'snowmobile', 'kiosk', 'k_pine_a_big'];
 // winter / town extras, built below from primitives (no asset change). Tons per prop, same scale as MASS in config.js.
-const WIN_MASS = { w_snowman_mini: 0.06, w_sled_wood: 0.04, w_gift_big: 0.03, w_noel_tree: 1.6, w_ice_statue: 1.2, w_hut_winter: 30, w_tram: 14, w_snowman_giant: 22, w_snowman_gold: 60 };
+const WIN_MASS = { w_snowman_mini: 0.06, w_sled_wood: 0.04, w_gift_big: 0.03, w_noel_tree: 1.6, w_ice_statue: 1.2, w_hut_winter: 30, w_tram: 14, w_snowman_giant: 22, w_snowman_gold: 60,
+  w_snow_pile: 0.015, w_glove: 0.006, w_cocoa: 0.01, w_penguin_baby: 0.012, w_ice_crystal: 0.008, w_candy_cane: 0.004,
+  w_ski_set: 0.08, w_heater: 0.5, w_santa_sleigh: 4, w_ice_castle: 55, w_lift_station: 40, w_hotel_wing: 220 };
 // [name, count, min distance, max distance] from the map centre, appended after the whole old layout
-const WIN_PLACE = [['w_snowman_mini', 110, 15, 900], ['w_sled_wood', 60, 40, 900], ['w_gift_big', 70, 40, 900], ['w_noel_tree', 45, 120, 900], ['w_ice_statue', 35, 150, 900], ['w_hut_winter', 30, 180, 900], ['w_tram', 20, 250, 900], ['w_snowman_giant', 10, 300, 900], ['w_snowman_gold', 3, 300, 800]];
+const WIN_PLACE = [['w_snowman_mini', 110, 15, 900], ['w_sled_wood', 60, 40, 900], ['w_gift_big', 70, 40, 900], ['w_noel_tree', 45, 120, 900], ['w_ice_statue', 35, 150, 900], ['w_hut_winter', 30, 180, 900], ['w_tram', 20, 250, 900], ['w_snowman_giant', 10, 300, 900], ['w_snowman_gold', 3, 300, 800],
+  // edible-from-the-start bits: dense near the spawn (15-300 m) and spread over the mid-map
+  ['w_snow_pile', 110, 15, 300], ['w_snow_pile', 50, 300, 900], ['w_glove', 70, 15, 300], ['w_glove', 40, 300, 900], ['w_cocoa', 70, 15, 300], ['w_cocoa', 40, 300, 900],
+  ['w_penguin_baby', 60, 150, 700], ['w_ice_crystal', 100, 15, 900], ['w_candy_cane', 70, 15, 900],
+  ['w_ski_set', 15, 40, 900], ['w_heater', 12, 120, 900], ['w_santa_sleigh', 6, 250, 900], ['w_ice_castle', 3, 350, 900], ['w_lift_station', 4, 250, 900], ['w_hotel_wing', 4, 300, 900]];
 const WIN_NAMES = Object.keys(WIN_MASS);
 const NAMES = Array.from(new Set([].concat(G_SMALL, G_MID, G_HOUSE, G_CAR, G_BIGCAR, G_TREE, G_TREEB, G_ROCK, G_DOWN, EXTRA_NAMES, WIN_NAMES)));
 const ID = new Map();
@@ -132,6 +138,57 @@ function winLib() {
     k.box(4.1, 0.15, 1.8, 0, 2.22, 0, 0xdfe6ee); k.box(0.02, 0.9, 1.4, 2.11, 1.5, 0, W_BLUE);
     for (const x of [-1.5, -0.5, 0.5, 1.5]) for (const z of [-0.96, 0.96]) k.box(0.7, 0.6, 0.02, x, 1.6, z, W_BLUE);
     for (const x of [-1.4, 1.4]) for (const z of [-0.98, 0.98]) k.cyl(0.28, 0.28, 0.2, 8, x, 0.28, z, W_DARK, Math.PI / 2, 0, 0);
+  });
+  mk('w_snow_pile', (k) => { // kartopu yigini: a low mound of packed snowballs
+    k.sph(0.45, 0, 0.2, 0, W_WHITE); k.sph(0.32, 0.42, 0.14, 0.18, W_WHITE); k.sph(0.28, -0.36, 0.12, -0.2, W_BLUE);
+  });
+  mk('w_glove', (k) => { // eldiven: a red mitten with a yellow cuff and a thumb
+    k.box(0.34, 0.1, 0.18, 0, 0.05, 0, W_YEL); k.box(0.3, 0.3, 0.14, 0, 0.22, 0, W_RED); k.box(0.1, 0.14, 0.12, 0.2, 0.18, 0, W_RED);
+  });
+  mk('w_cocoa', (k) => { // sicak cikolata: a red mug of cocoa with a cream top and a handle
+    k.cyl(0.2, 0.15, 0.36, 8, 0, 0.18, 0, W_RED); k.cyl(0.18, 0.18, 0.02, 8, 0, 0.35, 0, 0x6b3a1e); k.sph(0.14, 0, 0.42, 0, W_WHITE); k.box(0.06, 0.16, 0.05, 0.23, 0.18, 0, W_RED);
+  });
+  mk('w_penguin_baby', (k) => { // penguen yavrusu: a fat dark chick with a white belly and an orange beak
+    k.cyl(0.14, 0.18, 0.36, 8, 0, 0.18, 0, W_DARK); k.cyl(0.1, 0.13, 0.28, 8, 0, 0.17, 0.07, W_WHITE);
+    k.sph(0.13, 0, 0.42, 0, W_DARK); k.box(0.05, 0.04, 0.08, 0, 0.4, 0.14, W_CARROT);
+    k.box(0.08, 0.02, 0.1, -0.07, 0.01, 0.05, W_CARROT); k.box(0.08, 0.02, 0.1, 0.07, 0.01, 0.05, W_CARROT);
+  });
+  mk('w_ice_crystal', (k) => { // buz kristali: two four-sided pyramids back to back, pale ice
+    k.cyl(0.2, 0, 0.4, 4, 0, 0.2, 0, W_ICE, 0, Math.PI / 4, 0); k.cyl(0, 0.2, 0.5, 4, 0, 0.65, 0, W_BLUE, 0, Math.PI / 4, 0);
+  });
+  mk('w_candy_cane', (k) => { // seker kamisi: a white stick with red stripes and a hooked top
+    k.cyl(0.06, 0.06, 0.8, 6, 0, 0.4, 0, W_WHITE); k.cyl(0.065, 0.065, 0.16, 6, 0, 0.2, 0, W_RED); k.cyl(0.065, 0.065, 0.16, 6, 0, 0.56, 0, W_RED);
+    k.cyl(0.06, 0.06, 0.3, 6, 0.15, 0.8, 0, W_WHITE, 0, 0, Math.PI / 2); k.cyl(0.06, 0.06, 0.2, 6, 0.3, 0.7, 0, W_WHITE);
+  });
+  mk('w_ski_set', (k) => { // kayak seti: two long skis lying in the snow with two poles
+    k.box(0.14, 0.04, 2.2, -0.2, 0.04, 0, W_RED); k.box(0.14, 0.04, 2.2, 0.2, 0.04, 0, W_BLUE);
+    k.cyl(0.025, 0.025, 1.2, 4, -0.45, 0.6, 0, W_DARK, 0, 0, 0.2); k.cyl(0.025, 0.025, 1.2, 4, 0.45, 0.6, 0, W_DARK, 0, 0, -0.2);
+  });
+  mk('w_heater', (k) => { // isinma sobasi: a cast-iron stove with a glowing door and a chimney
+    k.box(0.6, 0.8, 0.6, 0, 0.4, 0, 0x3a3f4a); k.box(0.36, 0.3, 0.04, 0, 0.3, 0.32, W_CARROT); k.box(0.66, 0.06, 0.66, 0, 0.83, 0, W_DARK); k.cyl(0.07, 0.07, 0.6, 6, 0, 1.17, 0, W_DARK);
+  });
+  mk('w_santa_sleigh', (k) => { // Noel Baba kizagi: a red sleigh on gold runners, a curled front post, a gift sack and presents
+    k.box(2.0, 0.5, 1.0, 0, 0.5, 0, W_RED); k.box(1.9, 0.14, 0.9, 0, 0.19, 0, W_DARK);
+    k.box(2.2, 0.08, 0.1, 0, 0.08, 0.6, W_GOLD); k.box(2.2, 0.08, 0.1, 0, 0.08, -0.6, W_GOLD);
+    k.box(0.12, 0.7, 0.12, 1.0, 0.6, 0.45, W_GOLD); k.box(0.12, 0.7, 0.12, 1.0, 0.6, -0.45, W_GOLD);
+    k.sph(0.38, -0.5, 1.0, 0, W_WHITE); k.box(0.35, 0.35, 0.35, 0.3, 0.92, 0.1, W_GREEN); k.box(0.3, 0.3, 0.3, -0.4, 0.9, -0.2, W_GOLD);
+  });
+  mk('w_ice_castle', (k) => { // dev buz kalesi: ice walls with four corner towers, a central keep and a gate
+    const H = 1.8;
+    k.box(4.0, H, 0.3, 0, H / 2, 1.85, W_ICE); k.box(4.0, H, 0.3, 0, H / 2, -1.85, W_ICE);
+    k.box(0.3, H, 4.0, 1.85, H / 2, 0, W_ICE); k.box(0.3, H, 4.0, -1.85, H / 2, 0, W_ICE);
+    for (const x of [-1.85, 1.85]) for (const z of [-1.85, 1.85]) { k.cyl(0.4, 0.4, 2.6, 8, x, 1.3, z, W_BLUE); k.cyl(0, 0.5, 0.8, 8, x, 2.99, z, W_RED); }
+    k.cyl(0.6, 0.6, 3.2, 8, 0, 1.6, 0, W_ICE); k.cyl(0, 0.8, 1.0, 8, 0, 3.7, 0, W_BLUE);
+    k.box(0.8, 1.0, 0.05, 0, 0.5, 2.01, W_DARK);
+  });
+  mk('w_lift_station', (k) => { // telesiyej istasyonu: a station hall with a red roof, a glass strip and a cable wheel on a mast
+    k.box(3.0, 2.0, 2.4, 0, 1.0, 0, 0xdfe6ee); k.box(3.2, 0.15, 2.6, 0, 2.07, 0, W_RED); k.box(0.02, 0.8, 1.6, 1.51, 1.1, 0, W_BLUE);
+    k.box(0.2, 3.4, 0.2, 1.9, 1.7, -1.0, W_DARK); k.cyl(0.5, 0.5, 0.12, 12, 1.9, 3.3, -1.0, W_YEL, Math.PI / 2, 0, 0);
+  });
+  mk('w_hotel_wing', (k) => { // kayak oteli kanadi: a long lodge wing with rows of windows, a red roof and a wooden door
+    k.box(6.0, 4.0, 2.4, 0, 2.0, 0, W_WHITE); k.box(6.3, 0.25, 2.7, 0, 4.12, 0, W_RED);
+    for (const x of [-2.2, -1.1, 0, 1.1, 2.2]) for (const y of [1.5, 2.6, 3.5]) k.box(0.6, 0.6, 0.04, x, y, 1.23, W_BLUE);
+    k.box(0.7, 1.0, 0.05, 0, 0.5, 1.23, W_WOOD);
   });
   _winLib = out;
   return out;
