@@ -1412,7 +1412,7 @@ export class World {
     const hwG = hw + 1.4;
     const x0 = mini ? o.x0 : -hwG, x1 = mini ? o.x1 : hwG;
     const colW = Math.max(1.8, Math.min(3.4, minR * 0.7));
-    const n = Math.max(mini ? 2 : 4, Math.ceil((x1 - x0) / colW));
+    const n = o.locked ? 0 : Math.max(mini ? 2 : 4, Math.ceil((x1 - x0) / colW));   // (boss level: no wall, the PATRON is the barrier)
     const w = (x1 - x0) / n;
     const H = mini ? Math.max(2, minR * 1.6) : Math.max(2.4, minR * 2.1);
     const T = mini ? Math.max(1.2, minR * 0.4) : Math.max(1.5, minR * 0.45);
@@ -1432,7 +1432,7 @@ export class World {
       g.caps.push(cap);
       this.boxItems.push(col, cap);
     }
-    g.label = this.makeLabel('', '#ff5a4a');
+    g.label = o.locked ? null : this.makeLabel('', '#ff5a4a');
     if (g.label) {
       const cx = (x0 + x1) / 2;
       g.label.position.set(cx, this.groundY(cx, gd) + H + Math.max(1.4, H * 0.35), -gd);
@@ -1441,7 +1441,7 @@ export class World {
       this.group.add(g.label);
     }
     this.setGateLabel(g);
-    if (skin === 'big' && !mini) this.addArch(gd, hwG, 2);
+    if (skin === 'big' && !mini && !o.locked) this.addArch(gd, hwG, 2);
     this.gates.push(g);
     return g;
   }
@@ -1730,22 +1730,32 @@ export class World {
     return it.len;
   }
 
-  // boss arena: the boss waits in front of the locked final gate (CigGame._arenaAI drives it)
+  // PATRON: the boss stands anchored on the track before the finish, sized to the plan (bossNeedR). It is the level's last
+  // barrier (no wall behind it): touch it big enough and you swallow it, too small and you shatter (CigGame._arenaAI).
   placeArena(it, gr, T, hw) {
     const P = this.lvl;
     const defs = this.enemyDefs();
     const def = defs.find((e) => e.id === it.boss) || defs.find((e) => e.id === 'yeti') || defs[defs.length - 1];
     if (!def) return 100;
-    const p = this.makeEnemy(def, 0, P.dF - 30, P.bossR, true);
+    const p = this.makeEnemy(def, 0, P.dF - 20, P.bossR, true);
     if (p) {
       const e = p.enemy;
-      e.hp = e.max = P.finale.hp * 0.8;   // (the boss takes less outside its stun window, see CigGame._hitEnemy)
+      e.hp = e.max = 1;
       e.ai = 'arena';
-      e.arena = { d0: P.dF - 170, d1: P.dF - 10 };
-      e.spd = 7 * (P.n >= 20 ? 1.3 : 1);
+      e.homeD = p.d;
+      e.spd = 0;
       e.name = P.n === 30 ? 'KIŞ KRALI' : P.n === 20 ? 'YETİ KRALI' : it.boss === 'robot' ? 'DEV ROBOT' : it.boss === 'golem' ? 'BUZ GOLEMİ' : 'DEV YETİ';
       e.woke = false;
       this.bossProp = p;
+      const l = this.makeLabel('👹 ' + e.name + ' · ' + fmtDiam(P.bossNeedR * 2) + ' m', '#ff5a4a');
+      if (l) {
+        p.tag = l;
+        const lw = clamp(p.r * 2.2, 8, 26);
+        l.scale.set(lw, lw * 0.3, 1);
+        l.position.set(p.x, p.y + p.h + lw * 0.25, -p.d);
+        this.group.add(l);
+        this.labels.push(p);
+      }
     }
     this.zones.push({ d0: P.dF - 175, d1: P.dF + 20, kind: 'boss' });
     return 100;

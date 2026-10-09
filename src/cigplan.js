@@ -26,6 +26,7 @@ export const NAMES = [
   'Beyaz Orman', 'Sisli Geçit', 'Şehir Eteği', 'Çığ Yolu', 'Robot Ordusu', 'İkiz Çığ', 'Kayalık Duvar', 'Gökdelen Vadisi', 'Dağ Devi', 'Kış Kralı',
 ];
 
+const BOSS_K = 0.94;   // PATRON size vs the final-gate pace requirement
 export const BOSS_IDS = { 5: 'yeti', 10: 'robot', 15: 'golem', 20: 'yeti', 25: 'robot', 30: 'golem' };
 
 // one-time intro cards (shown BEFORE the mountain starts, never during play)
@@ -34,7 +35,7 @@ export const INTRO = {
   2: { icon: '📦', text: 'Kasalara çarp: içinden kar fışkırır. Hepsi senin!', mech: 'crate' },
   3: { icon: '🌨️', text: 'Çığ arkandan geliyor. Kapıya çarpıp durursan seni yakalar.', mech: 'chase' },
   4: { icon: '⚡', text: 'Hız şeridinden geç: hızlanırsın ve kapıya daha sert çarparsın.', mech: 'strip' },
-  5: { icon: '👹', text: 'Patron kapıyı kilitledi. Ona çarpa çarpa canını bitir.', mech: 'boss' },
+  5: { icon: '👹', text: 'PATRON yolu kapatıyor: ondan büyük gel ve onu yut. Küçüksen çarpıp parçalanırsın!', mech: 'boss' },
   6: { icon: '🔗', text: 'Arka arkaya kır, zincir kur: çarpan büyür, kar erimez.', mech: 'chain' },
   7: { icon: '⚪', text: 'Rakip kartopu: ondan büyüksen yut, küçüksen kaç.', mech: 'rival' },
   8: { icon: '🎯', text: 'Top atarı: beyaz topları yut, kırmızılardan kaç.', mech: 'cannon' },
@@ -174,8 +175,11 @@ function build(n, daily, assist, opts) {
   }
   const fg = P.gates[S - 1];
   P.finale = { kind: bossArena ? 'boss' : (n % 2 ? 'wall' : 'gate'), d: dF, minR: fg.minR };
-  if (bossArena) P.finale.hp = P.bossHits * CFG.ramDmg * rEnd * L.bossHpK;
-  P.bossR = 1.7 * rEnd + 1;
+  // PATRON: a fixed size (radius) from the plan. Ball >= it at contact: swallow it; smaller: crash. It is also the finish barrier's
+  // requirement (the boss IS the barrier), so the HUD chip shows it. Fair: a bit under a normal final gate at that distance.
+  P.bossNeedR = boss ? Math.round(BOSS_K * fg.minR * 20) / 20 : 0;
+  if (bossArena) fg.minR = P.finale.minR = P.bossNeedR;
+  P.bossR = P.bossNeedR || 1.7 * rEnd + 1;   // the boss model is exactly the size you need
 
   // ---- pace: chase, twist, mechanics, intro
   if (ters) P.chase = { ters: true, t0: 3, gap0: 55, k: 0.82, clamp: 1 };

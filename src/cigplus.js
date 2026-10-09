@@ -1342,7 +1342,7 @@ export class CigGame {
       onRamp: false, lastRamp: 0, tier: tierOf(r0), peakR: r0, slowT: 0, t: 0, endT: 0, cause: '', result: null,
       goldenTons: 0, bonusTons: 0, gatesBroken: 0, gateSlow: 0, comboUiT: 0, sprayT: 0, finalized: false, avl: tierOf(r0),
       // ÇIĞ DAĞLAR
-      mom: 0, momT: 0, hitT: 0, hitPending: false, dn: 0, momMsg: false, hazFloor: 0, hazMsg: null, hazSeen: {}, chain: 0, chainT: 0, chainMul: 1, stripT: 0, stripNew: false, surgeT: 0, knockT: 0, knockV: 0, gateIdx: 0, tersDone: false, finalBroken: false, finalR: 0, win: false, lastBounce: null, gateLog: [],
+      mom: 0, momT: 0, hitT: 0, hitPending: false, dn: 0, momMsg: false, hazFloor: 0, hazMsg: null, hazSeen: {}, chain: 0, chainT: 0, chainMul: 1, stripT: 0, stripNew: false, surgeT: 0, knockT: 0, knockV: 0, gateIdx: 0, tersDone: false, finalBroken: false, finalR: 0, bossFail: null, win: false, lastBounce: null, gateLog: [],
     });
     b.reset(r0);
     b.y = w.groundY(0, 0) + b.r * 0.92;
@@ -1416,7 +1416,7 @@ export class CigGame {
   _cm() { return this.L ? this.G.chainMul || 1 : 1; }   // chain multiplier for the ton score
   _inArena() { const L = this.L; return !!(L && L.finale.kind === 'boss' && !this.G.finalBroken && this.ball.d > L.dF - 170); }
   _readyOf(g) {
-    if (g.locked) return 0;
+    if (g.locked) { const e = this._eff(); return e >= g.minR * 0.995 ? 2 : e >= g.minR * CFG.lvl.amberFrom ? 1 : 0; }   // PATRON size
     if (this.powerT > 0 || this.plus.mods.plow) return 2;
     const e = this._eff();
     return e >= g.minR * CFG.lvl.gateTol ? 2 : e >= g.minR * CFG.lvl.amberFrom ? 1 : 0;
@@ -1550,7 +1550,7 @@ export class CigGame {
     if (this.labelT > 0) return;
     this.labelT = 0.3;
     const budget = this.host.labelBudget ? this.host.labelBudget() : 4;
-    if (this.labelsShown >= budget) return;
+    if (this.labelsShown >= budget || this._bossNear()) return;
     const b = this.ball, w = this.world;
     const look = 26 + b.speed * 1.2;
     w.query(b.x, b.d + look * 0.5, look * 0.5, _near);
@@ -1901,7 +1901,7 @@ export class CigGame {
     G.shake += 0.25;
     b.squash(0.1);
     this._h('burst', b.x + (p.x - b.x) * 0.5, b.y, b.d, 6, 0xffffff, 5, 0.18 + b.r * 0.06, 4);
-    if (this.labelsShown < 6 && !p.tag && !p.crate) { this.labelsShown++; w.tagObstacle(p, '⛔ ' + fmtD(p.r / CFG.eatRatio * 2) + ' m'); }
+    if (this.labelsShown < 6 && !p.tag && !p.crate && !this._bossNear()) { this.labelsShown++; w.tagObstacle(p, '⛔ ' + fmtD(p.r / CFG.eatRatio * 2) + ' m'); }
     this._h('track', 'crash', {});
   }
 
@@ -1911,10 +1911,9 @@ export class CigGame {
     if (dist > b.r + p.r * 0.85) return;
     if (b.airborne && above > 0) return;
     if (e.rival) { this._rivalContact(p); return; }
-    if (e.B && e.B.dash === 2) return;   // the yeti's charge is resolved in its AI (dodge it)
+    if (e.ai === 'arena') { this._bossResolve(p); return; }   // PATRON: eat it (big enough) or shatter on it
     // small enemies (relative to the ball) are flattened in one hit; a power / rocket flattens anything but bosses
     if (!e.boss && (p.r <= b.r * 0.8 || this.powerT > 0 || this.plus.mods.plow)) { this._killEnemy(p); return; }
-    if (e.B && e.B.shield > 0) { this._shieldHit(p, e.B, dx); this._slide(p); return; }
     if (e.hitCd <= 0) this._hitEnemy(p, dx);
     this._slide(p);   // never pinned: the ball always glides around what it rams
   }
@@ -1976,7 +1975,7 @@ export class CigGame {
     const G = this.G, b = this.ball, M = this.plus.mods, e = p.enemy;
     const target = this.targetSpeed();
     const mul = (this.powerT > 0 ? 3 : 1) * (M.plow ? 2 : 1);
-    const dmg = CFG.ramDmg * b.r * (0.7 + 0.3 * clamp(b.speed / Math.max(1, target), 0, 1.3)) * mul * (e.B ? (e.B.stun > 0 ? 1.6 : 0.15) : 1);   // bosses: big damage in the stun window, little outside it
+    const dmg = CFG.ramDmg * b.r * (0.7 + 0.3 * clamp(b.speed / Math.max(1, target), 0, 1.3)) * mul;
     e.hp -= dmg;
     e.hitCd = 0.4; e.flash = 0.14; e.woke = true;
     e.kbD = Math.max(8, b.speed * 0.9); e.kbX = (dx >= 0 ? 1 : -1) * (3 + b.r * 0.4);
@@ -2031,10 +2030,10 @@ export class CigGame {
       if (e.hitCd > 0) e.hitCd -= dt;
       if (e.flash > 0) e.flash -= dt;
       const dd = p.d - b.d;
-      if (dd > 140 || (dd < -25 && e.ai !== 'arena')) continue;   // (an arena boss the ball has slipped past is still run: it comes back in front)
+      if (e.ai === 'arena') { this._arenaAI(p, b, dt, w.halfWidth(p.d) - 1, dd); continue; }   // PATRON: always run (anchored, cannot be passed)
+      if (dd > 140 || dd < -25) continue;
       const hw = w.halfWidth(p.d) - 1;
       if (e.ai === 'roll') { this._rollAI(p, b, dt, hw); continue; }
-      if (e.ai === 'arena') { this._arenaAI(p, b, dt, hw, dd); continue; }
       if (e.rival) { this._rivalAI(p, b, dt, hw, dd); continue; }
       if (e.kbD > 0.2 || Math.abs(e.kbX) > 0.2) {
         p.d += e.kbD * dt; p.x = clamp(p.x + e.kbX * dt, -hw, hw);
@@ -2091,290 +2090,75 @@ export class CigGame {
     if ((e.vx > 0 ? p.x > hw + 8 : p.x < -hw - 8) || p.d < b.d - 30) this.world.kill(p);
   }
 
-  // ---- boss fights (arena): each boss has its own telegraphed attacks, 2 phases (enrage at 50% HP) and a damage window.
-  //   YETİ: snowball arcs with shadow warnings + a sideways-dodge charge (stunned afterwards)   ROBOT: laser line with a sweeping gap + drones to eat
-  //   GOLEM: shockwave rings with a gap (steer / jump) + ice boulders that shatter into food
-  _bossHurt(frac, txt, mul = 1) {
-    const b = this.ball, G = this.G;
-    if (this.plus.consumeShield()) return;
-    this._loseSnow(frac * mul);
-    b.speed *= 0.92; G.shake += 0.6; b.squash(0.14);
-    this._h('sfx', 'bump', 0.5); this._h('haptic', 'heavy'); this._h('flash', 'hit');
-    this._text(txt, b, 'bad', true);
-  }
-  _bossStun(p, B, secs, txt) {
-    B.stun = secs;
-    if (B.shield > 0) { B.shield = 0; B.shT = 9; }   // a stun drops the ice shield
-    this._text('AÇIK!', p, 'big', true);
-    this._msg(2, txt);
-    this._h('sfx', 'milestone', 1);
-  }
-  // TUZAK: environmental trap hit on the boss: big % damage + long stun window
-  _trapHit(p, B, frac, secs, txt) {
-    const e = p.enemy;
-    e.hp -= e.max * frac; e.flash = 0.3; e.woke = true;
-    this._h('burst', p.x, p.y + p.h * 0.5, p.d, 22, 0xbfeaff, 10, 0.5, 6);
-    this._h('sfx', 'crash', 0.9); this._h('haptic', 'heavy'); this.G.shake += 1.2;
-    this._text(txt, p, 'big', true);
-    if (e.hp <= 0) { this._killEnemy(p); return; }
-    this._bossStun(p, B, secs, 'TUZAK! ÇARP, AÇIK!');
-  }
-  // BUZ KIRACAK: late bosses (Dağ 20+) raise a blue ice shield; only a ram at >= 85% of the top speed (boost strip) breaks it
-  _topSpeed() { const G = this.G, s = G.stripT; G.stripT = 1; const v = this.targetSpeed(); G.stripT = s; return v; }
-  shieldGauge() {
-    const B = this.plus.bossFx;
-    if (!B || B.dead || !(B.shield > 0)) return null;
-    return { f: this.ball.speed / Math.max(1, this._topSpeed()), need: 0.85 };
-  }
-  _shieldUp(p, B, b) {
-    B.shield = 10;
-    const hw = this.world.halfWidth(p.d), sx = Math.min(hw * 0.4, 9);
-    this._addStripAt(clamp(-sx, -hw + 3, hw - 3), Math.max(b.d + 8, p.d - 26));
-    this._addStripAt(clamp(sx, -hw + 3, hw - 3), Math.max(b.d + 8, p.d - 40));
-    this._msg(3, '🧊 BUZ KALKANI! Hız şeridinden HIZLAN!');
-    this._h('sfx', 'whoosh'); this._h('haptic', 'warning');
-    this._h('burst', p.x, p.y + p.h * 0.5, p.d, 18, 0x9fe0ff, 9, 0.4 + p.r * 0.05, 6);
-  }
-  _addStripAt(x, d) { this.strips.push({ x, d, w: 5, len: 12 }); }
-  _shieldHit(p, B, dx) {
-    const G = this.G, b = this.ball, e = p.enemy;
-    if (e.hitCd > 0) return;
-    e.hitCd = 0.5;
-    if (b.speed >= 0.85 * this._topSpeed()) {
-      B.shield = 0; B.shT = 9;
-      e.hp -= e.max * 0.06; e.flash = 0.3; e.woke = true;
-      this._h('burst', p.x, p.y + p.h * 0.5, p.d, 36, 0xbfeaff, 12, 0.6 + p.r * 0.06, 9);
-      this._h('burst', p.x, p.y + p.h * 0.5, p.d, 16, 0xffffff, 9, 0.4, 7);
-      this._h('sfx', 'crash', 1); this._h('haptic', 'heavy'); this._h('hitStop', 0.08); G.shake += 1.2;
-      this._text('BUZ KIRILDI!', p, 'big', true);
-      if (e.hp <= 0) { this._killEnemy(p); return; }
-      this._bossStun(p, B, 3.2, 'BUZ KIRILDI! ÇARP, AÇIK!');
-    } else {
-      b.speed *= 0.6; b.squash(0.12);
-      e.kbD = Math.max(e.kbD, 4); e.kbX = (dx >= 0 ? 1 : -1) * 2;
-      this._h('sfx', 'bump', 0.6); this._h('haptic', 'medium'); G.shake += 0.4;
-      this._h('burst', b.x, b.y, b.d, 8, 0xbfeaff, 7, 0.25, 5);
-      this._text('HIZLAN!', b, 'bad', true);
-    }
-  }
-  _bossTraps(B, A, hw) {
-    const mk = (k, x, d, r) => ({ k, x, d, r, cd: 0, drop: null, zd: 0 });
-    const sx = hw * 0.5;
-    if (B.id === 'yeti') B.traps = [mk('ice', -sx * 0.6, A.d1 - 34, 8), mk('ice', sx * 0.6, A.d1 - 46, 8)];
-    else if (B.id === 'robot') B.traps = [mk('mirror', -sx * 0.6, A.d0 + 38, 3), mk('mirror', sx * 0.6, A.d0 + 66, 3)];
-    else B.traps = [mk('icicle', -sx * 0.5, A.d0 + 30, 6), mk('icicle', sx * 0.5, A.d0 + 55, 6)];
-    this._msg(2, B.id === 'yeti' ? "TUZAK: Yeti'yi buza çek!" : B.id === 'robot' ? 'TUZAK: Lazeri aynaya yönlendir!' : 'TUZAK: Sütuna çarp, buz sarkıtları düşsün!');
-  }
-  _bossChunks(x, d, n, spread) {
-    const r = clamp(this.ball.r * 0.3, 0.5, 3.2);
-    for (let i = 0; i < n; i++) this.world.spawnChunk(x + (i - (n - 1) / 2) * spread, d + (i % 2 ? 1.5 : -1.5), r);
-  }
-  _bossMark(B, x, d, dur, r, s, boulder, ghost) {
-    if (B.marks.length > 8) return;
-    B.marks.push({ x, d, t: 0, dur, r, s, boulder: !!boulder, ghost: !!ghost });
-  }
-
+  // ---- PATRON (boss levels): one readable rule. The boss has a fixed size (plan.bossNeedR, shown as 'DEV YETİ · 7,2 m'),
+  // stands anchored on the track before the finish and always slides in front of the ball, so it cannot be passed.
+  // Touch it: ball >= boss size -> you SWALLOW it (the finish opens); smaller -> you CRASH and shatter (level failed).
+  _bossNear() { const L = this.L; return !!(L && L.boss && this.ball.d > L.dF - 300); }   // (no '⛔ X m' obstacle tags near the PATRON)
+  _bossNeed() { return this.L ? this.L.bossNeedR || 1 : 1; }
+  _bossCanEat() { return this._eff() >= this._bossNeed() * 0.995; }
+  _bossLine() { return 'PATRON: ' + fmtD(this._bossNeed() * 2) + ' m — sen: ' + fmtD(this.ball.r * 2) + ' m'; }
   _arenaAI(p, b, dt, hw, dd) {
-    const e = p.enemy, A = e.arena, G = this.G, w = this.world;
-    const B = e.B || (e.B = { id: e.id, marks: [], traps: [], rings: [], laser: null, lane: null, slam: null, rage: false, stun: 0, dash: 0, dt: 0, t1: 3.2, t2: 5.5, dead: false, base: (e.tint || [1, 1, 1]).slice() });
-    this.plus.bossFx = B;
-    if (e.kbD > 0.2 || Math.abs(e.kbX) > 0.2) {
-      p.d += e.kbD * dt; p.x = clamp(p.x + e.kbX * dt, -hw, hw);
-      const k = Math.exp(-dt * 5); e.kbD *= k; e.kbX *= k;
-    } else if (e.woke && B.dash === 0) {
-      // the ball slipped past (it cannot turn back): the boss runs up in front of it again, so it can never be bypassed
-      const passed = dd < -(b.r + p.r * 0.5);
-      const far = B.id === 'yeti' && B.t2 <= 0 && B.stun <= 0 && dd < 38;   // backs off so the charge has room
-      const tgt = passed ? Math.min(A.d1 - 2, b.d + b.r + p.r * 0.9) : far ? A.d1 : A.d1 - 20;
-      const sp = passed ? 16 : far ? 14 : 3;
-      p.d += clamp(tgt - p.d, -sp * dt, sp * dt);
+    const e = p.enemy, G = this.G;
+    if (e.done) return;
+    // anchored in d; slides sideways to stay in front of the ball (a goalkeeper, never a fight)
+    p.d = e.homeD;
+    const lim = Math.max(0, hw - p.r * 0.4);
+    p.x = clamp(p.x + clamp(b.x - p.x, -9 * dt, 9 * dt), -lim, lim);
+    p.y = this.world.groundY(p.x, p.d);
+    e.kbD = 0; e.kbX = 0;
+    if (p.tag) p.tag.position.set(p.x, p.y + p.h + p.tag.scale.x * 0.25, -p.d);
+    if (!e.woke && dd < 220) {
+      e.woke = true; e.tellT = 0;
+      this._msg(3, '👹 ' + this._bossLine());
+      this._msg(2, this._bossCanEat() ? 'Yeterince büyüksün: PATRONU YUT!' : 'Büyü! Küçük çarparsan paramparça olursun.');
+      this._h('sfx', 'rumble'); this._h('haptic', 'warning');
     }
     if (e.woke) {
-      const offTrack = Math.abs(p.x) > hw + 1.5 || p.d < A.d0 - 8 || p.d > A.d1 + 8;
-      const unreach = B.dash === 0 && b.d > A.d1 - 60 && Math.abs(p.d - b.d) > 90;
-      e.offT = offTrack || unreach ? (e.offT || 0) + dt : Math.max(0, (e.offT || 0) - dt);
-      if (e.offT > 3) {
-        e.offT = 0; e.recalls = (e.recalls || 0) + 1;
-        if (e.recalls > 2) {
-          // it cannot be fought any more: count the fight as won so the locked gate opens and the ball is never stuck
-          this._msg(2, '🔓 Patron yenildi: kapı açıldı!');
-          e.hp = 0; p.alive = false; this.plus.bossFx = null; this._bossFinale(p); this._bossDown();
-          return;
-        }
-        B.dash = 0; B.lane = null; B.stun = 0; e.kbD = 0; e.kbX = 0;
-        p.x = clamp(b.x, -hw, hw); p.d = clamp(b.d + 14 + p.r, A.d0, A.d1);
-        this._msg(2, 'Patron önüne döndü!');
-      }
+      e.tellT -= dt;
+      if (e.tellT <= 0 && dd > 25) { e.tellT = 4; if (dd < 200) this._msg(1, (this._bossCanEat() ? '✓ ' : '⛔ ') + this._bossLine()); }
+      p.tint = this._bossCanEat() ? RIVAL_WHITE : e.tint;
     }
-    if (B.dash !== 2) p.d = clamp(p.d, A.d0, A.d1);
-    if (!e.woke && b.d > A.d0 - 25) {
-      e.woke = true;
-      this._msg(3, '⚠ ' + e.name + ' GELİYOR!');
-      this._msg(2, B.id === 'yeti' ? 'Kartopu gölgelerinden kaç, hücumda yana kay!' : B.id === 'robot' ? 'Lazerin boşluğundan geç ya da zıpla · dronları ye!' : 'Şok halkasının boşluğuna kay · buz kayalarını ez!');
-      this._h('sfx', 'rumble');
-      this._h('haptic', 'warning');
-      this._bossTraps(B, A, hw);
-      if (B.id === 'yeti') B.t2 = Math.min(B.t2, 0.6);   // opens with a charge across the ice patch
-    }
-    if (!e.woke) return;
-    // phase 2: enrage
-    if (!B.rage && e.hp <= e.max * 0.5) {
-      B.rage = true; B.t1 = Math.min(B.t1, 1.4);
-      this._msg(3, '🔥 ' + e.name + ' ÖFKELENDİ!');
-      this._h('sfx', 'rumble'); this._h('haptic', 'warning'); G.shake += 1.2;
-      this._h('burst', p.x, p.y + p.h * 0.5, p.d, 20, 0xff5a3a, 9, 0.5 + p.r * 0.06, 6);
-    }
-    const K = B.rage ? 0.68 : 1;
-    if (B.stun > 0) B.stun -= dt;
-    const win = B.stun > 0;
-    B.pos = { x: p.x, y: p.y, d: p.d, r: p.r, h: p.h };
-    if (this.L && this.L.n >= 20 && !win && B.dash === 0) {
-      if (B.shT == null) B.shT = 6;
-      if (!(B.shield > 0)) { B.shT -= dt; if (B.shT <= 0 && !B.slam && !B.laser && dd > 40 && dd < 120) this._shieldUp(p, B, b); }
-      else { B.shield -= dt; if (B.shield <= 0) { B.shield = 0; B.shT = 8; } }
-    }
-    p.tint = win ? (Math.sin(G.t * 16) > 0 ? [1.5, 1.4, 0.5] : [1.2, 1.1, 0.6]) : B.dash === 1 || B.slam ? [1.6, 1.3, 1.3] : B.rage ? [1, 0.2, 0.12] : B.base;
-    if (dd > -b.r && B.dash === 0) {
-      // stays off-centre (never between camera and ball): flips side every few seconds
-      const side = Math.sin(G.t * 0.45) >= 0 ? 1 : -1, off = side * Math.min(p.r * 0.55, hw * 0.3);
-      p.x = clamp(p.x + clamp(b.x + off - p.x, -e.spd * dt, e.spd * dt), -hw, hw);
-    }
-    if (B.dash === 0) p.rot = Math.atan2(b.x - p.x, 16) * 0.8;
-    const ready = !win && B.dash === 0 && !B.slam && !B.laser;
-    if (ready) { B.t1 -= dt; B.t2 -= dt; }
+    // contact: the ball's front reaches the boss (anywhere across the track), or the ball is somehow past it
+    if (b.d + b.r >= p.d - p.r * 0.6) this._bossResolve(p);
+  }
 
-    // shared: falling marks (snowball / boulder)
-    for (let i = B.marks.length - 1; i >= 0; i--) {
-      const m = B.marks[i];
-      m.t += dt;
-      if (m.t < m.dur) continue;
-      B.marks.splice(i, 1);
-      if (m.ghost) continue;
-      this._h('burst', m.x, w.groundY(m.x, m.d) + 0.5, m.d, m.boulder ? 14 : 8, 0xdff0ff, 7, 0.3, 5);
-      this._h('sfx', 'crash', m.boulder ? 0.5 : 0.25);
-      if (Math.hypot(b.x - m.x, b.d - m.d) < m.r * 0.8 + b.r * 0.6 && !b.airborne) this._bossHurt(m.boulder ? 0.045 : 0.03, m.boulder ? 'BUZ KAYASI!' : 'KARTOPU!');
-      if (m.boulder) this._bossChunks(m.x, m.d, 4, 1.8);
-    }
+  _bossResolve(p) {
+    const e = p.enemy, G = this.G;
+    if (e.done || G.state !== 'play') return;
+    e.done = true;
+    if (this._bossCanEat()) this._bossEat(p);
+    else this._bossCrash(p);
+  }
 
-    if (B.id === 'yeti') {
-      if (ready && B.t1 <= 0 && dd > 14) {
-        B.t1 = 2.9 * K + Math.random() * 0.8;
-        const n = B.rage ? 4 : 3, dur = B.rage ? 0.95 : 1.15, td = b.d + b.speed * dur + b.r;
-        for (let k = 0; k < n; k++) {
-          const off = (k - (n - 1) / 2) * (3.5 + b.r * 1.4);
-          this._bossMark(B, clamp(b.x + b.vx * 0.45 + off, -hw + 1, hw - 1), td + k * 1.5, dur, 2 + b.r * 0.55, 0.9 + b.r * 0.12);
-        }
-        this._h('sfx', 'whoosh');
-      }
-      if (ready && B.t2 <= 0 && dd > 20) { B.dash = 1; B.dt = 0; B.t1 = Math.max(B.t1, 1.5); this._msg(3, '⚠ HÜCUM! YANA KAY!'); this._h('haptic', 'warning'); }
-      if (B.dash === 1) {
-        B.dt += dt;
-        const dur = B.rage ? 0.85 : 1.05, locked = B.dt > dur * 0.55;
-        if (!locked) p.x = clamp(p.x + clamp(b.x - p.x, -13 * dt, 13 * dt), -hw, hw);
-        p.rot = 0;
-        B.lane = { x0: p.x, d0: p.d - p.r, x1: p.x, d1: p.d - 70, w: 2 * (b.r + p.r * 0.8), solid: locked };
-        if (B.dt >= dur) {
-          const IT = B.traps.find(q => q.k === 'ice' && q.cd <= 0);
-          if (IT) { IT.x = p.x; IT.d = p.d - 26; }   // the ice patch lies on the charge lane
-          B.dash = 2; B.dt = 0; this._h('sfx', 'rumble'); G.shake += 0.5; }
-      } else if (B.dash === 2) {
-        B.dt += dt;
-        p.d -= (B.rage ? 54 : 44) * dt; p.rot = 0;
-        B.lane = { x0: p.x, d0: p.d, x1: p.x, d1: p.d - 40, w: 2 * (b.r + p.r * 0.8), solid: true };
-        for (const T of B.traps) if (T.k === 'ice' && T.cd <= 0 && Math.abs(p.d - T.d) < 3 && Math.abs(p.x - T.x) < T.r + p.r * 0.4) {
-          T.cd = 16; B.dash = 0; B.lane = null; B.t2 = 6 * K; this._trapHit(p, B, 0.25, 3.5, 'BUZA DÜŞTÜ!'); break;
-        }
-        const gap = p.d - b.d;
-        if (B.dash === 2 && Math.abs(gap) < b.r + p.r * 0.9 && Math.abs(p.x - b.x) < b.r + p.r * 0.8 && !b.airborne) {
-          this._bossHurt(0.07, 'HÜCUM!');
-          b.vx = (b.x >= p.x ? 1 : -1) * 14;
-          B.dash = 0; B.lane = null; B.t2 = 6 * K; e.kbD = 22;
-        } else if (gap < -(b.r + p.r) || p.d <= A.d0 || B.dt > 2.4) {
-          B.dash = 0; B.lane = null; B.t2 = 6 * K;
-          this._bossStun(p, B, 1.5, 'YETİ YORULDU! ÇARP!');
-        }
-      }
-    } else if (B.id === 'robot') {
-      if (ready && B.t1 <= 0) {
-        let ld = Math.min(b.d + b.speed * 1.0 + 8, p.d - p.r - 2);
-        for (const T of B.traps) if (T.cd <= 0 && T.d - b.d > 12 && T.d - b.d < 46 && T.d < p.d - p.r - 2) { ld = T.d; break; }
-        if (ld - b.d < 10) B.t1 = 0.4;
-        else {
-          B.t1 = 5.4 * K;
-          const amp = Math.min(hw * 0.55, 12), fr = B.rage ? 1.5 : 1.1, gc0 = clamp(b.x, -amp, amp);
-          B.laser = { d: ld, t: 0, on: false, hit: false, g0: 0, g1: 0, amp, fr, ph: Math.asin(clamp(gc0 / amp, -0.95, 0.95)) - fr, gw: Math.max(b.r * 2 + 5, 8), end: 1.8 };
-          this._msg(3, '⚠ LAZER! BOŞLUĞA GEÇ ya da ZIPLA');
-          this._h('sfx', 'whoosh');
-        }
-      }
-      const Z = B.laser;
-      if (Z) {
-        Z.t += dt;
-        const gc = Z.amp * Math.sin(Z.fr * Z.t + Z.ph);
-        Z.g0 = gc - Z.gw / 2; Z.g1 = gc + Z.gw / 2;
-        if (!Z.on && Z.t >= 1.0) {
-          Z.on = true; this._h('sfx', 'rumble');
-          const T = B.traps.find(q => q.cd <= 0 && Math.abs(q.d - Z.d) < 1);
-          if (T) { T.cd = 14; Z.hit = true; B.laser = null; B.t2 = Math.min(B.t2, 1.5); this._h('burst', T.x, w.groundY(T.x, T.d) + 3, T.d, 16, 0xfff2a0, 10, 0.4, 5); this._trapHit(p, B, 0.25, 3.5, 'LAZER YANSIDI!'); }
-        }
-        if (B.laser) {
-        if (Z.on && !Z.hit && Math.abs(b.d - Z.d) < b.r * 0.7 + 0.8 && !b.airborne && (b.x < Z.g0 + b.r * 0.3 || b.x > Z.g1 - b.r * 0.3)) {
-          Z.hit = true;
-          this._bossHurt(0.06, 'LAZER!', b.r > p.r * 0.9 ? 0.25 : 1);
-        }
-        if (Z.t >= Z.end || b.d > Z.d + 6) { B.laser = null; B.t2 = Math.min(B.t2, 1.5); this._bossStun(p, B, 1.7, 'ROBOT AŞIRI ISINDI! ÇARP!'); }
-        }
-      }
-      if (ready && B.t2 <= 0 && dd > 16) {
-        B.t2 = 7.2 * K;
-        const n = B.rage ? 6 : 5;
-        for (let k = 0; k < n; k++) w.spawnChunk(clamp((k - (n - 1) / 2) * (2 + b.r * 0.8), -hw + 1, hw - 1), b.d + 22 + (k % 3) * 5, clamp(b.r * 0.3, 0.45, 3.2));
-        this._msg(2, 'MİNİ DRONLAR: YE, BÜYÜ!');
-      }
-    } else {
-      // golem
-      if (ready && B.t1 <= 0 && dd > 24) {
-        B.slam = { t: 0 }; B.t1 = 5.6 * K;
-        this._bossMark(B, p.x, p.d, 0.9, p.r * 1.7, 0.1, false, true);
-        this._msg(3, '⚠ YER SARSILIYOR! BOŞLUĞA KAY ya da ZIPLA'); this._h('haptic', 'warning');
-      }
-      if (B.slam) {
-        B.slam.t += dt;
-        if (B.slam.t >= 0.9) {
-          B.slam = null; G.shake += 1.3; this._h('sfx', 'crash', 0.9); this._h('burst', p.x, w.groundY(p.x, p.d) + 0.5, p.d, 22, 0xdff0ff, 10, 0.5, 6);
-          const nR = B.rage ? 2 : 1, a0 = Math.atan2(b.x - p.x, Math.max(1, p.d - b.d)), side = b.x > 0 ? -1 : 1;
-          for (let k = 0; k < nR; k++) B.rings.push({ R: p.r * 0.8 - k * 12, cx: p.x, cd: p.d, a0, gapA: a0 + side * (0.55 + 0.1 * k), gapH: 0.33, hit: false, v: B.rage ? 30 : 24 });
-          this._bossStun(p, B, 1.9, 'YUMRUK SAPLANDI! ÇARP!');
-        }
-      }
-      if (ready && B.t2 <= 0 && dd > 20) {
-        B.t2 = 3.6 * K;
-        const n = B.rage ? 3 : 2, dur = 1.3, td = b.d + b.speed * dur + b.r;
-        for (let k = 0; k < n; k++) this._bossMark(B, clamp(b.x + b.vx * 0.4 + (k - (n - 1) / 2) * (4 + b.r * 1.6), -hw + 1, hw - 1), td + k * 2, dur, 2.6 + b.r * 0.6, 0.9 + b.r * 0.2, true);
-        this._h('sfx', 'whoosh');
-      }
+  _bossEat(p) {
+    const G = this.G, b = this.ball;
+    this.plus.bossFx = null;
+    if (p.tag) p.tag.visible = false;
+    this._killEnemy(p);          // growth + XP + _bossDown (the hidden finish barrier is gone, G.finalBroken)
+    this._bossDown();
+    this._bossFinale(p);         // slow-mo + bursts + reward
+    for (let k = 0; k < 14; k++) this._h('burst', b.x + (Math.random() - 0.5) * p.r * 2, b.y + Math.random() * p.r, p.d, 10, k % 2 ? 0xffd45a : 0xffffff, 12, 0.5 + p.r * 0.08, 8);
+    G.timeScale = 0.25; G.shake += 1.4;
+    b.punch(0.25);
+    this._text('PATRON YUTULDU!', b, 'big', true);
+    this._msg(3, '👹 PATRON YUTULDU!');
+  }
+
+  _bossCrash(p) {
+    const G = this.G, b = this.ball;
+    this.plus.bossFx = null;
+    b.speed = 0;
+    G.shake += 2; G.timeScale = 0.4;
+    this._h('hitStop', 0.14);
+    this._h('sfx', 'crash', 1); this._h('sfx', 'bump', 1);
+    this._h('haptic', 'heavy'); this._h('flash', 'hit');
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      this._h('burst', b.x + Math.sin(a) * b.r, b.y + Math.cos(a) * b.r * 0.6, b.d, 10, k % 3 ? 0xffffff : 0xcfe6ff, 12, 0.3 + b.r * 0.12, 9);
     }
-    for (const T of B.traps) {
-      if (T.cd > 0) T.cd -= dt;
-      if (T.k !== 'icicle') continue;
-      if (T.drop != null) {
-        T.drop += dt;
-        if (T.drop >= 0.9) {
-          T.drop = null; this._h('sfx', 'crash', 0.8); G.shake += 0.8;
-          if (Math.abs(p.d - T.zd) < 11 && !p.enemy.dead) { this._trapHit(p, B, 0.25, 3.5, 'SARKITLAR!'); B.slam = null; }
-        }
-      } else if (T.cd <= 0 && Math.abs(b.d - T.d) < T.r + b.r * 0.6 && Math.abs(b.x - T.x) < T.r + b.r * 0.6 && !b.airborne) {
-        T.cd = 16; T.drop = 0; T.zd = clamp(p.d, A.d0 + 5, A.d1); this._h('sfx', 'whoosh'); this._h('burst', T.x, w.groundY(T.x, T.d) + 2, T.d, 10, 0xbfeaff, 8, 0.3, 5);
-      }
-    }
-    for (let i = B.rings.length - 1; i >= 0; i--) {
-      const R = B.rings[i];
-      R.R += R.v * dt;
-      if (R.R > 120) { B.rings.splice(i, 1); continue; }
-      if (R.hit || R.R < 2) continue;
-      const dist = Math.hypot(b.x - R.cx, b.d - R.cd), ang = Math.atan2(b.x - R.cx, R.cd - b.d);
-      if (Math.abs(dist - R.R) < b.r + 1.0 && !b.airborne && Math.abs(ang - R.gapA) > R.gapH) { R.hit = true; this._bossHurt(0.05, 'ŞOK DALGASI!'); }
-    }
+    this._text('PARAMPARÇA!', b, 'bad', true);
+    G.bossFail = { need: this._bossNeed(), have: b.r };
+    this.end('boss');
   }
 
   // boss defeated: big burst, slow-mo, bonus (the locked gate unlocks in _bossDown)
@@ -2473,11 +2257,7 @@ export class CigGame {
       const g = gs[i];
       if (g.broken) continue;
       const front = b.d + b.r * 0.8;
-      // a locked boss gate is a hard wall: the ball can never slip through it during the bump cooldown
-      if (L && g.locked && front > g.d - g.T * 0.5 && b.d < g.d + g.T) {
-        if (g.cd > 0) { b.d = Math.min(b.d, g.d - g.T * 0.5 - b.r * 0.8); if (b.speed > 0) b.speed = 0; }
-        else { this._hitGate(g); continue; }
-      }
+      if (g.locked) continue;   // the boss level's finish barrier is the PATRON itself: no wall here (see _arenaAI)
       if (!L) {
         if (g.hit) continue;
         if (front >= g.d - g.T * 0.5 && b.d < g.d + g.T) this._hitGate(g);
@@ -2494,7 +2274,7 @@ export class CigGame {
     if (this.L) {
       // Levels: a barrier is either broken (big enough) or the ball is thrown back. Never a free pass.
       this.stats.gates++;
-      if (g.locked) { this._lockedBump(g); return; }
+      if (g.locked) return;
       const eff = this._eff();
       if (eff >= g.minR * CFG.lvl.gateTol || M.plow || this.powerT > 0) this._gateBreak(g);
       else if (g.kind === 'mini') this._miniDeflect(g);
@@ -2616,20 +2396,6 @@ export class CigGame {
     if (R3 <= 0) return;
     const n = clamp(Math.round(8 + 6 * (1 - b.r / target)), 8, 14);
     w.supplyChunks(b.x, b.d - back + 3, g.d - g.T * 0.5 - 3, R3 / CFG.growK / CFG.chunkGain, n);
-  }
-
-  // the locked boss gate: a harmless bounce, the boss has to be beaten first
-  _lockedBump(g) {
-    const G = this.G, b = this.ball, K = CFG.lvl;
-    const back = 12;
-    G.hitPending = true; G.knockT = K.bounceDur; G.knockV = (2 * back) / K.bounceDur;
-    b.speed = 0; G.gateSlow = 0.8; G.recoverT = 1.0; g.cd = 0.8;
-    G.shake += 0.7;
-    this._h('sfx', 'bump', 0.7);
-    this._h('haptic', 'medium');
-    b.squash(0.2);
-    this._h('burst', b.x, b.y, g.d, 8, 0xd8ecff, 6, 0.4, 5);
-    if (!this._lockedMsg) { this._lockedMsg = true; this._msg(1, 'KİLİTLİ: patronu yen'); }
   }
 
   // a half-width ice wall that is too strong for you: slide off through the open side (no snow lost)
@@ -2796,11 +2562,11 @@ export class CigGame {
     const gs = this.world.gates;
     for (let i = 0; i < gs.length; i++) if (gs[i].cd > 0) gs[i].cd -= dt;
     this._momTick(dt);
-    // failsafe: the arena boss is gone (lost from the lists, or dead without a defeat) while its gate is still locked:
-    // count the fight as won, so the locked gate opens and the ball is never stuck at it
+    // PATRON failsafe: the boss prop got lost from the lists before the ball reached it: resolve the size rule right there
     const bp = this.world.bossProp;
-    if (this.L.finale.kind === 'boss' && !G.finalBroken && bp && !bp.enemy.gone && (!bp.alive || !this.world.enemies.includes(bp))) {
-      bp.enemy.gone = true; bp.alive = false; this.plus.bossFx = null; this._bossFinale(bp); this._bossDown();
+    if (this.L.boss && !G.finalBroken && bp && !bp.enemy.done && (!bp.alive || !this.world.enemies.includes(bp)) && this.ball.d + this.ball.r >= bp.enemy.homeD - bp.r * 0.6) {
+      bp.enemy.done = true;
+      if (this._bossCanEat()) { this.plus.bossFx = null; this._bossDown(); this._bossFinale(bp); this._msg(3, '👹 PATRON YUTULDU!'); } else this._bossCrash(bp);
     }
     this.stats.time = G.t;
   }
@@ -3287,6 +3053,11 @@ export class CigGame {
       this.wave.d += Math.max(this.wave.v, 8) * dt;
     } else if (G.cause === 'win') {
       b.speed = Math.max(0, b.speed - 22 * dt);
+    } else if (G.cause === 'boss') {
+      // shattered on the PATRON: the ball bursts into snow and is gone
+      b.speed = 0;
+      b.setRadius(Math.max(0.05, b.r * Math.exp(-6 * dt)));
+      if (Math.random() < dt * 30) this._h('burst', b.x, b.y, b.d, 3, 0xffffff, 8, 0.2 + b.r * 0.1, 5);
     } else {
       b.speed = Math.max(0, b.speed - 14 * dt);
     }

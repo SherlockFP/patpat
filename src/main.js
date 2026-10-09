@@ -619,7 +619,7 @@ function updateLevelHud(V) {
   if (!h) return;
   const m5 = Math.round(V.left / 5) * 5;
   const s = V.finalBroken ? 'BİTİŞ' : V.final ? 'FİNAL' : 'ETAP ' + (V.gateI + 1) + '/' + V.S;
-  const t0 = V.finalBroken ? '🏁' : V.locked ? '🔒 PATRON' : V.need > 0 ? '⛔ ' + fmtD(V.need) + ' m' : m5 + ' m';
+  const t0 = V.finalBroken ? '🏁' : V.locked ? '👹 ' + fmtD(V.need) + ' m' : V.need > 0 ? '⛔ ' + fmtD(V.need) + ' m' : m5 + ' m';
   const t = s + ' · ' + t0;
   const r = V.finalBroken ? 2 : V.ready;
   if (h.s !== '-') { h.s = '-'; h.gs.textContent = ''; h.gs.style.display = 'none'; }
@@ -806,12 +806,12 @@ function finishCigLevel() {
     save.recordRun(r.tons); notifSync(true);
     meta.track('cig_end', { level: n, stars: 0, tons: r.tons, pct: Math.min(0.99, peakD / plan.length), reached: false, daily, theme: scenery.theme.id, endless: false });
     meta.track('cig_progress', { tons: r.tons, dist: peakD });
-    const wave = G.cause === 'wave';
+    const wave = G.cause === 'wave', bossF = G.cause === 'boss' && G.bossFail;
     const lb = G.lastBounce && G.lastBounce.i >= (G.gateIdx || 0) ? G.lastBounce : null;   // (only while that barrier is still the one that stopped you)
-    const tip = lb ? 'KAPI ' + (lb.i + 1) + ': ' + fmtD(lb.need * 2) + ' m gerekiyordu, sen ' + fmtD(lb.have * 2) + ' m idin.'
+    const tip = bossF ? 'PATRON ' + fmtD(G.bossFail.need * 2) + ' m idi, sen ' + fmtD(G.bossFail.have * 2) + ' m. Yolda daha çok ye, daha büyük gel!' : lb ? 'KAPI ' + (lb.i + 1) + ': ' + fmtD(lb.need * 2) + ' m gerekiyordu, sen ' + fmtD(lb.have * 2) + ' m idin.'
       : wave ? 'Durma: çığ arkandan geliyor.' : 'Küçükleri ye, durursan kar erir.';
     menus.showLevelFailed({
-      level: planAsLevel(plan), cause: G.cause, title: wave ? 'ÇIĞ SENİ YAKALADI!' : 'ERİDİN!', icon: wave ? '🌨️' : '💧', tip,
+      level: planAsLevel(plan), cause: G.cause, title: bossF ? 'PATRONA ÇARPTIN — daha büyük gel!' : wave ? 'ÇIĞ SENİ YAKALADI!' : 'ERİDİN!', icon: bossF ? '💥' : wave ? '🌨️' : '💧', tip,
       distance: peakD, stats: { distance: peakD }, labels: { retry: '↻ TEKRAR DENE', map: 'DAĞLAR' },
     }, {
       onRetry: () => startCigLevel(daily ? { daily: true } : n, { retry: true }),
@@ -1240,7 +1240,7 @@ function updateEnemyBars() {
     const p = en[i];
     if (!p.alive) continue;
     const dd = p.d - ball.d;
-    if (dd < -6 || dd > 130) continue;
+    if (dd < -6 || dd > (p.enemy.ai === 'arena' ? 220 : 130)) continue;
     if (p.enemy.rival) continue;
     if (p.enemy.boss) { if (!boss || dd < boss.d - ball.d) boss = p; continue; }
     if (n >= BAR_N) continue;
@@ -1258,7 +1258,8 @@ function updateEnemyBars() {
   if (boss) {
     bossEl.style.display = 'block';
     ui.el.hud.classList.add('bossfight');
-    const nmT = boss.enemy.name + (G.lv && lastHave ? '  ·  ⚪ ' + fmtD(lastHave) + ' m' : '');
+    const pat = boss.enemy.ai === 'arena' && G.lv && G.lv.bossNeedR ? G.lv.bossNeedR * 2 : 0;   // PATRON: a size duel, not HP
+    const nmT = pat ? 'PATRON: ' + fmtD(pat) + ' m — sen: ' + fmtD(ball.r * 2) + ' m' : boss.enemy.name + (G.lv && lastHave ? '  ·  ⚪ ' + fmtD(lastHave) + ' m' : '');
     if (bossEl._nmT !== nmT) { bossEl._nmT = nmT; bossEl._nm.textContent = nmT; }
     const gz = game && game.shieldGauge ? game.shieldGauge() : null;
     if (gz) {
@@ -1270,8 +1271,16 @@ function updateEnemyBars() {
       bossEl._gg.style.opacity = ok ? '1' : (0.7 + 0.3 * Math.sin(performance.now() * 0.012)).toFixed(2);
       bossEl._gt.textContent = ok ? '🧊 ŞİMDİ ÇARP!' : 'HIZLAN!';
     } else if (bossEl._gg.style.display !== 'none') bossEl._gg.style.display = 'none';
-    bossEl._num.textContent = Math.max(0, Math.ceil(boss.enemy.hp)) + ' / ' + Math.ceil(boss.enemy.max);
-    bossEl._bf.style.transform = 'scaleX(' + clamp(boss.enemy.hp / boss.enemy.max, 0, 1).toFixed(3) + ')';
+    if (pat) {
+      const ok = ball.r * 2 >= pat * 0.995;
+      const t = ok ? '✓ YUTABİLİRSİN!' : 'BÜYÜ! ' + fmtD(Math.max(0, pat - ball.r * 2)) + ' m eksik';
+      if (bossEl._num.textContent !== t) bossEl._num.textContent = t;
+      bossEl._bf.style.transform = 'scaleX(' + clamp(ball.r * 2 / pat, 0, 1).toFixed(3) + ')';
+      bossEl._bf.style.background = ok ? 'linear-gradient(#bfffd0,#2fd36b)' : '';
+    } else {
+      bossEl._num.textContent = Math.max(0, Math.ceil(boss.enemy.hp)) + ' / ' + Math.ceil(boss.enemy.max);
+      bossEl._bf.style.transform = 'scaleX(' + clamp(boss.enemy.hp / boss.enemy.max, 0, 1).toFixed(3) + ')';
+    }
     ui.el.hint.classList.add('hidden');   // boss HP bar up: no generic hint line
   } else { bossEl.style.display = 'none'; ui.el.hud.classList.remove('bossfight'); }
   // 👑 icon above the standing throne tower, so it is noticed from afar
