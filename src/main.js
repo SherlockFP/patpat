@@ -99,6 +99,7 @@ let plus = null;
 let game = null;
 let rainbowTrail = false;
 let agar = null;      // AGAR mode (another module, loaded on demand)
+let parkur = null;    // PARKUR mode (./parkur/parkur.js, loaded on demand)
 // Particles in endless mode fall into the void instead of bouncing on the ÇIĞ terrain.
 const groundless = { groundY: () => -1e9, rampAt: () => 0 };
 
@@ -174,6 +175,7 @@ const menus = createMenus({
     onCigEndless: () => startCigEndless(),    // (the menu only offers it once DAĞ 10 is cleared)
     onCigLevel: (n, o) => startCigLevel(n, o),
     onAgar: () => startAgar(),
+    onParkur: () => startParkur(),
     onPlayLevel: (id) => startLevel(id),
     onBallTap: () => lobbyBounce(),
     onBallGold: () => { window.__patpatGold = true; tintGold(); },
@@ -203,6 +205,7 @@ platform.onBack(() => {
   if (closeShop) { closeShop(); return; }
   if (menus.back()) return; // lobby panels / cards close first
   if (G.mode === 'agar') { if (agar && agar.onBack) agar.onBack(); else toMenu(); return; }
+  if (G.mode === 'parkur') { if (parkur) parkur.onBack(); else toMenu(); return; }
   if (G.state === 'runner') {
     // playing: pause / resume; on the result screen (or before the run has started) Back leaves to the menu
     const rs = runner?.state;
@@ -445,11 +448,60 @@ async function startAgar() {
 
 // Leaving AGAR (any way): dispose it and restore the normal ÇIĞ scene / mode.
 function leaveAgar() {
+  leaveParkur();
   if (G.mode !== 'agar') return;
   if (agar) { try { agar.dispose(); } catch (e) { console.warn(e); } agar = null; }
   G.mode = 'cig';
   G.paused = false;
   ui.showPause(false);
+  ball.group.visible = true;
+  setCigVisible(true);
+  resize();
+}
+
+// ---------- PARKUR mode (module in ./parkur/parkur.js; own scene + camera, rendered like AGAR) ----------
+async function startParkur() {
+  audio.init();
+  audio.ui();
+  let mod;
+  try {
+    mod = await import('./parkur/parkur.js');
+  } catch (e) {
+    console.error(e);
+    ui.toast('Parkur modu yüklenemedi');
+    return;
+  }
+  if (parkur) return;
+  if (G.mode === 'cig' && G.state === 'play') meta.track('cig_progress', { tons: game?.totalTons() || 0, dist: ball.d });
+  leaveAgar();
+  leaveEndless();
+  ui.hint(false);
+  ui.speedLines?.(0);
+  ui.cigReset?.();
+  G.lv = null;
+  hideLevelHud();
+  ui.showPause(false);
+  hideEnemyBars();
+  menus.hideMain();
+  audio.setRoll(0, 0);
+  setCigVisible(false);
+  parkur = new mod.ParkurMode({
+    renderer, post, ui, audio, save, platform,
+    onExit: () => { toMenu(); menus.refresh?.(); },
+    track: (ev, d) => meta.track(ev, d),
+  });
+  G.mode = 'parkur';
+  G.state = 'parkur';
+  G.paused = false;
+  parkur.start();
+}
+
+// Leaving PARKUR (any way): dispose it and restore the normal ÇIĞ scene / mode.
+function leaveParkur() {
+  if (G.mode !== 'parkur') return;
+  if (parkur) { try { parkur.dispose(); } catch (e) { console.warn(e); } parkur = null; }
+  G.mode = 'cig';
+  G.paused = false;
   ball.group.visible = true;
   setCigVisible(true);
   resize();
@@ -1328,6 +1380,8 @@ function frame(now) {
       if (runner && !G.paused) runner.update(dt);
     } else if (G.mode === 'agar') {
       if (agar && !G.paused) agar.update(dt);
+    } else if (G.mode === 'parkur') {
+      if (parkur && !G.paused) parkur.update(dt);
     } else cigFrame(dt);
   } catch (e) {
     if (frameErrors++ < 5) console.error('[frame]', e);
@@ -1337,6 +1391,12 @@ function frame(now) {
   if (G.mode === 'agar' && agar) {
     SU.uTime.value = now / 1000;
     try { post.render(agar.scene, agar.camera); } catch (e) { if (frameErrors++ < 5) console.error('[agar render]', e); }
+    adaptResolution(dt);
+    return;
+  }
+  if (G.mode === 'parkur' && parkur) {
+    SU.uTime.value = now / 1000;
+    try { post.render(parkur.scene, parkur.camera); } catch (e) { if (frameErrors++ < 5) console.error('[parkur render]', e); }
     adaptResolution(dt);
     return;
   }
@@ -1475,6 +1535,8 @@ if (DEBUG) {
     },
     agar: () => startAgar(),
     get agarMode() { return agar; },
+    parkur: () => startParkur(),
+    get parkurMode() { return parkur; },
     get runner() { return runner; },
     get plus() { return plus; },
     get ui() { return ui; },
@@ -1544,7 +1606,7 @@ async function boot() {
     let gone = false;
     const startedAt = G.runNo;
     // only auto-start if nothing else was started meanwhile (e.g. a mode launched while the splash was up)
-    const go = () => { if (gone) return; gone = true; sp.classList.add('out'); setTimeout(() => sp.remove(), 350); if (G.runNo === startedAt && G.mode !== 'runner' && G.mode !== 'agar') startEndless(); };
+    const go = () => { if (gone) return; gone = true; sp.classList.add('out'); setTimeout(() => sp.remove(), 350); if (G.runNo === startedAt && G.mode !== 'runner' && G.mode !== 'agar' && G.mode !== 'parkur') startEndless(); };
     sp.addEventListener('pointerdown', go);
     setTimeout(go, 2000);
   }
