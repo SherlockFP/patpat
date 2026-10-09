@@ -21,7 +21,7 @@
 //   world.zoneFree(d0, d1, kinds), world.specialQueue (golden snowballs for cigplus), world.dispose()
 import * as THREE from 'three';
 import { CFG, MASS, fallbackMass, tierOf, foodRelAt, expectedRAt } from './config.js';
-import { planAt, planSlope, crateRadius } from './cigplan.js';
+import { planAt, planSlope, crateRadius, RAMP_AIR_K } from './cigplan.js';
 import { makeRng } from './rng.js';
 import { patchMaterial } from './shaders.js';
 
@@ -959,7 +959,7 @@ export class World {
       case 'arena': return this.placeArena(it, gr, T, hw);
       case 'fork': return this.placeFork(it, gr, T, hw);
       case 'finish': this.addFinish(it.at); return 4;
-      case 'army': case 'mush': case 'strip': case 'cannon': case 'bridge': case 'pickup':
+      case 'army': case 'mush': case 'strip': case 'cannon': case 'bridge': case 'pickup': case 'puddle': case 'salt':
         // CigPlus builds these (it owns the meshes); it receives a plain copy of the plan item
         this.specialQueue.push({ ...it });
         this.zones.push({ d0: it.start - 6, d1: it.start + it.len + 6, kind: it.kind === 'strip' || it.kind === 'pickup' ? 'plus' : it.kind });
@@ -1281,7 +1281,7 @@ export class World {
     this.zones.push({ d0: d - 8, d1: d + len + 60 + gr * 3, kind: 'ramp' });
     // landing field: flying into a crowd is the money shot
     const v = Math.min(CFG.maxSpeed, CFG.baseSpeed + CFG.sizeSpeed * Math.sqrt(gr));
-    const B = Math.min(CFG.hopMax, 4 + 0.18 * v) + CFG.grade * v;
+    const B = (this.lvl ? RAMP_AIR_K : 1) * Math.min(CFG.hopMax, 4 + 0.18 * v) + CFG.grade * v;
     const t = (B + Math.sqrt(B * B + 2 * CFG.gravity * h)) / CFG.gravity;
     const land = d + len + v * t;
     const n = 14 + (flip ? 6 : 0);
@@ -2151,7 +2151,7 @@ export class World {
   pruneEnemies(ballD) {
     const a = this.enemies;
     let n = 0;
-    for (let i = 0; i < a.length; i++) { const p = a[i]; if (p.alive && p.d > ballD - 80) a[n++] = p; }
+    for (let i = 0; i < a.length; i++) { const p = a[i]; if (p.alive && (p.d > ballD - 80 || (p.enemy && p.enemy.ai === 'arena'))) a[n++] = p; }
     a.length = n;
   }
 
@@ -2162,7 +2162,7 @@ export class World {
     for (let i = 0; i < a.length; i++) {
       const p = a[i];
       if (!p.alive) continue;
-      if (p.move !== MOVE_CHUNK && p.d < this.ballD - this.behind - 90) { p.alive = false; continue; }
+      if (p.move !== MOVE_CHUNK && p.d < this.ballD - this.behind - 90 && !(p.enemy && p.enemy.ai === 'arena')) { p.alive = false; continue; }
       if (p.kind === 'chunk' && p.d < this.ballD - 60) { p.alive = false; continue; }
       a[n++] = p;
       if (p.move === MOVE_SKI) {

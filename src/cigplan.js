@@ -51,8 +51,10 @@ export const INTRO = {
 const STAR3 = { 1: 'nobounce', 2: 'crates', 3: 'nobounce', 4: 'secret', 5: 'nohit', 6: 'chain', 7: 'rival', 8: 'nohit', 9: 'gold', 10: 'time', 11: 'crates', 12: 'chain' };
 
 // metres of track a part needs (everything the part places stays inside [start, start + len])
-const RES = { crateLine: 44, crateWall: 64, iceWall: 48, ramp: 95, mush: 90, army: 60, town: 90, golden: 50, patch: 100, rival: 70, cannon: 90, bridge: 130, fork: 124, pickup: 14, strip: 14, gate: 84, arena: 170, statues: 66, secret: 92, domino: 40, throne: 58 };
+const RES = { crateLine: 44, crateWall: 64, iceWall: 48, ramp: 95, mush: 90, army: 60, town: 90, golden: 50, patch: 100, rival: 70, cannon: 90, bridge: 130, fork: 124, pickup: 14, strip: 14, puddle: 12, salt: 16, gate: 84, arena: 170, statues: 66, secret: 92, domino: 40, throne: 58 };
 const GAP = 25;
+// ramp launches: the upward speed is scaled by this, so a jump lasts about a third less (2 / 3 of the old airtime) and lands sooner
+export const RAMP_AIR_K = 0.67;
 
 // hand-made stage lists for the first ten mountains (CL crate line, CW crate wall, IW ice wall, RMP ramp, MSH mushrooms,
 // ARM army, TWN town, GLD golden snowball, RIV rival, CAN cannon, ARENA boss arena; * = holds the golden crates)
@@ -396,6 +398,30 @@ function build(n, daily, assist, opts) {
       final: last, locked: last && bossArena, stage: g.i,
     });
     if (n >= 4) items.push({ kind: 'strip', start: g.d - 52, len: 4, at: g.d - 52, xf: rng.range(-0.6, 0.6), pre: 1, stage: g.i });
+  }
+  // ---- extras (not daily): speed strips (boosters), warm puddles and salt strips (light shrink pads), dropped into free slots
+  if (!daily) {
+    const freeSlot = (len) => {
+      const lo = 130, hi = dF - 40 - len;
+      for (let k = 0; k < 60 && hi > lo; k++) {
+        const s0 = Math.round(rng.range(lo, hi));
+        if (!items.some((p) => s0 < p.start + p.len + 10 && p.start < s0 + len + 10)) return s0;
+      }
+      return -1;
+    };
+    const extras = [
+      ['strip', n >= 3 ? 3 + Math.min(3, Math.floor(n / 6)) : 0],
+      ['puddle', n >= 3 && !boss ? (n < 6 ? 1 : n < 12 ? 2 : 3) : 0],
+      ['salt', n >= 5 && !boss ? (n < 12 ? 1 : 2) : 0],
+    ];
+    for (const [kind, count] of extras) {
+      for (let c = 0; c < count; c++) {
+        const len = RES[kind], start = freeSlot(len);
+        if (start < 0) break;
+        const stage = Math.min(S - 1, P.gates.filter((g) => g.d < start).length);
+        items.push({ kind, start, len, at: start + 10, xf: rng.range(-0.55, 0.55), stage });
+      }
+    }
   }
   items.push({ kind: 'finish', start: dF + 14, len: 4, at: length, stage: S - 1 });
   items.sort((x, y) => x.start - y.start || (x.kind === 'gate' ? 1 : 0) - (y.kind === 'gate' ? 1 : 0));
