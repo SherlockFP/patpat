@@ -75,6 +75,19 @@ export const SKINS = [
   { id: 'karasivi', name: 'Kara Sıvı', rarity: 'legendary', price: 4500, preview: { a: '#1a2048', b: '#05060c', c: '#5a74ff', pattern: 'tendrils' } },
   { id: 'kizilkaos', name: 'Kızıl Kaos', rarity: 'legendary', price: 5500, preview: { a: '#e01428', b: '#3a0610', c: '#ff5a48', pattern: 'tendrils' } },
   { id: 'galaksi', name: 'Galaksi', rarity: 'legendary', price: 0, unlock: { secret: 'galaksi' }, preview: { a: '#0b0b3a', b: '#6a2aa8', c: '#ffffff', pattern: 'stars', glow: true } },
+  // ---- YENİ: ucuz (300-800) / orta (1200-2500) / nadir (4000+) / 💎 premium (7500+) ❄ fiyatlı, aynı satın alma yolu
+  { id: 'lahmacun', name: 'Lahmacun', rarity: 'common', price: 350, preview: { a: '#e9b26a', b: '#b5501f', c: '#6fb23c', pattern: 'dots' } },
+  { id: 'kiraz', name: 'Kiraz', rarity: 'common', price: 420, preview: { a: '#ff3b5c', b: '#8a0820', c: '#ffe0e6', pattern: 'dots' } },
+  { id: 'kavun', name: 'Kavun', rarity: 'common', price: 480, preview: { a: '#f7e27a', b: '#6aa84f', pattern: 'stripes' } },
+  { id: 'konfeti', name: 'Konfeti Topu', rarity: 'common', price: 600, preview: { a: '#ffffff', b: '#ff5ca8', c: '#3ad0ff', pattern: 'dots' } },
+  { id: 'zumrut', name: 'Zümrüt', rarity: 'rare', price: 750, preview: { a: '#3ee08a', b: '#0a7a4a', pattern: 'facets' } },
+  { id: 'lokum', name: 'Lokum', rarity: 'rare', price: 1250, preview: { a: '#fff5f7', b: '#f2a6c0', pattern: 'fluff' } },
+  { id: 'gokkusagi', name: 'Gökkuşağı Topu', rarity: 'epic', price: 1700, preview: { a: '#ff4d4d', b: '#7a5cff', c: '#ffd23a', pattern: 'swirl' } },
+  { id: 'nebula', name: 'Nebula', rarity: 'epic', price: 2000, preview: { a: '#2b0a4a', b: '#ff5ac8', c: '#7ae7ff', pattern: 'plasma', glow: true } },
+  { id: 'karprens', name: 'Kar Tanesi Prensi', rarity: 'epic', price: 2300, preview: { a: '#f4fbff', b: '#9fd8ff', c: '#ffffff', pattern: 'stars' } },
+  { id: 'altinkral', name: 'Altın Kral', rarity: 'legendary', price: 4000, preview: { a: '#fff3b0', b: '#d8940c', c: '#7a4a00', pattern: 'tiles', glow: true } },
+  { id: 'kristal', name: 'Kristal Ejder', rarity: 'legendary', price: 7500, preview: { a: '#ffffff', b: '#00b8e6', c: '#e8fcff', pattern: 'scales', glow: true } },
+  { id: 'gunestaci', name: 'Güneş Tacı', rarity: 'legendary', price: 9000, preview: { a: '#ffd23a', b: '#ff3a10', c: '#ffb000', pattern: 'flame', glow: true } },
 ];
 
 // KARAKTER snowballs: one small passive Rush ability each (endless Rush only; read by runner.js).
@@ -107,6 +120,15 @@ export const TRAILS = [
   { id: 'galaksi', name: 'Yıldız Tozu', rarity: 'epic', price: 1800, preview: { a: '#d6b8ff', b: '#5b3bd6', pattern: 'solid', glow: true } },
   // ---- EFSANE
   { id: 'cini', name: 'Çini İzi', rarity: 'legendary', price: 3200, preview: { a: '#1b3f9e', b: '#1fb5b0', pattern: 'bands' } },
+  // ---- YENİ
+  { id: 'konfeti', name: 'Konfeti', rarity: 'common', price: 250, preview: { a: '#ff5ca8', b: '#3ad0ff', pattern: 'swirl' } },
+  { id: 'nane_izi', name: 'Nane İzi', rarity: 'common', price: 280, preview: { a: '#c8fff0', b: '#1fb88a', pattern: 'solid' } },
+  { id: 'kar_firtinasi', name: 'Kar Fırtınası', rarity: 'rare', price: 550, preview: { a: '#ffffff', b: '#9fd8ff', pattern: 'solid', glow: true } },
+  { id: 'okyanus', name: 'Okyanus', rarity: 'rare', price: 650, preview: { a: '#7ff0ff', b: '#0a4fa0', pattern: 'solid', glow: true } },
+  { id: 'altin_pul', name: 'Altın Pul', rarity: 'rare', price: 900, preview: { a: '#fff6c2', b: '#d8940c', pattern: 'swirl', glow: true } },
+  { id: 'lav_izi', name: 'Lav İzi', rarity: 'epic', price: 1300, preview: { a: '#ffb000', b: '#8a1a00', pattern: 'bands', glow: true } },
+  { id: 'gunes', name: 'Güneş İzi', rarity: 'epic', price: 2200, preview: { a: '#fff3a0', b: '#ff8a1a', pattern: 'swirl', glow: true } },
+  { id: 'kristal_izi', name: 'Kristal İzi', rarity: 'legendary', price: 3600, preview: { a: '#e8fcff', b: '#3ac8ff', pattern: 'bands', glow: true } },
 ];
 
 const TRAIL_STYLES = {
@@ -122,6 +144,14 @@ const TRAIL_STYLES = {
   kaos: { color: 0xe01428, color2: 0x12000a, rainbow: false, glow: false },
   galaksi: { color: 0xa070ff, color2: 0x4a8cff, rainbow: false, glow: true },
   kalp: { color: 0xff6fb5, color2: 0xff9fd0, rainbow: false, glow: true },
+  konfeti: { color: 0xff5ca8, color2: 0x3ad0ff, rainbow: true, glow: false, palette: [0xff5ca8, 0xffd23a, 0x3ad0ff, 0x7dff4a, 0xb07aff] },
+  nane_izi: { color: 0x7fffd4, color2: 0x1fb88a, rainbow: false, glow: false },
+  kar_firtinasi: { color: 0xeaf6ff, color2: 0x9fd8ff, rainbow: false, glow: true },
+  okyanus: { color: 0x7ff0ff, color2: 0x0a4fa0, rainbow: false, glow: true },
+  altin_pul: { color: 0xffe681, color2: 0xd8940c, rainbow: true, glow: true, palette: [0xfff6c2, 0xffd23a, 0xd8940c, 0xffe681] },
+  lav_izi: { color: 0xffb000, color2: 0x8a1a00, rainbow: true, glow: true, palette: [0xffb000, 0xff5a10, 0x8a1a00, 0xff3a10] },
+  gunes: { color: 0xfff3a0, color2: 0xff8a1a, rainbow: true, glow: true, palette: [0xfff3a0, 0xffd23a, 0xff8a1a, 0xffffff] },
+  kristal_izi: { color: 0xe8fcff, color2: 0x3ac8ff, rainbow: true, glow: true, palette: [0xe8fcff, 0x3ac8ff, 0xffffff, 0x7fe3ff] },
   // cini: rainbow:true means "per-vertex ribbon colours"; palette (hex list) replaces the HSL rainbow, cycled along the ribbon.
   cini: { color: 0x1b3f9e, color2: 0x1fb5b0, rainbow: true, glow: false, palette: [0x1b3f9e, 0x1fb5b0, 0xf4efe0, 0x1fb5b0] },
 };
@@ -2285,7 +2315,44 @@ function skinHali() {
   return { geometry, material, puff: 0xc1272d, textures: [tex] };
 }
 
+// -- generic painted ball for the newer catalog entries: one of five colour layouts, three colours, no per-item code.
+//   kind: stripes | dots | swirl | bands | facets   (per-face colour, flat-shaded like the rest)
+function skinGen(kind, a, b, c, puff) {
+  const A = new THREE.Color(a), B = new THREE.Color(b), C = new THREE.Color(c);
+  const paint = {
+    stripes: (x, y, z, o) => o.copy(Math.sin(y * 9) > 0.2 ? B : A),
+    dots: (x, y, z, o) => {
+      const lon = Math.atan2(z, x) * 4, lat = Math.asin(Math.max(-1, Math.min(1, y))) * 4;
+      const u = Math.round(lon), v = Math.round(lat);
+      o.copy(Math.hypot(lon - u, lat - v) < 0.3 ? (hash3(u, v, 3) < 0.5 ? B : C) : A);
+    },
+    swirl: (x, y, z, o) => {
+      const s = Math.sin(Math.atan2(z, x) * 3 + Math.sin(y * 4) * 2);
+      o.copy(s > 0.35 ? B : s < -0.35 ? C : A);
+    },
+    bands: (x, y, z, o) => { const t = (y + 1) / 2; o.copy(t < 0.33 ? A : t < 0.66 ? B : C); },
+    facets: (x, y, z, o) => {
+      const h = hash3(Math.floor(x * 4) + 8, Math.floor(y * 4) + 8, Math.floor(z * 4) + 8);
+      o.copy(h < 0.4 ? A : h < 0.8 ? B : C);
+    },
+  }[kind] || ((x, y, z, o) => o.copy(A));
+  const geometry = buildSphere({ detail: 5, shape: () => 0, paint: (x, y, z, col) => paint(x, y, z, col) });
+  return { geometry, material: lambert(), puff };
+}
+
 const BUILDERS = {
+  lahmacun: () => skinGen('dots', 0xe9b26a, 0xb5501f, 0x6fb23c, 0xf0b070),
+  kiraz: () => skinGen('dots', 0xff3b5c, 0x8a0820, 0xffe0e6, 0xff7a8a),
+  kavun: () => skinGen('stripes', 0xf7e27a, 0x6aa84f, 0x6aa84f, 0xffef9a),
+  konfeti: () => skinGen('dots', 0xffffff, 0xff5ca8, 0x3ad0ff, 0xffd6ea),
+  zumrut: () => skinGen('facets', 0x3ee08a, 0x0a7a4a, 0x9ff5c4, 0x7fe8b0),
+  lokum: () => skinGen('bands', 0xfff5f7, 0xf2a6c0, 0xffffff, 0xffd8e6),
+  gokkusagi: () => skinGen('swirl', 0xff4d4d, 0x7a5cff, 0xffd23a, 0xffb0b0),
+  nebula: () => skinGen('swirl', 0x2b0a4a, 0xff5ac8, 0x7ae7ff, 0xb070ff),
+  karprens: () => skinGen('dots', 0xf4fbff, 0x9fd8ff, 0xffffff, 0xe6f6ff),
+  altinkral: () => skinGen('bands', 0xfff3b0, 0xd8940c, 0x7a4a00, 0xffe27a),
+  kristal: () => skinGen('facets', 0xffffff, 0x00b8e6, 0xe8fcff, 0x9fe8ff),
+  gunestaci: () => skinGen('swirl', 0xffd23a, 0xff3a10, 0xffb000, 0xffe07a),
   mavikar: skinMaviKar,
   nane: skinNane,
   cilek: skinCilek,
