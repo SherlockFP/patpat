@@ -3,8 +3,6 @@ export const PERM_COSTS = [200, 450, 900, 1600, 2600];
 const RUNNER_DEF = () => ({ best: 0, bestDist: 0, runs: 0, tut: false, turnHints: 0, lipHints: 0, seen: { boulder: false, slidewall: false, train: false } });
 const CIG_DEF = () => ({ ch: {}, tut: 0, dailyCh: {}, endless: { tons: 0, dist: 0, runs: 0 }, lv: { stars: {}, best: {}, intro: {}, fails: {}, cleared: 0 } });
 export const CIG_LEVELS = 30;
-// PARKUR: lifetime checkpoints / finished dailies drive the unlocks (double jump, dash, long wall-run); bests per daily seed
-const PARKUR_DEF = () => ({ cps: 0, fin: 0, runs: 0, bestDist: 0, daily: {}, unl: {}, tut: 0 });
 
 const fresh = () => ({
   level: 1, stars: {}, best: {}, daily: {},
@@ -14,7 +12,6 @@ const fresh = () => ({
   totalTons: 0, runs: 0,
   runner: RUNNER_DEF(),
   cig: CIG_DEF(),
-  parkur: PARKUR_DEF(),
 });
 
 let data = fresh();
@@ -68,12 +65,6 @@ try {
         }
         l.cleared = Number.isFinite(l.cleared) ? Math.max(0, Math.min(CIG_LEVELS, Math.floor(l.cleared))) : 0;
       }
-    }
-    {
-      const d = PARKUR_DEF(), p = data.parkur && typeof data.parkur === 'object' && !Array.isArray(data.parkur) ? data.parkur : (data.parkur = d);
-      for (const k of ['cps', 'fin', 'runs', 'bestDist', 'tut']) p[k] = Number.isFinite(p[k]) && p[k] > 0 ? p[k] : 0;
-      for (const k of ['daily', 'unl']) if (!p[k] || typeof p[k] !== 'object' || Array.isArray(p[k])) p[k] = {};
-      for (const k in p.daily) if (!(Number.isFinite(p.daily[k]) && p.daily[k] > 0)) delete p.daily[k];
     }
     if (!Number.isFinite(data.crystals) || data.crystals < 0) data.crystals = 0;
     if (data.perm && typeof data.perm !== 'object') data.perm = {};
@@ -231,9 +222,6 @@ export const save = {
   },
 
   // ---- ÇIĞ DAĞLAR (30 finite mountains): data.cig.lv = { stars:{n:0-3}, best:{n:{tons,size,time}}, intro:{n:1}, fails:{n:k}, cleared } ----
-  /** PARKUR progress object (mutate, then saveParkur()) */
-  parkur: () => data.parkur || (data.parkur = PARKUR_DEF()),
-  saveParkur() { persist(); },
   cigCleared: () => data.cig.lv.cleared | 0,
   cigUnlocked: () => Math.min(CIG_LEVELS, (data.cig.lv.cleared | 0) + 1),
   cigNext() { return Math.min(CIG_LEVELS, (data.cig.lv.cleared | 0) + 1); },

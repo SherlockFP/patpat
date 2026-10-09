@@ -241,13 +241,13 @@ const CSS = `
 @keyframes fmGlowPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.25); } }
 @keyframes fmIdleBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 .fm-main .fm-play { animation: fmIdleBob 2.6s ease-in-out infinite; }
-.fm-main .fm-arena .ico, .fm-main button.fm-parkur .ico { display: inline-block; animation: fmIdleBob 3.1s ease-in-out infinite; }
+.fm-main .fm-arena .ico { display: inline-block; animation: fmIdleBob 3.1s ease-in-out infinite; }
 .fm-dt-row .fm-aico { font-size: 22px; }
 .fm-dt-t { font-size: 12px; color: #5a7196; text-align: center; margin: 4px 0 8px; letter-spacing: 0.06em; }
 .fm-rec { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 10px 12px; border-radius: 16px; border: 3px solid var(--ink); background: linear-gradient(180deg, #fff, #e6f0ff); color: var(--ink); text-shadow: none; box-shadow: 0 4px 0 var(--ink); margin-bottom: 8px; }
 .fm-rec h4 { grid-column: 1 / -1; margin: 0; font-size: 15px; }
 .fm-rec div { font-size: 12px; color: #5a7196; } .fm-rec b { display: block; font-size: 18px; color: var(--orange-dark); }
-@media (prefers-reduced-motion: reduce) { .fm-main .fm-play, .fm-main .fm-arena .ico, .fm-main button.fm-parkur .ico, .fm-mr.claim, .fm-ichip.hot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .fm-main .fm-play, .fm-main .fm-arena .ico, .fm-mr.claim, .fm-ichip.hot { animation: none; } }
 .fm-mr.done .mn { color: var(--gold); }
 .fm-mr.done .mb i { background: linear-gradient(90deg, #fff3a8, var(--gold)); }
 .fm-hgoal { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 10px; border: 2px dashed rgba(255, 255, 255, 0.28); width: 100%; background: none; cursor: pointer; font-size: 12.5px; color: #fff; text-align: left; }
@@ -575,7 +575,7 @@ const CSS = `
 .fm-info.cmp .fm-sum { display: flex; }
 .fm-info.cmp.hot { animation: fmGlowPulse 1.4s ease-in-out infinite; }
 .fm-bot, .fm-secrow { z-index: 3; }
-.fm-sb, .fm-play, .fm-arena, .fm-parkur { touch-action: manipulation; }
+.fm-sb, .fm-play, .fm-arena { touch-action: manipulation; }
 .fm-main[data-att="reward"] .fm-globe .fm-bdg, .fm-main[data-att="first"] .fm-globe .fm-bdg { display: none; }
 .fm-main[data-att="reward"] .fm-globe.ready, .fm-main[data-att="first"] .fm-globe.ready { animation: none; }
 .fm-main:not([data-att="reward"]) .fm-dl .fm-bdg, .fm-main:not([data-att="reward"]) .fm-rwc { display: none; }
@@ -972,14 +972,6 @@ const CSS = `
 .fm-main .fm-arena b { font-size: 14px; color: #fff; text-shadow: var(--ol-sm); letter-spacing: 0.06em; }
 .fm-main .fm-arena small { display: none; }
 .fm-main .fm-arena:active { transform: translateY(2px); }
-/* PARKUR: secondary button sharing one row with KARTOPU ARENA */
-.fm-main .fm-duo { display: flex; gap: 8px; width: min(100%, 300px); margin: 0 auto; }
-.fm-main .fm-duo button.fm-arena, .fm-main .fm-duo button.fm-parkur { width: auto; flex: 1 1 0; min-width: 0; margin: 0; padding: 4px 8px; gap: 6px; justify-content: center; }
-.fm-main button.fm-parkur { display: flex; align-items: center; background: transparent !important; box-shadow: none !important; border: 2px solid rgba(255, 255, 255, 0.55); border-radius: 16px; color: #fff; cursor: pointer; font-family: inherit; }
-.fm-main button.fm-parkur .ico { font-size: 18px; }
-.fm-main button.fm-parkur b, .fm-main .fm-duo button.fm-arena b { font-size: 12.5px; color: #fff; text-shadow: var(--ol-sm); letter-spacing: 0.05em; white-space: nowrap; }
-.fm-main button.fm-parkur small { display: none; }
-.fm-main button.fm-parkur:active { transform: translateY(2px); }
 .fm-sum { gap: 8px; border-radius: 12px; cursor: pointer; }
 .fm-sum .sl { font-size: 12px; letter-spacing: 0.08em; color: #cfe2ff; }
 .fm-sum .sp { display: flex; gap: 4px; }
@@ -1194,7 +1186,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
   const LM_KEY = 'patpat.lastMode';
   const lastSet = (o) => { try { localStorage.setItem(LM_KEY, JSON.stringify(o)); } catch { /* ignore */ } };
   const lastGet = () => { try { return JSON.parse(localStorage.getItem(LM_KEY) || 'null'); } catch { return null; } };
-  const LM_WRAP = { onEndless: () => ({ k: 'rush' }), onCigEndless: () => ({ k: 'cigE' }), onAgar: () => ({ k: 'arena' }), onParkur: () => ({ k: 'parkur' }), onCigLevel: (a) => ({ k: 'cigL', n: a[0] }), onPlayLevel: (a) => ({ k: 'camp', n: a[0] }) };
+  const LM_WRAP = { onEndless: () => ({ k: 'rush' }), onCigEndless: () => ({ k: 'cigE' }), onAgar: () => ({ k: 'arena' }), onCigLevel: (a) => ({ k: 'cigL', n: a[0] }), onPlayLevel: (a) => ({ k: 'camp', n: a[0] }) };
   const cb = new Proxy(callbacks || {}, { get(t, k) { const f = t[k]; if (typeof f === 'function' && LM_WRAP[k]) return (...a) => { try { lastSet(LM_WRAP[k](a)); } catch { /* ignore */ } return f.apply(t, a); }; return f; } });
   const sfx = (k) => { try { if (cb.sfx) cb.sfx(k); } catch { /* audio is optional */ } };
   const toggles = () => {
@@ -3071,7 +3063,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
 
     // ---- bottom: OYNA (straight into YETİ RUSH) + ÇIĞ SONSUZ · MACERA · Dolap · Görevler · Ayarlar ----
     const bot = el('div', 'fm-bot');
-    r.lastChip = button('fm-lastc', '', () => { const l = lastGet(); sfx('confirm'); if (!l) return; if (l.k === 'cigL' && cb.onCigLevel) cb.onCigLevel(l.n, {}); else if (l.k === 'cigE' && cb.onCigEndless) cb.onCigEndless(); else if (l.k === 'arena' && cb.onAgar) cb.onAgar(); else if (l.k === 'parkur' && cb.onParkur) cb.onParkur(); else if (l.k === 'camp' && cb.onPlayLevel) cb.onPlayLevel(l.n); else playMode('endless'); }, 'Son oynanan');
+    r.lastChip = button('fm-lastc', '', () => { const l = lastGet(); sfx('confirm'); if (!l) return; if (l.k === 'cigL' && cb.onCigLevel) cb.onCigLevel(l.n, {}); else if (l.k === 'cigE' && cb.onCigEndless) cb.onCigEndless(); else if (l.k === 'arena' && cb.onAgar) cb.onAgar(); else if (l.k === 'camp' && cb.onPlayLevel) cb.onPlayLevel(l.n); else playMode('endless'); }, 'Son oynanan');
     r.lastChip.style.display = 'none';
     bot.appendChild(r.lastChip);
     r.play = button('fm-play', 'OYNA', () => { sfx('confirm'); playMode('endless'); }, 'Oyna: Yeti Rush');
@@ -3079,9 +3071,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     add(bot, add(el('div', 'fm-playw'), r.play));
     r.arena = button('fm-arena', '', () => { sfx('confirm'); if (cb.onAgar) cb.onAgar(); }, 'Kartopu Arena');
     add(r.arena, el('span', 'ico', '⚔️'), add(el('span', 'tx'), el('b', '', 'KARTOPU ARENA'), el('small', '', 'Dev harita · botlar · arkadaşlarınla oda kur')));
-    r.parkur = button('fm-parkur', '', () => { sfx('confirm'); if (cb.onParkur) cb.onParkur(); }, 'Parkur');
-    add(r.parkur, el('span', 'ico', '🧗'), add(el('span', 'tx'), el('b', '', 'PARKUR'), el('small', '', 'Duvar koşusu · saate karşı · liderlik')));
-    bot.appendChild(add(el('div', 'fm-duo'), r.arena, r.parkur));
+    bot.appendChild(r.arena);
     const sCig = secBtn('c-cig', '⛰️', 'ÇIĞ', () => startCig());
     const sMap = secBtn('c-map', '🗺️', 'MACERA', () => { try { meta.setMode('camp'); } catch { /* ignore */ } openMap(); });
     const sShop = secBtn('c-shop', '👕', 'Dolap', () => { if (cb.onShop) cb.onShop(); });
@@ -3357,7 +3347,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     try { applyFtue(r); } catch { /* ignore */ }
     try {
       const l = lastGet();
-      const nm = !l ? '' : l.k === 'rush' ? 'YETİ RUSH' : l.k === 'cigE' ? 'ÇIĞ SONSUZ' : l.k === 'cigL' ? 'ÇIĞ Sv ' + l.n : l.k === 'arena' ? 'KARTOPU ARENA' : l.k === 'parkur' ? 'PARKUR' : 'MACERA ' + l.n;
+      const nm = !l ? '' : l.k === 'rush' ? 'YETİ RUSH' : l.k === 'cigE' ? 'ÇIĞ SONSUZ' : l.k === 'cigL' ? 'ÇIĞ Sv ' + l.n : l.k === 'arena' ? 'KARTOPU ARENA' : 'MACERA ' + l.n;
       r.lastChip.textContent = nm ? '↻ Tekrar oyna: ' + nm : '';
       r.lastChip.style.display = nm ? '' : 'none';
     } catch { /* ignore */ }
@@ -3411,7 +3401,6 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       const steps = [
         ['🏂', 'OYNA', 'Büyük düğme: Yeti Rush koşusu. Kaydır, zıpla, kar topla!'],
         ['⚔️', 'KARTOPU ARENA', 'Botlara karşı dev haritada büyü, arkadaşlarınla oda kur.'],
-        ['🧗', 'PARKUR', 'Duvarlarda koş, saate karşı yarış, liderlik tablosuna gir.'],
         ['⛰️', 'ÇIĞ / MACERA', 'Çığ dağları ve macera haritası: yıldız topla, yeni şeyler aç.'],
       ];
       let i = 0;
