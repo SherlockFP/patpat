@@ -57,7 +57,7 @@ export const RCFG = {
   yetiStumbleSpeed: 0.8, // below this fraction of target speed you are not pulling away
   yetiH: 3.3,            // Yeti height in m
   wallMaxT: 1.3,         // s: a missed turn ends at the barrier at the latest after this long
-  fallDeath: -14,        // m below the track plane over a real hole: the fall is final
+  fallDeath: -5,         // m below the track plane over a real hole: the fall is final (quick — a fall must feel instant)
   fallDeep: 2.0,         // a ball this far below a SOLID surface is pulled up onto it (never a fall death), unless it really fell off a ledge
   helmetT: 20,
   sledCd: 45,
@@ -2114,14 +2114,14 @@ export class Runner {
         } else if (below) {
           // Really fell off a ledge / out of a gap and is now far below the track again: that fall is final.
           this.fallLock = true;
-          if (b.h < ts - 4) { if (this.fallRescue()) return; this.die('fall'); return; }
+          if (b.h < ts - 2) { this.die('fall'); return; }
         }
       } else {
         // Over a hole (not just a seam: groundAt already bridged those). Falling for real after a moment.
         this.holeRun = 0;
         this.holeAir = true;
         if (b.h < -0.6) this.fallLock = true;
-        if (b.h < RCFG.fallDeath) { if (this.fallRescue()) return; this.die('fall'); return; }
+        if (b.h < RCFG.fallDeath) { this.die('fall'); return; }
       }
     }
 
