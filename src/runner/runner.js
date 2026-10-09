@@ -18,10 +18,10 @@ import { gustAt, scoreMult, chainBonus, dangerBonus, checkpointReward, rageScale
 // critters can be stomped (Mario). Temporary buff cards arrive on their own — nothing ever pauses the game.
 // Physics live in track-local coordinates: s along the path, u sideways (+right), h above the surface.
 export const RCFG = {
-  startSpeed: 14,
-  maxSpeed: 48,          // asymptote of the late ramp
+  startSpeed: 14 * 1.1,
+  maxSpeed: 48 * 1.1,    // asymptote of the late ramp (+10% pace)
   refSpeed: 30,          // "fast" for visuals (FOV, speed lines)
-  speedPerM: 0.0065,     // linear ramp up to speedKnee
+  speedPerM: 0.0065 * 1.1, // linear ramp up to speedKnee (+10% pace)
   speedKnee: 2000,
   speedTau: 3230,        // (maxSpeed - v(knee)) / speedPerM: slope continuous at the knee
   layerLen: 600,         // a new difficulty layer every 600 m (also a buff-card checkpoint)
@@ -125,6 +125,7 @@ const _q2 = new THREE.Quaternion();
 const _s = new THREE.Vector3();
 const _x = new THREE.Vector3();
 const _ax = new THREE.Vector3();
+const _upC = new THREE.Vector3();
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const _tp = new THREE.Vector3();
 const _yp = new THREE.Vector3();
@@ -132,9 +133,10 @@ const _goal = { mode: 'cp', val: 0, frac: 0 };
 const _bi = { biome: null, index: 0, t: 0, next: null };   // biomeAt() scratch: read it right away, never keep it
 const RAGE_SKIP = new Set(['zipline', 'rail', 'loop', 'corkscrew']); // sections where the Yeti keeps its boulders
 const GLOW_KINDS = new Set(['star', 'x2', 'superjump', 'crystal', 'timewarp', 'ghost', 'risk', 'clone', 'helmet', 'magnet', 'rocket', 'cannon']);
-const FLIP_KINDS = new Set(['loop', 'corkscrew']);                   // the track really turns upside down here
 const ROUND_KINDS = new Set(['helix', 'halfpipe', 'tube', 'loop', 'corkscrew']);
 const DEG = Math.PI / 180;
+const MAX_ROLL = 12 * DEG;                                             // chase camera roll limit (banked / twisted track)
+const COS_LOOK = Math.cos(25 * DEG), SIN_LOOK = Math.sin(25 * DEG);   // look direction limit off the track's forward
 const LETHAL_BASE = new Set(['rock', 'cabin']);                  // campaign: from level 16
 const LETHAL_CAR = new Set(['snowcat', 'oncoming', 'missile']);  // campaign: from level 30
 const LETHAL_WALL = new Set(['slidewall']);                      // campaign: from level 60
@@ -410,7 +412,6 @@ export class Runner {
     this.camU = 0;
     this.camLookU = 0;
     this.camRoundK = 0;
-    this.flipK = 0;
     this.camLoopK = 0;
     this.tilt = 0;
     this.leanT = 0;
@@ -2015,7 +2016,7 @@ export class Runner {
     // Once the ball has dropped off the track it can no longer steer (no sliding back "through" the ground).
     const mass = 1 + this.tier * 0.06;
     const grip = this.slideT > 0 ? (this.abil === 'buzejder' ? 0.55 : 0.4) : this.iceT > 0 ? 0.5 : 1;   // BUZ KAYDIRAĞI: fast but lane changes are slow
-    const k = (RCFG.laneStiff * grip) / mass;
+    const k = (RCFG.laneStiff * grip * 1.21) / mass;   // sideways moves 10% faster (spring response x1.1, so the faster pace stays controllable)
     const locked = this.fallLock || this.wallRun !== null;
     const tgtU = locked ? b.u : this.targetU;
     b.vu += ((tgtU - b.u) * k - b.vu * 2 * Math.sqrt(k) * 0.95) * dt;
@@ -3719,10 +3720,6 @@ export class Runner {
     // What kind of ground is the ball on? (round sections / sharp curves / steep pitch need a higher, longer view)
     const pc = tr.pieceAt(b.s);
     const kind = pc ? pc.kind : '';
-    // Follow the track fully only where it really is rolled / upside down (loops, corkscrews, or a track left rolled behind them).
-    tr.frame(b.s, _f2);
-    const angB = Math.acos(clamp(_f2.up.y, -1, 1));
-    this.flipK += (((FLIP_KINDS.has(kind) || angB > 55 * DEG) ? 1 : 0) - this.flipK) * kfil(snap, cdt, 3);
     this.camRoundK += ((ROUND_KINDS.has(kind) ? 1 : 0) - this.camRoundK) * kfil(snap, cdt, 3);
     const curv = Math.abs(tr.curvature(b.s + 6));
     const curvK = clamp(curv / 0.045, 0, 1);
@@ -3761,19 +3758,21 @@ export class Runner {
 
     const camS = Math.max(0, b.s - this.camBackS);
     tr.frame(camS, _f);
-    // Camera "up": the world up tilted toward the track's up by at most 25° (all the way only on loops / corkscrews).
-    _ax.crossVectors(WORLD_UP, _f.up);
-    const sinA = _ax.length();
-    const angW = Math.atan2(sinA, WORLD_UP.dot(_f.up));
-    const maxAng = (9 + 171 * this.flipK) * DEG;      // roll capped to ~9 deg on banked curves (world-up dominates)
-    if (angW < 1e-4) _x.copy(WORLD_UP);
-    else {
-      if (sinA < 1e-3) _ax.copy(_f.right); else _ax.multiplyScalar(1 / sinA);
-      _x.copy(WORLD_UP).applyAxisAngle(_ax, Math.min(angW, maxAng));
+    // Camera "up": a stable blend, 70% world up + 30% the track's up, with the roll clamped to 12 deg. A banked or twisted
+    // track can't flip or roll the view, and the camera's height / look offsets use this up too (not the track's own up,
+    // which on a steep bank would park the camera off the side of the track).
+    _x.copy(WORLD_UP).multiplyScalar(0.7).addScaledVector(_f.up, 0.3);
+    if (_x.lengthSq() < 1e-6) _x.copy(WORLD_UP); else _x.normalize();
+    const rollA = Math.acos(clamp(WORLD_UP.dot(_x), -1, 1));
+    if (rollA > MAX_ROLL) {
+      _ax.crossVectors(WORLD_UP, _x);
+      const sA = _ax.length();
+      if (sA > 1e-4) { _ax.multiplyScalar(1 / sA); _x.copy(WORLD_UP).applyAxisAngle(_ax, MAX_ROLL); }
     }
+    _upC.copy(_x);
     const camH = dying && this.cause === 'fall' ? Math.max(b.h + this.camUpH, -6) + this.camUpH * 0.5 : Math.max(b.h * 0.5, 0) + this.camUpH;
     tr.toWorld(camS, this.camU, 0, _v);
-    _v.addScaledVector(_f.up, camH);          // centred over the track (only the camera's roll is limited, not its place)
+    _v.addScaledVector(_upC, camH);           // always above the ball's side of the track, never off to a bank's side
     if (lk > 0.001 && pc && pc.loop) {
       // Vertical loop: a rigid chase rig ON THE SAME PASS of the ring — a point of the track 0.8 R behind the ball, lifted 0.72 R (~0.25 R from the centre, ~0.85 R from the ball)
       // along that station's up (toward the circle's centre). Camera and ball both lie in the circle's disc, so the line of sight
@@ -3801,7 +3800,7 @@ export class Runner {
     // Look target: a point on the track ahead (the lead term cancels the filter's lag at speed).
     const laS = b.s + this.camLa + (snap ? 0 : b.vs * 0.1);
     tr.toWorld(laS, this.camLookU, 0, _look);
-    _look.addScaledVector(_f.up, Math.max(b.h * 0.6, 0) + 0.4 - this.closeK * 0.6);
+    _look.addScaledVector(_upC, Math.max(b.h * 0.6, 0) + 3.2 - this.closeK * 0.6);   // look a little above the track: the ball sits in the lower-middle of the screen
     // Keep the ball horizontally centred: on a curve the track point ahead drifts sideways of the camera->ball line, so the
     // horizontal look direction is blended (85%) toward the camera->ball line, extended past the ball by camLa.
     if (!dying && lk < 0.5) {
@@ -3813,6 +3812,25 @@ export class Runner {
     if (dying) {
       _look.copy(this.ctx.ball.group.position);
       if (this.cause === 'yeti' && this.yeti?.group?.visible) _look.lerp(_yp, 0.3 * clamp(this.deadT / 0.6, 0, 1));
+    }
+    if (!dying && lk < 0.5) {
+      // The look direction never swings more than 25 deg off the track's forward direction at the ball (limits pitch and yaw).
+      tr.frame(b.s, _f2);
+      _ax.copy(_look).sub(_v);
+      const vl = _ax.length();
+      if (vl > 1e-3) {
+        _ax.multiplyScalar(1 / vl);
+        const c = clamp(_ax.dot(_f2.tan), -1, 1);
+        if (c < COS_LOOK) {
+          _tp.copy(_ax).addScaledVector(_f2.tan, -c);
+          const pl = _tp.length();
+          if (pl > 1e-4) {
+            _tp.multiplyScalar(1 / pl);
+            _ax.copy(_f2.tan).multiplyScalar(COS_LOOK).addScaledVector(_tp, SIN_LOOK);
+            _look.copy(_v).addScaledVector(_ax, vl);
+          }
+        }
+      }
     }
     this.camPos.copy(_v);
     this.camLook.lerp(_look, snap ? 1 : 1 - Math.exp(-cdt * (10 - 3 * this.cornerK)));
