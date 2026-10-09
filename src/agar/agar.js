@@ -49,7 +49,7 @@ const FOOD_PAL = [0xff5c8a, 0x3fb0ff, 0xffd02e, 0x3fe08a, 0xa86cff, 0xff8a3d, 0x
 const VOWELS = 'aeıioöuü';
 const BAD = new Set(['amk', 'aq', 'mk', 'orospu', 'piç', 'pic', 'siktir', 'sik', 'sikik', 'yarrak', 'yarak', 'göt', 'oç', 'ananı', 'anani', 'amına', 'amina', 'amcık', 'amcik', 'sikerim', 'bok']);
 
-export const SPD = 1.15; // +15% movement speed for every cell (players and bots alike)
+export const SPD = 1.265; // +15% then +10% movement speed for every cell (players and bots alike)
 const speedFor = (m) => 17 * SPD * Math.pow(m, -0.12);
 const rnd = (a, b) => a + Math.random() * (b - a);
 const clampN = (v, a, b) => (v < a ? a : v > b ? b : v);
