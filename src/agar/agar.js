@@ -527,8 +527,14 @@ export class AgarMode {
       if (d < 90) { near++; if (o.mass > me.mass * 0.35 && o.mass < me.mass * 0.85 && o.cellN === 1) pn++; } else if (d > 160 && o.cellN === 1 && (!far || Math.random() < 0.3)) far = o;
     }
     if ((near >= (early ? 5 : this.time - me.t0 > 60 ? 4 : 3) && pn > 0) || !far) return;
-    const a = Math.random() * 6.2832, d = 55 + Math.random() * 30, m = me.mass * (early ? 0.4 + Math.random() * 0.45 : pn === 0 ? 0.5 + Math.random() * 0.3 : 0.5 + Math.random() * 0.8);
+    // relocations are rare and always happen OFF-SCREEN (both where the bot was and where it lands), so nobody sees a bot pop in/out
+    if (this.time < (this.relocT || 0)) return;
+    const view = this.camH * 1.25 + 30;
+    if (Math.hypot(far.lx - this.camX, far.lz - this.camZ) < view) return;
+    this.relocT = this.time + 9 + Math.random() * 5;
+    const a = Math.random() * 6.2832, d = view + 10 + Math.random() * 25, m = me.mass * (early ? 0.4 + Math.random() * 0.45 : pn === 0 ? 0.5 + Math.random() * 0.3 : 0.5 + Math.random() * 0.8);
     this.placeBot(far, me.lx + Math.cos(a) * d, me.lz + Math.sin(a) * d, Math.max(12, m));
+    far.tx = me.lx; far.tz = me.lz; far.wanderT = 3; // drift in from the edge of the screen
   }
   spawnPellet(x, z, v, hex) {
     for (let k = 0; k < SPARE; k++) {
@@ -625,6 +631,7 @@ export class AgarMode {
     for (let t = 0; t < 10; t++) {
       this.randPos(p, 25);
       let ok = !this.props.blockedAt(p.x, p.z, 4);
+      if (ok && o.bot && t < 9 && this.state === 'play' && Math.hypot(p.x - this.camX, p.z - this.camZ) < this.camH * 1.25 + 30) ok = false; // bots never pop in on screen
       for (let i = 0; i < CAP; i++) { const c = this.cells[i]; if (c.on && c.m > m * 0.8 && (c.x - p.x) * (c.x - p.x) + (c.z - p.z) * (c.z - p.z) < 900) { ok = false; break; } }
       if (ok) break;
     }
