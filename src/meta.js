@@ -163,6 +163,24 @@ ach('missions3', 'Görev Adamı', '3 görev seti tamamla.', '🎯', 3, { coins: 
 ach('mult10', 'Çarpan Ustası', 'Kalıcı skor çarpanını x10 yap.', '✖️', 10, { coins: 300, crystals: 2 }, ['@derive'], (S) => S.m.mult);
 ach('hunt1', 'Kelime Avcısı', 'PATPAT harflerini bir günde topla.', '🔤', 1, { coins: 150 }, ['@derive'], (S) => S.st.huntsDone);
 
+// ---------------- GÖREVLER (challenges): mode-spread goals. The 8 marked "özel" unlock an exclusive skin/trail that is never
+// sold or rolled; the others pay ❄️ / 💎. The skins.js items point at these ids with unlock: { challenge: id }.
+ach('ch_rush3k', 'Uzun Koşu', "Yeti Rush'ta 3.000 m koş.", '🏃', 3000, { coins: 150 }, ['endless_end'], (S) => S.st.bestDist);
+ach('ch_kombo8', 'Kombo Ustası', 'Art arda 8 yaratık ez (KOMBO x8). [özel]', '🔥', 8, { skin: 'kombo_top' }, ['stomp'], (S, d, cur) => Math.max(cur, num(d.combo)));
+ach('ch_stomp100', 'Yaratık Avcısı', 'Toplam 100 yaratık ez.', '🦶', 100, { crystals: 1 }, ['stomp'], (S) => S.st.stomps);
+ach('ch_buff25', 'Kart Koleksiyoneri', '25 buff kartı topla. [özel]', '🃏', 25, { trail: 'kart_izi' }, ['buff'], (S) => S.st.buffCards);
+ach('ch_power30', 'Güçlendirici', '30 güçlendirme topla.', '⚡', 30, { coins: 250 }, ['powerup'], (S) => S.st.powerups);
+ach('ch_destroy1000', 'Yıkım Uzmanı', 'Toplam 1.000 bina yık.', '🏗️', 1000, { crystals: 2 }, ['destroy'], (S) => S.st.destroyed);
+ach('ch_level25', 'Zirve Tırmanıcısı', '25. dağa ulaş.', '🧗', 25, { coins: 300, crystals: 1 }, ['@derive'], () => (sv ? num(sv.level) : 0));
+ach('ch_daily10', 'Günün Yolcusu', "Günün Dağı'nı 10 kez bitir. [özel]", '🗓️', 10, { skin: 'gunluk_kar' }, ['cig_end'], (S) => S.st.dailyRuns);
+ach('ch_night5', 'Gece Yolcusu', '5 gece temalı dağı bitir. [özel]', '🌃', 5, { skin: 'gece_topu' }, ['cig_end'], (S) => S.st.nightRuns);
+ach('ch_fever10', 'Çılgın Kar', 'Toplam 10 ÇIĞ ÇILGINLIĞI yaşa. [özel]', '🌪️', 10, { trail: 'firtina_izi' }, ['fever'], (S) => S.st.fevers);
+ach('ch_play7', 'Her Gün Kar', '7 gün üst üste oyna. [özel]', '📆', 7, { trail: 'seri_izi' }, ['session'], (S) => S.ps.streak);
+ach('ch_arena1000', 'Dev Kartopu', 'Arenada 1.000 kütleye ulaş. [özel]', '⚪', 1000, { skin: 'arena_kral' }, ['arena_end'], (S, d, cur) => Math.max(cur, Math.floor(num(d.mass))));
+ach('ch_arenaLead', 'Zirvedeki Top', 'Arenada liderliği ele geçir. [özel]', '👑', 1, { skin: 'tac_top' }, ['arena_end'], (S, d, cur) => Math.max(cur, d.rank === 1 ? 1 : 0));
+ach('ch_streak5', 'Yutuş Fırtınası', "Arenada 5'li yutma serisi yap.", '🌀', 5, { coins: 200 }, ['arena_end'], (S, d, cur) => Math.max(cur, num(d.streak)));
+ach('ch_feed20', 'Diken Besleyici', '20 buz dikeni besle.', '🧊', 20, { crystals: 1 }, ['arena_feed'], (S) => S.st.arenaFeeds);
+
 // ---------------- campaign (state lives in S.c; all derived) ----------------
 const ACT_NAMES = ['Buzları Kırdın', 'Orman Kurdu', 'Çimen Kralı', 'Peri Bacası Ustası', 'Kasaba Fatihi', 'Çöl Yolcusu', 'Buz Kralı', 'Şeker Krizi', 'Neon Işığı', 'Yanardağ Fatihi'];
 const TR_SUFFIX = ['i', 'yi', 'ü', 'ü', 'i', 'yı', 'yi', 'i', 'u', 'u'];
@@ -307,6 +325,7 @@ const STAT_KEYS = [
   'runs', 'endlessRuns', 'cigRuns', 'bestDist', 'totalDist', 'bestScore', 'swallowed', 'police', 'destroyed', 'smashed', 'crashes', 'explosions',
   'closeCalls', 'perfects', 'portals', 'powerups', 'tierUps', 'maxTier', 'maxMilestone', 'totalTons', 'shares', 'sessions', 'jumps', 'nightRuns',
   'dailyRuns', 'flattened', 'boxesOpened', 'lettersFound', 'huntsDone', 'sledsUsed', 'upgrades', 'crystalsEarned', 'stomps',
+  'buffCards', 'fevers', 'arenaRuns', 'arenaFeeds',
 ];
 const SET_KEYS = ['biomes', 'visual', 'skins', 'powers', 'trails'];
 
@@ -324,6 +343,7 @@ function fresh() {
     h: { day: '', found: new Array(WORD.length).fill(0), done: false, last: '', streak: 0 },
     g: { day: '', n: 0 },
     ss: { day: '', ids: [], got: {}, extra: 0 },
+    ps: { last: '', streak: 0 }, // consecutive local days with at least one session (GÖREVLER: "7 gün üst üste oyna")
     recent: [],
     c: { stars: {}, b: {}, g: {}, unlocked: 1, seen: {}, chest: new Array(10).fill(0), perfect: new Array(10).fill(0) },
     fs: { d: {}, p: [] },
@@ -389,6 +409,10 @@ function sanitize(p) {
     if (Array.isArray(p.ss.ids)) s.ss.ids = p.ss.ids.map((x) => Math.floor(num(x))).filter((x) => x >= 1 && x <= CAMPAIGN_SIZE).slice(0, 3);
     if (isObj(p.ss.got)) for (const k in p.ss.got) if (p.ss.got[k]) s.ss.got[k] = 1;
     s.ss.extra = Math.max(0, Math.min(999, Math.floor(nz(p.ss.extra))));
+  }
+  if (isObj(p.ps)) {
+    s.ps.last = typeof p.ps.last === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.ps.last) ? p.ps.last : '';
+    s.ps.streak = Math.floor(nz(p.ps.streak));
   }
   if (isObj(p.h)) {
     s.h.day = typeof p.h.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.h.day) ? p.h.day : '';
@@ -862,6 +886,15 @@ function seasonTrack(ev, d) {
   seasonSave();
 }
 
+// Counts a local calendar day with at least one session; a gap of more than one day starts the streak over.
+function playDay() {
+  const P = S.ps, k = dateKey();
+  if (P.last === k) return;
+  P.streak = P.last && dayDiff(P.last, k) === 1 ? P.streak + 1 : 1;
+  P.last = k;
+  markDirty();
+}
+
 function handle(ev, d, newly) {
   const st = S.st;
   // The same ÇIĞ SONSUZ run may be reported twice (save.recordCigEndless hook + a direct 'cig_end'): count it once.
@@ -872,7 +905,7 @@ function handle(ev, d, newly) {
     ev = 'cig_endless_end';
   }
   switch (ev) {
-    case 'session': st.sessions++; rollHunt(); rollMissions(); break;
+    case 'session': st.sessions++; rollHunt(); rollMissions(); playDay(); break;
     case 'run_start': onRunStart(d); break;
     case 'run_progress': break;
     case 'cig_progress': break;
@@ -887,7 +920,10 @@ function handle(ev, d, newly) {
       RT.stomps++; st.stomps++;
       break;
     }
-    case 'buff': RT.buffs++; break;
+    case 'buff': RT.buffs++; st.buffCards++; break;
+    case 'fever': st.fevers++; break;
+    case 'arena_end': st.arenaRuns++; break;
+    case 'arena_feed': st.arenaFeeds++; break;
     case 'cig_end': onCigEnd(d); break;
     case 'endless_end': onEndlessEnd(d); break;
     case 'swallow': st.swallowed++; if (d.type === 'k_police') st.police++; break;

@@ -1634,6 +1634,7 @@ export class CigGame {
     this.feverT = 4;
     this.fevAt = n + 80; this.fevCd = G.t + 10;   // the next one needs +80 more and 10 s: a reward, not a permanent state
     this.stats.fevers = (this.stats.fevers || 0) + 1;
+    this._h('track', 'fever', {});
     G.shake += 0.3;
     this._h('kick', 0.12, 6);
     this._h('flash', 'milestone');

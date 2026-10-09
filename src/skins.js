@@ -26,6 +26,8 @@ export const RARITY = {
 // Catalog items: { id, name, rarity, price, unlock?, preview }
 //   unlock: { stars: n }    free once totalStars() >= n (price 0) or purchasable from then on (price > 0)
 //           { secret: id }  hidden ("GİZLİ"); the meta module grants it with save.own(kind, id) when the egg is found
+//           { challenge: id } locked until the GÖREVLER entry `id` (meta.js ach 'ch_*') is claimed; shows its text and progress
+//                             (its reward is the item itself, so it is owned once claimed). price stays 0: never sold.
 // preview.pattern is consumed by shop.js (CSS preview); preview.c is an optional third colour, preview.glow adds an aura.
 //   ball patterns : solid stripes dots swirl facets face cracks tiles eye globe
 //                   tendrils flame goo plasma stars scales panels quills octo pumpkin zombie pentagon seams bowl tennis
@@ -88,6 +90,12 @@ export const SKINS = [
   { id: 'altinkral', name: 'Altın Kral', rarity: 'legendary', price: 4000, preview: { a: '#fff3b0', b: '#d8940c', c: '#7a4a00', pattern: 'tiles', glow: true } },
   { id: 'kristal', name: 'Kristal Ejder', rarity: 'legendary', price: 7500, preview: { a: '#ffffff', b: '#00b8e6', c: '#e8fcff', pattern: 'scales', glow: true } },
   { id: 'gunestaci', name: 'Güneş Tacı', rarity: 'legendary', price: 9000, preview: { a: '#ffd23a', b: '#ff3a10', c: '#ffb000', pattern: 'flame', glow: true } },
+  // ---- GÖREVLER ödülü (özel): fiyatsız, satılmaz ve kutudan çıkmaz; yalnızca ilgili görevi bitirip ödülünü alınca açılır
+  { id: 'kombo_top', name: 'Kombo Topu', rarity: 'epic', price: 0, unlock: { challenge: 'ch_kombo8' }, preview: { a: '#ff9a1a', b: '#fff3a0', c: '#7a2a00', pattern: 'swirl', glow: true } },
+  { id: 'gunluk_kar', name: 'Günlük Kar', rarity: 'rare', price: 0, unlock: { challenge: 'ch_daily10' }, preview: { a: '#ffffff', b: '#9fd8ff', c: '#c6f0ff', pattern: 'dots' } },
+  { id: 'gece_topu', name: 'Gece Topu', rarity: 'epic', price: 0, unlock: { challenge: 'ch_night5' }, preview: { a: '#0b1640', b: '#3a4fa0', c: '#c8d8ff', pattern: 'stars' } },
+  { id: 'arena_kral', name: 'Arena Kralı', rarity: 'legendary', price: 0, unlock: { challenge: 'ch_arena1000' }, preview: { a: '#9fd8ff', b: '#2a6fb8', c: '#ffffff', pattern: 'facets', glow: true } },
+  { id: 'tac_top', name: 'Taç Topu', rarity: 'legendary', price: 0, unlock: { challenge: 'ch_arenaLead' }, preview: { a: '#ffe681', b: '#d8940c', c: '#7a4a00', pattern: 'tiles', glow: true } },
 ];
 
 // KARAKTER snowballs: one small passive Rush ability each (endless Rush only; read by runner.js).
@@ -129,6 +137,10 @@ export const TRAILS = [
   { id: 'lav_izi', name: 'Lav İzi', rarity: 'epic', price: 1300, preview: { a: '#ffb000', b: '#8a1a00', pattern: 'bands', glow: true } },
   { id: 'gunes', name: 'Güneş İzi', rarity: 'epic', price: 2200, preview: { a: '#fff3a0', b: '#ff8a1a', pattern: 'swirl', glow: true } },
   { id: 'kristal_izi', name: 'Kristal İzi', rarity: 'legendary', price: 3600, preview: { a: '#e8fcff', b: '#3ac8ff', pattern: 'bands', glow: true } },
+  // ---- GÖREVLER ödülü (özel), bkz. SKINS
+  { id: 'kart_izi', name: 'Kart İzi', rarity: 'epic', price: 0, unlock: { challenge: 'ch_buff25' }, preview: { a: '#ffd23a', b: '#3ad0ff', pattern: 'swirl' } },
+  { id: 'firtina_izi', name: 'Çılgın Kar İzi', rarity: 'epic', price: 0, unlock: { challenge: 'ch_fever10' }, preview: { a: '#8ff4ff', b: '#3ac8ff', pattern: 'bands', glow: true } },
+  { id: 'seri_izi', name: 'Seri İzi', rarity: 'rare', price: 0, unlock: { challenge: 'ch_play7' }, preview: { a: '#a8ffc0', b: '#2fd06a', pattern: 'solid', glow: true } },
 ];
 
 const TRAIL_STYLES = {
@@ -154,6 +166,9 @@ const TRAIL_STYLES = {
   kristal_izi: { color: 0xe8fcff, color2: 0x3ac8ff, rainbow: true, glow: true, palette: [0xe8fcff, 0x3ac8ff, 0xffffff, 0x7fe3ff] },
   // cini: rainbow:true means "per-vertex ribbon colours"; palette (hex list) replaces the HSL rainbow, cycled along the ribbon.
   cini: { color: 0x1b3f9e, color2: 0x1fb5b0, rainbow: true, glow: false, palette: [0x1b3f9e, 0x1fb5b0, 0xf4efe0, 0x1fb5b0] },
+  kart_izi: { color: 0xffd23a, color2: 0x3ad0ff, rainbow: true, glow: false, palette: [0xffd23a, 0x3ad0ff, 0xff5ca8, 0xffffff] },
+  firtina_izi: { color: 0x8ff4ff, color2: 0xffffff, rainbow: true, glow: true, palette: [0x8ff4ff, 0xffffff, 0x3ac8ff] },
+  seri_izi: { color: 0xa8ffc0, rainbow: false, glow: true },
 };
 
 export function trailStyle(id) {
@@ -2353,6 +2368,11 @@ const BUILDERS = {
   altinkral: () => skinGen('bands', 0xfff3b0, 0xd8940c, 0x7a4a00, 0xffe27a),
   kristal: () => skinGen('facets', 0xffffff, 0x00b8e6, 0xe8fcff, 0x9fe8ff),
   gunestaci: () => skinGen('swirl', 0xffd23a, 0xff3a10, 0xffb000, 0xffe07a),
+  kombo_top: () => skinGen('swirl', 0xff9a1a, 0xfff3a0, 0x7a2a00, 0xffc070),
+  gunluk_kar: () => skinGen('dots', 0xffffff, 0x9fd8ff, 0xc6f0ff, 0xe6f6ff),
+  gece_topu: () => skinGen('stripes', 0x0b1640, 0x3a4fa0, 0xc8d8ff, 0x5a6ec0),
+  arena_kral: () => skinGen('facets', 0x9fd8ff, 0x2a6fb8, 0xffffff, 0xcfeaff),
+  tac_top: () => skinGen('bands', 0xffe681, 0xd8940c, 0x7a4a00, 0xffef9a),
   mavikar: skinMaviKar,
   nane: skinNane,
   cilek: skinCilek,

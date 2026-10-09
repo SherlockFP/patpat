@@ -7,7 +7,7 @@
 // Items are sorted by rarity (SIRADAN -> NADİR -> EPİK -> EFSANE), then price. Items with unlock.secret stay
 // hidden ("GİZLİ", name and look concealed) until save.isOwned(kind, id) becomes true.
 import { SKINS, ABILITIES, TRAILS, RARITY, sortCatalog } from './skins.js';
-import { meta, UPGRADES as POWER_UPGRADES, SLED_PACK } from './meta.js';
+import { meta, ACHIEVEMENTS, UPGRADES as POWER_UPGRADES, SLED_PACK } from './meta.js';
 import * as Perks from './runner/perks.js';
 
 // Permanent run upgrades (runner/perks.js owns the list; this is only the fallback).
@@ -870,13 +870,21 @@ export function openShop({ save, onClose, onSelect } = {}) {
     const stars = starsOf(save);
     const need = (it.unlock && it.unlock.stars) || 0;
     const secretGate = !!(it.unlock && it.unlock.secret);
+    const ch = it.unlock && it.unlock.challenge ? challengeOf(it.unlock.challenge) : null; // GÖREVLER gate (özel ödül)
     const selected = save.selected(kind) === it.id;
     const owned = selected || save.isOwned(kind, it.id);
     const secret = !owned && secretGate; // hidden until the meta module grants it
-    const locked = !owned && (secret || need > stars);
+    const locked = !owned && (secret || !!ch || need > stars);
     const needsBuy = !owned && !locked && it.price > 0;
     const canAfford = save.coins >= priceOf(it);
-    return { stars, need, selected, owned, locked, secret, needsBuy, canAfford };
+    return { stars, need, selected, owned, locked, secret, needsBuy, canAfford, ch };
+  }
+
+  // The challenge behind a locked item: its title, text and progress (value/goal), from the achievements engine.
+  function challengeOf(id) {
+    const d = ACHIEVEMENTS.find((x) => x.id === id);
+    const pr = meta.progress(id);
+    return { id, name: d ? d.name : id, desc: d ? d.desc : '', value: pr.value, goal: pr.goal, done: pr.done };
   }
 
   function flakes(card) {
@@ -931,7 +939,9 @@ export function openShop({ save, onClose, onSelect } = {}) {
     const ab = kind === 'skin' ? ABILITIES[it.id] : null;
     if (ab) { const w = h('div', 'cs-abilbox'); w.appendChild(h('span', 'cs-abil-b', '★ ABİLİTE')); w.appendChild(h('div', 'cs-abil', ab.icon + ' ' + ab.text)); card.appendChild(w); }
     if (st.locked) {
-      card.appendChild(h('div', 'cs-note', st.secret ? 'Gizli ödül' : `⭐ ${Math.min(st.stars, st.need)}/${st.need}`));
+      const note = st.ch ? `🏆 ${st.ch.name}: ${st.ch.desc} ${fmt(Math.min(st.ch.value, st.ch.goal))}/${fmt(st.ch.goal)}`
+        : st.secret ? 'Gizli ödül' : `⭐ ${Math.min(st.stars, st.need)}/${st.need}`;
+      card.appendChild(h('div', 'cs-note', note));
       card.appendChild(h('span', 'cs-lockbadge', '🔒'));
     }
 
@@ -941,6 +951,7 @@ export function openShop({ save, onClose, onSelect } = {}) {
     if (st.selected) { label = 'SEÇİLİ ✓'; cls = 'on'; }
     else if (st.owned) { label = 'SEÇ'; cls = 'pick'; }
     else if (st.secret) { label = 'GİZLİ'; cls = 'lock'; }
+    else if (st.ch) { label = st.ch.done ? '🏆 Ödülü Başarımlardan al' : '🏆 Görev gerekli'; cls = 'lock'; }
     else if (st.locked) { label = `⭐ ${st.need} gerekli`; cls = 'lock'; }
     else if (st.needsBuy) { label = `❄️ ${fmt(priceOf(it))}` + (priceOf(it) < basePriceOf(it) ? ' · %50' : ''); cls = st.canAfford ? '' : 'poor'; }
     else { label = 'SEÇ'; cls = 'pick'; }

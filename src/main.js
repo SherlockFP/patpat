@@ -435,6 +435,7 @@ async function startAgar() {
   agar = new mod.AgarMode({
     renderer, post, ui, audio, save, platform, lib,
     onExit: () => { if (agar) { agar.dispose(); agar = null; } toMenu(); },
+    track: (ev, d) => meta.track(ev, d),
   });
   G.mode = 'agar';
   G.state = 'agar';

@@ -116,9 +116,10 @@ function spikyGeometry() {
 }
 
 export class AgarMode {
-  constructor({ renderer, post, ui, audio, save, platform, onExit, lib } = {}) {
+  constructor({ renderer, post, ui, audio, save, platform, onExit, lib, track } = {}) {
     this.lib = lib || {}; this.cigTier = 0; this.camKick = 0;
     this.renderer = renderer; this.post = post; this.ui = ui; this.audio = audio; this.save = save; this.platform = platform; this.onExit = onExit;
+    this._track = typeof track === 'function' ? track : null; // meta.track bridge (GÖREVLER); optional
     this._scene = new THREE.Scene();
     this._scene.background = new THREE.Color(0x6fb0e6);
     this._camera = new THREE.PerspectiveCamera(50, 0.5, 4, 9000);
@@ -833,6 +834,7 @@ export class AgarMode {
       }
       if (hit < 0) { if (px * px + pz * pz < (R - 3) * (R - 3)) { const pi = this.spawnPellet(px, pz, 12, o.col); if (pi >= 0) { this.fej[pi] = 1; if (this.ejList.length < 40) this.ejList.push({ i: pi, sx: c.x, sz: c.z, t: 0 }); } } if (o.id === this.me) this.floatTxt('-16', c.x, c.z, '#cfeaff'); continue; }
       this.vf[hit]++;
+      if (o.id === this.me && this._track) { try { this._track('arena_feed', {}); } catch (e) { /* ignore */ } }
       if (this.vf[hit] >= 6) {
         this.vf[hit] = 0;
         for (let v = 0; v < NVIR; v++) if (!this.von[v]) {
@@ -1906,6 +1908,7 @@ export class AgarMode {
 
   bank(o) {
     if (o.maxMass > this.best) { this.best = o.maxMass; lsSet(BEST_KEY, Math.floor(this.best)); this.newBest = true; } else this.newBest = false;
+    if (o.id === this.me && this._track) { try { this._track('arena_end', { mass: o.maxMass, streak: this.bestStreak || 0, rank: o.bestRank }); } catch (e) { /* ignore */ } }
     this.xp += o.xpRun; lsSet(XP_KEY, Math.floor(this.xp));
     o.xpRun = 0;
     // ties into the main game's economy: snowflakes (coins) for the run
