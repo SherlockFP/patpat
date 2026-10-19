@@ -1066,7 +1066,7 @@ export class Runner {
     this.pTurns = g === 1 ? this.pTurns + 1 : 0;
     this.score += pts;
     this.addFlow(rw.flow);
-    if (audio.turn) audio.turn(); else audio.whoosh();
+    if (g === 1 && audio.turnOk) audio.turnOk(true); else if (audio.turn) audio.turn(); else audio.whoosh();   // perfect: chord stab + shimmer
     platform.haptic(g === 1 ? 'success' : 'select');
     this.kick += g === 1 ? 3 : 2.5;
     this.jnLean = J.dir * (g === 1 ? 0.3 : 0.22);
@@ -1082,7 +1082,6 @@ export class Runner {
       this.squash = -0.3; this.sqV = 0;
       this.mistBurst(10, 0xffe27a, 4.5, 1.1);
       ui.flash?.('gold');
-      audio.star?.(2);
       music.perfect();
     } else if (g === 2) this.fovPunch(3);
     const hints = this.ctx.save.runnerTurnHints?.();
@@ -1538,7 +1537,7 @@ export class Runner {
     if (lvl !== this.flowLvl) {
       if (lvl > this.flowLvl) {
         this.float(['', 'AKIŞ!', 'SÜPER AKIŞ!', 'EFSANE AKIŞ!', 'DURDURULAMAZ!'][lvl], 'big');
-        audio.star(Math.min(2, lvl - 1));
+        if (audio.comboTier) audio.comboTier(lvl); else audio.star(Math.min(2, lvl - 1));
         platform.haptic('success');
       }
       this.flowLvl = lvl;
@@ -1551,7 +1550,7 @@ export class Runner {
       this.rcpAdd('rec');
       // ONE record moment per run: a single top-edge toast (the HUD's score-record toast counts as it), never a centre banner
       if (!ui._recShown) { ui._recShown = true; ui.toastSoft?.(`★ YENİ REKOR! +${RCFG.recCoins} ❄️`, { prio: 2 }); }
-      audio.win();
+      if (audio.newBest) audio.newBest(); else audio.win();
       platform.haptic('success');
       if (!this.level) {
         this.newRecT = 4;
@@ -2196,7 +2195,9 @@ export class Runner {
   updateHud() {
     const ui = this.ctx.ui;
     ui.runnerDanger?.(this.dangerBonus(), this.chainBonus(), this.riskT > 0 ? 4 : 0);
-    ui.chaseVig?.(this.state === 'play' ? Math.max(0, Math.min(1, (9 - this.gap) / 5)) : 0);
+    const near = this.state === 'play' ? Math.max(0, Math.min(1, (9 - this.gap) / 5)) : 0;
+    ui.chaseVig?.(near);
+    this.ctx.audio.yetiNear?.(near);        // chase layer: rumble + footfalls speeding up as the Yeti closes in (fades out on its own)
     this.updateGoal();
     const bi = biomeAt(this.b.s, _bi);
     const prog = this.level ? clamp(this.b.s / this.level.length, 0, 1) : bi.t;
@@ -3956,8 +3957,8 @@ export class Runner {
 
   roar(quiet = false) {
     const { audio, platform } = this.ctx;
-    audio.bump(1);
-    audio.crash(0.25);
+    if (audio.roar) audio.roar(quiet ? 0.45 : clamp((9 - this.gap) / 5, 0.5, 1));
+    else { audio.bump(1); audio.crash(0.25); }
     platform.haptic('heavy');
     this.trauma = Math.min(1, this.trauma + (quiet ? 0.15 : 0.3));
   }
