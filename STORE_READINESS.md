@@ -1,9 +1,6 @@
 # PATPAT: Mağaza Hazırlık Değerlendirmesi (App Store / Google Play)
 
-Tarih: 19 Ekim 2026 · Kapsam: bu depo (Capacitor 8 + Vite 8 + Three.js 0.186), `polish/ui` dalı · Hazırlayan: kod ve yapılandırma incelemesi (cihazda test yapılmadı).
-
-> **Not:** `npm run build:pages` komutu `docs/` klasörünü `--emptyOutDir` ile boşaltır; bu dosya o komuttan sonra silinir.
-> Pages derlemesinden önce bu dosyayı başka bir yere (ör. kök dizine) taşıyın ya da `build:pages` komutunu `docs/*.md` dosyalarını koruyacak şekilde değiştirin.
+Tarih: 19 Ekim 2026 · Kapsam: bu depo (Capacitor 8 + Vite 8 + Three.js 0.186), `fix/junction-wall-and-polish` dalı · Hazırlayan: kod ve yapılandırma incelemesi (cihazda test yapılmadı).
 
 ---
 
@@ -222,7 +219,7 @@ Uzun açıklama için iskelet: ne yapılır (tek parmak: kaydır, zıpla, eğil,
 
 ---
 
-## 10. Bu dalda (`polish/ui`) yapılanlar ve yapılmayanlar
+## 10. Bu dalda yapılanlar ve yapılmayanlar
 
 **Yapıldı**
 - `public/privacy.html` (TR + EN) ve `PRIVACY.md`: kodla doğrulanmış gizlilik politikası; Ayarlar > "Gizlilik Politikası" bağlantısı (`src/menus.js`).
@@ -237,5 +234,5 @@ Uzun açıklama için iskelet: ne yapılır (tek parmak: kaydır, zıpla, eğil,
 - `capacitor.config.json` `loggingBehavior` (B1), Android ikon / splash / imzalama / sürüm (B2, B3), `ios/` (B8).
 - `src/agar/agar.js` sohbet ve ilk kullanım bilgilendirmesi (B5), `src/agar/invite.js` bağlantı düzeltmesi (S3).
 - Yazı tipini indirip gömmek (S1): dosya indirme ve lisans ekleme onayı gerekir.
-- `MOBILE.md` güncellemesi (S8), `package.json` `build:pages` (docs klasörünü boşaltma uyarısı yukarıda).
+- `MOBILE.md` güncellemesi (S8).
 - Gerçek cihaz testleri (B6) ve mağaza görselleri (B7).
