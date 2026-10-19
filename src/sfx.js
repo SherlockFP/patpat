@@ -41,6 +41,7 @@ const MANIFEST = [
 
 const MAX_VOICES = 12; // simultaneous sample voices (v1: 16)
 const MIN_FADE = 0.004;
+const SAME_GAP = 0.012; // s: the same sound started twice this close is one hit (two layers firing at once = louder + phasing)
 
 /** @type {AudioContext|null} */ let ctx = null;
 /** @type {AudioNode|null} */ let dest = null;
@@ -49,6 +50,7 @@ let serial = 0;
 let active = 0;
 const bank = Object.create(null); // name -> [{ buf, gain }]   (variants + the exact file name)
 const lastPick = Object.create(null); // name -> index of the last variant played
+const lastStart = Object.create(null); // name -> start time (ctx clock) of the last play
 const slots = new Array(MAX_VOICES).fill(null); // live sources (no per-play bookkeeping allocations)
 
 // ------------------------------------------------------------------- loading
@@ -146,6 +148,11 @@ function play(name, o) {
   if (!list || !ctx || !dest) return null;
 
   const prio = o ? num(o.prio, 0) : 0;
+  const when0 = o ? num(o.when, 0) : 0;
+  const t0 = when0 > 0 ? when0 : ctx.currentTime;
+  const ls = lastStart[name];
+  if (ls !== undefined && t0 - ls >= 0 && t0 - ls < SAME_GAP) return null;
+  lastStart[name] = t0;
 
   // find a slot; when full steal the oldest voice of the lowest priority (<= newcomer's)
   let s = -1;
