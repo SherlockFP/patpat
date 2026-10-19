@@ -46,6 +46,44 @@ export function goalFor(s, layerLen, best, passed, near, out) {
   return out;
 }
 
+// ---------- feel helpers (pure; scripts/check-feel.mjs) ----------
+
+/** A turn swipe made up to this many seconds before its window opens is held and fires the moment it opens (never dropped). */
+export const TURN_BUF = 0.12;
+/** Where a turn lands in its window, f = (s - windowStart) / (cornerS - windowStart): before PERFECT_F0 it is early, up to LATE_F0 perfect, after that (and past the corner) late. */
+export const TURN_PERFECT_F0 = 0.5;
+export const TURN_LATE_F0 = 0.9;
+
+/** True when a swipe at track position `s` falls inside the buffer just before a turn window that opens at `sA`. */
+export const turnBuffered = (s, sA, vs) => s < sA && s >= sA - Math.max(1, vs) * TURN_BUF;
+
+/** 0 early / 1 perfect / 2 late. */
+export const turnGrade = (f) => (f >= TURN_LATE_F0 ? 2 : f >= TURN_PERFECT_F0 ? 1 : 0);
+
+/** Score points (x mult), flow and hit-pause seconds of a turn; `streak` = perfect turns in a row before this one. */
+export function turnReward(g, streak = 0) {
+  if (g === 1) return { pts: 250 + 50 * Math.min(4, Math.max(0, streak)), flow: 8, stop: 0.05 };
+  if (g === 2) return { pts: 150, flow: 5, stop: 0 };
+  return { pts: 100, flow: 4, stop: 0 };
+}
+
+/** Tier of the HUD combo chip (5 / 10 / 20 / 50): the 3D feedback grows in the same steps as the number on screen. */
+export const comboLevel = (n) => (n >= 50 ? 4 : n >= 20 ? 3 : n >= 10 ? 2 : n >= 5 ? 1 : 0);
+
+/** FLOW STATE: seconds granted when the combo reaches tier L (it starts at tier 2); 0 below. */
+export const flowStateSecs = (L) => (L >= 4 ? 8 : L === 3 ? 7 : L === 2 ? 6 : 0);
+
+/**
+ * The multiplier counted in whole steps (called every frame: returns a number, allocates nothing). `top` = the highest step already
+ * announced, -1 before the first look. Returns the new top: announce when it is higher than the old one (and the old one was >= 0).
+ * A fall of a whole step re-arms it; a flicker around a step stays quiet.
+ */
+export function multStep(m, top) {
+  const k = Math.floor(m);
+  if (top < 0 || k > top) return k;
+  return k < top - 1 ? k : top;
+}
+
 /**
  * ÇIĞ RÜZGÂRI: deterministic crosswind schedule (so the obstacle spawner and the runner agree). From 1500 m, one slot per 520 m,
  * 75% of them hold a gust (95-150 m, ~4-6 s). Returns the shared { s0, s1, dir } (dir -1 / +1 = the side it blows toward) or null.

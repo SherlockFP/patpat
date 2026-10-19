@@ -100,6 +100,10 @@ export const words = {
   'ÇARPAN +3!': 'MULTIPLIER +3!', 'SÜPER ZIPLAMA!': 'SUPER JUMP!', 'KAR SAVAŞI! +500': 'SNOWBALL FIGHT! +500',
   'YETİ TAMAM!': 'YETI COMPLETE!', 'ZAMAN BÜKÜCÜ!': 'TIME BENDER!', 'HAYALET!': 'GHOST!', 'RİSK MODU!': 'RISK MODE!',
   'KASK!': 'HELMET!', 'MIKNATIS!': 'MAGNET!', 'KAR KANONU!': 'SNOW CANNON!', 'ROKET!': 'ROCKET!', 'BİTİŞ!': 'FINISH!',
+  // skill callouts (near miss, turns, gaps, smashes, FLOW STATE). 'KIL PAYI' alone is the menus' "CLOSE CALLS" stat, hence the "!".
+  'KIL PAYI!': 'CLOSE CALL!', 'DÖNÜŞ': 'TURN', 'SON ANDA!': 'JUST IN TIME!', 'MÜKEMMEL DÖNÜŞ!': 'PERFECT TURN!',
+  'ÜSTÜNDEN!': 'OVER IT!', 'BOŞLUĞU GEÇTİN!': 'GAP CLEARED!', 'PARÇALADIN': 'SHATTERED',
+  'AKIŞ HALİ!': 'FLOW STATE!', 'AKIŞ HALİ UZADI!': 'FLOW STATE EXTENDED!',
   // zones
   'HAREKETLİ ENGELLER': 'MOVING OBSTACLES', 'DAR KÖPRÜLER': 'NARROW BRIDGES', 'KAR TANESİ YAĞMURU': 'SNOWFLAKE RAIN',
   'BUZ LAZERLERİ': 'ICE LASERS', 'FIRTINA': 'STORM', 'DÜŞÜK YERÇEKİMİ': 'LOW GRAVITY',
@@ -128,6 +132,14 @@ export const words = {
 
 const W = (n) => words[n] || n;
 
+// What a fatal hit ran into, as the death card names it ("ÇARPTIN (KAYA) · 432 m"). Kept local (not in `words`) so these short
+// names never collide with the same Turkish words used for props elsewhere in the game.
+const KILL = {
+  'KAYA': 'BOULDER', 'TAŞ': 'STONE', 'DAĞ EVİ': 'CHALET', 'ÇAM': 'PINE', 'KÜTÜK YIĞINI': 'LOG PILE', 'KÜTÜK': 'LOG', 'AHŞAP KASA': 'WOODEN CRATE',
+  'KARDAN ADAM': 'SNOWMAN', 'TABELA': 'SIGN', 'KIZAK': 'SLED', 'ÇİT': 'FENCE', 'KAR ARACI': 'SNOW VEHICLE', 'KARŞI ARAÇ': 'ONCOMING CAR',
+  'KAYAN DUVAR': 'SLIDING WALL', 'ÜST BAR': 'OVERHEAD BAR', 'LAZER': 'LASER', 'KAYA TOPU': 'ROLLING BOULDER', 'FÜZE': 'MISSILE',
+};
+
 export const patterns = [
   [/^BU HAFTA: (.+?)(?:\s+\S{1,3})?$/, (m, n) => 'THIS WEEK: ' + W(n)],
   [/^Kızak (\d+) sn sonra hazır$/, 'Sled ready in $1 s'],
@@ -142,7 +154,14 @@ export const patterns = [
   [/^HALKA x(\d+)!$/, 'RING x$1!'],
   [/^KAPI (\d+)\/(\d+)$/, 'GATE $1/$2'],
   [/^KAPI x(\d+)$/, 'GATE x$1'],
-  [/^(\S+ )?(DUVARA ÇARPTIN|DÜŞTÜN|ERİDİN|YETİ YAKALADI|ÇARPTIN|PATLADIN|BİTTİ) · ([\d.,]+) m$/, (m, ic, c, d) => (ic || '') + W(c) + ' · ' + d + ' m'],
+  [/^(\S+ )?(DUVARA ÇARPTIN|DÜŞTÜN|ERİDİN|YETİ YAKALADI|ÇARPTIN|PATLADIN|BİTTİ)(?: \((.+?)\))? · ([\d.,]+) m$/, (m, ic, c, k, d) => (ic || '') + W(c) + (k ? ' (' + (KILL[k] || k) + ')' : '') + ' · ' + d + ' m'],
+  [/^KIL PAYI x(\d+)$/, 'CLOSE CALL x$1'],
+  [/^MÜKEMMEL DÖNÜŞ x(\d+)!$/, 'PERFECT TURN x$1!'],
+  [/^PARÇALADIN x(\d+)$/, 'SHATTERED x$1'],
+  [/^KAR SERİSİ x(\d+)$/, 'SNOW STREAK x$1'],
+  [/^ÇARPAN x(\d+)$/, 'MULTIPLIER x$1'],
+  [/^\+(\d+) · ÇARPAN \+0,5$/, '+$1 · MULTIPLIER +0.5'],
+  [/^ÇARPAN \+1 · (\d+) sn$/, 'MULTIPLIER +1 · $1 s'],
   [/^(\S+ )?(.+?) · RİSKLİ$/, (m, ic, n) => (ic || '') + W(n) + ' · RISKY'],
   [/^◀ (RİSKLİ|GÜVENLİ) · (RİSKLİ|GÜVENLİ) ▶$/, (m, a, b) => '◀ ' + W(a) + ' · ' + W(b) + ' ▶'],
 ];

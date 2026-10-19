@@ -10,7 +10,7 @@ import { BuffSet, BUFFS, rollBuff, BUFF_LEN, DESTRUCTION, destructionTier, RUN_P
 import { music } from './music.js';
 import { RhythmLane } from './rhythm.js';
 import { patchMaterial } from '../shaders.js';
-import { gustAt, scoreMult, chainBonus, dangerBonus, checkpointReward, rageScale, goalFor, meltRate } from './goals.js';
+import { gustAt, scoreMult, chainBonus, dangerBonus, checkpointReward, rageScale, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep } from './goals.js';
 
 // YETİ RUSH — endless Temple-Run-style downhill run (RUNNER.md).
 // Core loop: the ball's SIZE is its health AND its hunger. It melts all the time; snow piles refill it, so you steer for
@@ -113,7 +113,22 @@ export const juncWinAt = (s) => 0.8 + 0.3 * Math.min(1, Math.max(0, 1 - (s - 350
 const DEATH_TEXT = {
   explode: 'PATLADIN!', yeti: 'YETİ SENİ YAKALADI!', fall: 'UÇURUMA DÜŞTÜN!', wall: 'DUVARA ÇARPTIN!', melt: 'ERİDİN!', smash: 'ÇARPTIN!',
 };
+// What a fatal hit ran into (the obstacle's event kind): named on the death card, so you can see WHAT got you.
+const KILL_NAME = {
+  rock: 'KAYA', stone: 'TAŞ', cabin: 'DAĞ EVİ', pine: 'ÇAM', logpile: 'KÜTÜK YIĞINI', fallenLog: 'KÜTÜK', longLog: 'KÜTÜK', crate: 'AHŞAP KASA', snowman: 'KARDAN ADAM',
+  sign: 'TABELA', sled: 'KIZAK', fence: 'ÇİT', snowcat: 'KAR ARACI', oncoming: 'KARŞI ARAÇ', slidewall: 'KAYAN DUVAR', overhead: 'ÜST BAR', laser: 'LAZER',
+  boulder: 'KAYA TOPU', missile: 'FÜZE',
+};
 const FLOAT_PRI = { '': 1, big: 2, bad: 3 };
+// Skill callout (see skillTag): colour by heat, one reused element, one reused animation.
+const TAG_COL = ['#e4f4ff', '#ffe066', '#ffa23a', '#ff6ad5'];
+const TAG_KF = [
+  { transform: 'translate(-50%,-30%) scale(.55)', opacity: 0, offset: 0 },
+  { transform: 'translate(-50%,-62%) scale(1.18)', opacity: 1, offset: 0.16 },
+  { transform: 'translate(-50%,-78%) scale(1)', opacity: 1, offset: 0.62 },
+  { transform: 'translate(-50%,-112%) scale(.96)', opacity: 0, offset: 1 },
+];
+const TAG_OPT = { duration: 900, easing: 'ease-out', fill: 'forwards' };
 
 const TIERS = RCFG.tierR.length;
 const _f = { pos: new THREE.Vector3(), tan: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3() };
@@ -346,7 +361,7 @@ export class Runner {
     // endless Rush: nothing kills in one touch (only gaps and the Yeti); campaign keeps its level gates
     this.lethalOn = level ? { base: RCFG.lethal && lid >= 16, car: RCFG.lethal && lid >= 30, wall: RCFG.lethal && lid >= 60 } : { base: false, car: false, wall: false };
     this.state = 'play';
-    this.countT = opts.retry ? 1 : 2;
+    this.countT = opts.retry ? 0.7 : 2;       // a retry is "just go": a short silent count-in (was 1 s)
     this.countQuiet = !!opts.retry;
     this.layer = 0;
     this.speedTier = 0;
@@ -368,6 +383,16 @@ export class Runner {
     this.nearT = 0;
     this.fury = 0; this.furyT = 0; this.furyCd = 0;
     this.punch = 0;
+    // ---- feel: input buffers, skill callouts, FLOW STATE, fov ----
+    this.turnBufT = 0;                  // a turn swipe made just before its window opened waits here (s)
+    this.laneBuf = 0; this.laneBufT = 0;   // a lane swipe made on the rope waits for the landing
+    this.pTurns = 0;                    // PERFECT turns in a row
+    this.tagT = 0; this.tagPrio = 0;    // skill callout lock (game time) and its priority
+    this.cmbLvl = 0;                    // combo tier already celebrated (5 / 10 / 20 / 50)
+    this.flowSt = 0; this.flowK = 0;    // FLOW STATE seconds left / its smoothed 0..1
+    this.fovP = 0; this.fovX = 0;       // fov punch (decays) / sustained fov extras (smoothed), degrees
+    this._multTop = -1;                 // highest multiplier step announced
+    this._dieAt = 0; this._skipRecap = false;
     this._progT = 0;
     this.lastSmashStop = -9;
     this.smashTimes = [];
@@ -521,7 +546,8 @@ export class Runner {
     const comboM = 1 + 4 * (1 - Math.exp(-this.flow / 12));
     const extras = Math.min(2.5, Math.min(2, this.tier) * 0.5 + 0.1 * (this.penN || 0) + this.chainBonus() * 0.5 + this.dangerBonus() * 0.5 + this.riskBonus() * 0.5);
     const keep = Math.min(1.5, 0.1 * ((this.ctx.meta?.multiplier?.() ?? 1) - 1) + 0.15 * Math.min(5, this.perm.speed || 0));
-    return Math.round((comboM + extras + keep + (this.furyT > 0 ? 1 : 0)) * 10) / 10;
+    // (FLOW STATE gives the same +1 as ÖFKE and the two never stack: the ceiling stays ~x10)
+    return Math.round((comboM + extras + keep + (this.furyT > 0 || this.flowSt > 0 ? 1 : 0)) * 10) / 10;
   }
 
   // chip on the run start: "BU HAFTA: Ters Dünya ⇄" (once per start, not per frame)
@@ -673,18 +699,37 @@ export class Runner {
     // ---- input ----
     const hw = Math.max(1, tr.halfWidth(b.s) || tr.pieceAt(b.s)?.halfWidth || 3.5);
     input.consumeDx(); // free drag isn't used here — lanes are
-    if (counting) { input.consumeJump(); input.consumeDive(); input.consumeDoubleTap(); }   // the countdown eats those
+    if (counting) {      // the countdown eats these ... except a jump pressed in its last 120 ms, which fires at "go"
+      if (input.consumeJump() && this.countT <= 0.12) this.jumpBufT = RCFG.jumpBuf;
+      input.consumeDive(); input.consumeDoubleTap();
+    }
     let lane = input.consumeLane();
     if (this.mutInv) lane = -lane;      // TERS DÜNYA
     if (this.wallRun) {
       // a missed turn is already a crash: nothing you do now counts
       lane = 0;
       input.consumeJump(); input.consumeDive(); input.consumeDoubleTap();
-    } else if (lane && J && this.jnOpen && Math.sign(lane) === J.dir) {
-      // A swipe toward the corner inside the turn window IS the turn (not a lane change): the touch is spent.
-      this.commitTurn(J, false);
-      input.endGesture?.();
-      lane = 0;
+    } else {
+      // No swipe is dropped for coming a hair early: a swipe toward the corner up to 120 ms before the turn window opens is held
+      // and fires the moment it opens; a lane swipe made on the rope (it can't steer) fires when the rope lets go.
+      if (this.turnBufT > 0) this.turnBufT -= dt;
+      const toward = lane !== 0 && J && !this.jnDone && Math.sign(lane) === J.dir;
+      if (J && this.jnOpen && (toward || this.turnBufT > 0)) {
+        // A swipe toward the corner inside the turn window IS the turn (not a lane change): the touch is spent.
+        this.turnBufT = 0;
+        this.commitTurn(J, false);
+        input.endGesture?.();
+        if (toward) lane = 0;
+      } else if (toward && turnBuffered(b.s, this.jnSA, b.vs)) {
+        this.turnBufT = TURN_BUF * 2;
+        input.endGesture?.();
+        lane = 0;
+      }
+      if (this.zip && lane) { this.laneBuf = lane; this.laneBufT = TURN_BUF; lane = 0; }
+      else if (this.laneBufT > 0) {
+        this.laneBufT -= dt;
+        if (!this.zip) { this.laneBufT = 0; lane = clamp(lane + this.laneBuf, -2, 2); this.laneBuf = 0; }
+      }
     }
     if (lane) this.laneChange(lane);
     this.targetU = this.lane * RCFG.laneW;
@@ -723,6 +768,7 @@ export class Runner {
     }
     if (this.cannonN > 0) this.cannonTick(dt);
     this.furyTick(dt);
+    this.flowStateTick(dt);
     if (this.rampT > 0) { this.rampT -= dt; if (Math.random() < dt * 30) this.burst(1, 0xffd060, 2); if (this.rampT <= 0) this.float('YIKIM BİTTİ', ''); }
     if (this.ghostT > 0) { this.ghostT -= dt; if (this.ghostT <= 0) { this.setGhost(false); this.float('HAYALET BİTTİ', ''); } }
     if (this.riskT > 0) { this.riskT -= dt; if (this.riskT <= 0) this.float('RİSK BİTTİ', ''); }
@@ -857,6 +903,21 @@ export class Runner {
     }
     platform.haptic('select');
     this.mistBurst(4, 0xffffff, 2, 0.8);
+    // Snappy: the move starts this very frame; the ball answers with a tiny anticipation squash (the squash spring overshoots
+    // into a stretch = the settle) and powder flung off the side it just left.
+    if (this.grounded && !this.grind) { this.squash = Math.max(this.squash, 0.16); this.sqV = Math.min(this.sqV, 0); }
+    this.laneSpray(Math.sign(lane));
+  }
+
+  // Three puffs thrown out of the trailing side of the ball (dir = the way it is moving). Allocation-free (ring-buffer puffs).
+  laneSpray(dir) {
+    const f = _f2, p = this.ctx.ball.group.position, r = this.rShown, fx = this.ctx.fx;
+    this.track.frame(this.b.s, f);
+    for (let i = 0; i < 3; i++) {
+      const v = 2.4 + i * 0.9;
+      fx.puff(p.x - f.right.x * dir * r * 0.9, p.y - r * 0.8 + i * 0.12, p.z - f.right.z * dir * r * 0.9,
+        -f.right.x * dir * v, 1.2, -f.right.z * dir * v, 0.35 + r * 0.35, 0.55, this.biomeMist ?? 0xffffff, 0.5);
+    }
   }
 
   dive() {
@@ -951,6 +1012,7 @@ export class Runner {
     this.jnJ = J;
     if (!J) {
       if (this.jnId !== null) { this.jnId = null; this.jnOpen = false; this.jnNear = false; this.juncSlow = false; this.cornerK = 0; }
+      this.turnBufT = 0;
       return null;
     }
     const id = J.id !== undefined ? J.id : J.s;
@@ -997,20 +1059,41 @@ export class Runner {
     ui.hint?.(false);
     if (auto) return;
     this.turns++;
-    this.score += 100 * this.mult;
-    this.addFlow(4);
+    // Timing inside the window: EARLY (reacted to the cue) pays as before, PERFECT (the last stretch before the bend) pays
+    // more and hits harder, LATE (right on the corner) is a close call. 0 / 1 / 2.
+    const g = turnGrade((this.b.s - this.jnSA) / Math.max(1, J.s - this.jnSA));
+    const rw = turnReward(g, this.pTurns), pts = rw.pts * this.mult;
+    this.pTurns = g === 1 ? this.pTurns + 1 : 0;
+    this.score += pts;
+    this.addFlow(rw.flow);
     if (audio.turn) audio.turn(); else audio.whoosh();
-    platform.haptic('select');
-    this.kick += 2.5;
-    this.jnLean = J.dir * 0.22;
+    platform.haptic(g === 1 ? 'success' : 'select');
+    this.kick += g === 1 ? 3 : 2.5;
+    this.jnLean = J.dir * (g === 1 ? 0.3 : 0.22);
     this.jnLeanT = 0.45;
     this.camLookBias = J.dir * 1.6;
     this.camLookBiasT = 0.7;
     this.mistBurst(6, 0xffffff, 3, 0.9);
+    if (g === 1) {
+      // PERFECT: a short hit-pause, an FOV punch, a gold flash, a bell in the song's key and a stretch pop
+      this.hitStop = Math.max(this.hitStop, rw.stop);
+      this.fovPunch(5);
+      this.trauma = Math.min(1, this.trauma + 0.1);
+      this.squash = -0.3; this.sqV = 0;
+      this.mistBurst(10, 0xffe27a, 4.5, 1.1);
+      ui.flash?.('gold');
+      audio.star?.(2);
+      music.perfect();
+    } else if (g === 2) this.fovPunch(3);
+    const hints = this.ctx.save.runnerTurnHints?.();
+    const teach = hints !== undefined && hints < 3;       // the first three turns ever say "DÖN!" instead of the plain callout
+    if (g || !teach) {
+      this.skillTag(g === 1 ? (this.pTurns > 1 ? `MÜKEMMEL DÖNÜŞ x${this.pTurns}!` : 'MÜKEMMEL DÖNÜŞ!') : g === 2 ? 'SON ANDA!' : 'DÖNÜŞ',
+        '+' + Math.round(pts), g === 1 ? Math.min(3, 1 + this.pTurns) : g === 2 ? 1 : 0, g === 1 ? 9 : 5);
+    }
     ui.runnerTurnOk?.(J.dir);
     this.ctx.meta?.track?.('turn', {});
-    const hints = this.ctx.save.runnerTurnHints?.();
-    if (hints !== undefined && hints < 3) { this.float('DÖN!', 'big'); this.ctx.save.addRunnerTurnHint?.(); }
+    if (teach) { this.float('DÖN!', 'big'); this.ctx.save.addRunnerTurnHint?.(); }
     if (this.tut) this.ctx.save.setRunnerTutDone?.();         // the first real turn ends the tutorial run for good
   }
 
@@ -1020,6 +1103,7 @@ export class Runner {
     this.jnDone = true;
     this.jnOpen = false;
     this.juncSlow = false;
+    this.pTurns = 0; this.turnBufT = 0;
     ui.turnCue?.(0, 0);
     ui.hint?.(false);
     if (this.rocketT > 0 || this.zip) { this.jnDone = true; return; }
@@ -1737,15 +1821,54 @@ export class Runner {
         this.cmbN = (this.cmbN || 0) + 1; this.cmbAt = now;
         if (this.cmbN > this.rcpN) { this.rcpN = this.cmbN; this.rcpS = this.b.s; }
         this.ctx.ui?.combo?.(this.cmbN);
+        this.comboFx();
       }
       this.cmbT = 2;
     }
   }
 
-  breakCombo() {
+  // timeout: the combo just ran out of time (not a hit): the FLOW STATE rides it out, a hit ends it.
+  breakCombo(timeout = false) {
     this.stormHit = true;
     if (this.cmbN) { this.cmbN = 0; this.cmbAt = 0; this.ctx.ui?.combo?.(0); }
     this.cmbT = 0;
+    this.cmbLvl = 0;
+    if (!timeout) { this.pTurns = 0; this.flowStateEnd(); }
+  }
+
+  // The HUD combo chip grows in tiers (5 / 10 / 20 / 50): the world answers each one with the same step, and from tier 2 on
+  // (combo 10) the run enters a FLOW STATE.
+  comboFx() {
+    const L = comboLevel(this.cmbN);
+    if (L <= this.cmbLvl) return;
+    this.cmbLvl = L;
+    this.kick += 1 + L;
+    this.glowT = Math.max(this.glowT, 0.5);
+    this.fovPunch(2 + L);
+    this.mistBurst(6 + 3 * L, L >= 3 ? 0xffd060 : 0xbfe6ff, 4, 1);
+    this.ctx.platform.haptic(L >= 3 ? 'success' : 'select');
+    if (L >= 2) this.flowStateStart(L);
+  }
+
+  // FLOW STATE (combo 10 / 20 / 50 -> 6 / 7 / 8 s): a brief reward for staying clean. +1 on the multiplier (never on top of ÖFKE),
+  // a wider view, speed lines, sparkles in the ball's wake and a brighter beat. Any hit ends it.
+  flowStateStart(L) {
+    const secs = flowStateSecs(L), fresh = !(this.flowSt > 0);
+    if (!secs) return;
+    this.flowSt = Math.max(this.flowSt, secs);
+    const { audio, ui } = this.ctx;
+    audio.milestone?.(4);
+    ui.flash?.('gold');
+    this.fovPunch(6);
+    this.mistBurst(14, 0xffe27a, 5, 1.2);
+    this.skillTag(fresh ? 'AKIŞ HALİ!' : 'AKIŞ HALİ UZADI!', `ÇARPAN +1 · ${secs} sn`, 3, 9);
+  }
+
+  flowStateEnd() { this.flowSt = 0; }        // (a hit / death: silent)
+
+  flowStateTick(dt) {
+    if (this.flowSt > 0) { this.flowSt -= dt; if (this.flowSt <= 0) { this.flowSt = 0; this.ctx.audio.chime?.('end'); } }
+    this.flowK += ((this.flowSt > 0 ? 1 : 0) - this.flowK) * Math.min(1, dt * 3);
   }
 
   // FIRTINA TÜNELİ: the last 100 m before every 1 km: snow-storm vignette + streaks; pass it without a hit = combo x2 + bonus.
@@ -1757,7 +1880,7 @@ export class Runner {
   }
 
   stormTick(dt) {
-    if (this.cmbT > 0) { this.cmbT -= dt; if (this.cmbT <= 0 && this.cmbN) { const h = this.stormHit; this.breakCombo(); this.stormHit = h; } }
+    if (this.cmbT > 0) { this.cmbT -= dt; if (this.cmbT <= 0 && this.cmbN) { const h = this.stormHit; this.breakCombo(true); this.stormHit = h; } }
     if (this.level) return;
     const s = this.b.s, km = Math.floor(s / 1000), inZ = s >= 900 && s % 1000 >= 900;
     if (this.stormKm === undefined) this.stormKm = km;
@@ -2080,7 +2203,12 @@ export class Runner {
     const key = this.level ? this.level : bi.biome;
     if (this._lblKey !== key) { this._lblKey = key; this._lbl = this.level ? `${this.level.act}-${this.level.idx} · ${this.level.name}` : bi.biome.name; }
     const label = this._lbl;
-    ui.runnerStats(this.score, this.coins, this.mult, prog, Math.round(this.b.s), label);
+    const mult = this.mult;
+    ui.runnerStats(this.score, this.coins, mult, prog, Math.round(this.b.s), label);
+    // the multiplier climbing a whole step (x2 -> x3 ...) is announced once; a flicker around a step stays quiet
+    const mt = multStep(mult, this._multTop);
+    if (mt > this._multTop && this._multTop >= 0 && this.state === 'play') this.skillTag(`ÇARPAN x${mt}`, '', Math.min(3, (mt >> 1) - 1), 7);
+    this._multTop = mt;
     if ((this._progT = (this._progT || 0) + 1) % 30 === 0) this.ctx.meta?.track?.('run_progress', { distance: Math.round(this.b.s), coins: this.coins });
     const v = this._vit, y = this._yeti;
     v.tier = this.tier; v.grow = this.grow; v.gap = Math.min(RCFG.yetiMax, this.gap + (this.baitBonus || 0));
@@ -2272,6 +2400,7 @@ export class Runner {
     const b = this.b;
     this.airJ = this.airJumpMax;
     const impact = clamp(-b.vh / 14, 0, 1);
+    const cleared = this.holeAir && this.state === 'play';      // this flight crossed a real hole: a gap cleared
     this.grounded = true;
     this.fallLock = false;
     this.holeAir = false;
@@ -2291,6 +2420,15 @@ export class Runner {
     }
     if (impact > 0.6) this.kick += 1.5;
     if (this.duckOnLand) { this.duckOnLand = false; this.duckT = 0.65; }      // the slam: land into a duck
+    if (cleared) {
+      const pts = 60 * this.mult;
+      this.score += pts;
+      this.addFlow(2);
+      this.fovPunch(2.5);
+      this.mistBurst(8, 0xffffff, 4, 1.2);
+      this.ctx.audio.star?.(1);
+      this.skillTag('BOŞLUĞU GEÇTİN!', '+' + Math.round(pts), 1, 5);
+    }
     if (this.jumpBufT > 0 && !this.grind && !this.zip) { this.jumpBufT = 0; this.jump(RCFG.jumpV, false); }   // buffered jump fires at touchdown
   }
 
@@ -2341,7 +2479,8 @@ export class Runner {
       this.obstacles.resolve?.(e.id, true);
       this.smashes++;
       this.ctx.meta?.track?.('smash', { toughness: tough });
-      this.score += 40 * tough * this.mult * (1 + 0.1 * Math.min(5, this.perm.smash || 0)) * (this.perk === 'cigguc' && this.tier >= 2 ? (this.buffs.has('dev') ? 2.6 : 1.6) : 1);
+      const pts = 40 * tough * this.mult * (1 + 0.1 * Math.min(5, this.perm.smash || 0)) * (this.perk === 'cigguc' && this.tier >= 2 ? (this.buffs.has('dev') ? 2.6 : 1.6) : 1);
+      this.score += pts;
       this.addTons([0, 3, 8, 20, 60, 180][Math.min(5, tough)] * (0.6 + b.r));
       audio.crash(clamp(tough / 5, 0.3, 1));
       platform.haptic('light');
@@ -2356,6 +2495,8 @@ export class Runner {
       this.ctx.ui.runnerSizeTick?.();
       this.smashTimes.push(this.time);
       while (this.smashTimes.length && this.time - this.smashTimes[0] > 4) this.smashTimes.shift();
+      this.fovPunch(1.5 + 0.7 * tough);
+      if (tough >= 2) { const sn = this.smashTimes.length; this.skillTag(sn > 1 ? `PARÇALADIN x${sn}` : 'PARÇALADIN', '+' + Math.round(pts), Math.min(3, sn - 1), 3); }
       if (this.rampT <= 0 && this.smashTimes.length >= 3) {
         this.rampT = 3; this.smashTimes.length = 0;
         this.queueBanner('YIKIM MODU!', 5, 1.2, true);
@@ -2639,7 +2780,7 @@ export class Runner {
       if (this.stumbleHits >= 3) { this.crashFx(30, false); this.die('yeti'); return; }
     }
     // Smallest size: the ball bursts.
-    if (this.tier === 0) { this.explode(); return; }
+    if (this.tier === 0) { this.killKind = e.kind || null; this.obstacles.tintKiller?.(e.id); this.explode(); return; }     // (what burst you is named on the death card and glows red)
     // Knock a layer off: the lost snow sprays out as chunks, the ball visibly shrinks and stumbles.
     const lostR = b.r - RCFG.tierR[this.tier - 1];
     this.tier--;
@@ -2773,14 +2914,19 @@ export class Runner {
         this.mistBurst(6, 0xbfe6ff, 4, 0.9);
         if (audio.near) audio.near(); else audio.whoosh();
         if (cm > 0) audio.star(Math.min(2, cm - 1));
-        platform.haptic('light');
+        platform.haptic(cm > 1 ? 'select' : 'light');
+        this.nearFx(bonus, cm);
         this.ctx.meta?.track?.('near', {});
         break;
       }
-      case 'over':
+      case 'over': {
         this.addFlow(1.5);
-        this.score += 50 * this.mult;
+        const pts = 50 * this.mult;
+        this.score += pts;
+        this.fovPunch(1.5);
+        this.skillTag('ÜSTÜNDEN!', '+' + Math.round(pts), 0, 3);
         break;
+      }
       case 'push':
         b.u += (e.du || 0) * this.stepDt;
         break;
@@ -2877,6 +3023,18 @@ export class Runner {
     }
   }
 
+  // Near miss: say it (streak xN, the payout, +0.5 on the multiplier when the chain crosses 3 / 5 / 8) and hit harder the longer
+  // the chain and the hotter the combo. The tag shows on EVERY near miss (ui.float rations itself to about one a second).
+  nearFx(bonus, cm) {
+    const n = this.nearChain, hot = 1 + 0.5 * Math.min(1, this.cmbN / 30);
+    const step = n === 3 || n === 5 || n === 8;
+    this.fovPunch((1.8 + 0.8 * cm) * hot);
+    this.kick += 0.4 * cm * hot;
+    if (cm) this.mistBurst(2 + 2 * cm, cm > 1 ? 0xffe27a : 0xbfe6ff, 3 + cm, 0.8);
+    this.skillTag(n > 1 ? `KIL PAYI x${n}` : 'KIL PAYI!', '+' + bonus + (step ? ' · ÇARPAN +0,5' : ''), cm, step ? 7 : 5);
+    if (step) this.ctx.audio.chime?.();
+  }
+
   // Warm ground (volcano / desert): extra melt on top of hunger.
   drainSoft(x) {
     if (this.meltK <= 0 || this.invulnT > 0) return;
@@ -2914,6 +3072,7 @@ export class Runner {
         this.addFlow(1 + 0.25 * n);
         audio.star(Math.min(2, n - 1));
         this.float(`HALKA x${n}!`, n >= 4 ? 'big' : '');
+        if (n >= 2 && n < 4) this.skillTag(`HALKA x${n}!`, '+' + Math.round(100 * n * this.mult), n - 1, 3);     // (x4 and up use the centre float)
         this.kick += 1.5; this.burst?.(10, 0xffd24a, 3);
         break;
       }
@@ -2959,6 +3118,7 @@ export class Runner {
         audio.pop(0.4, Math.min(8, this.snowChain + 3));
         this.squash = Math.max(this.squash, 0.2);
         this.burst(8, 0xffffff, 2);
+        if ((this.snowChain + 1) % 5 === 0) this.skillTag(`KAR SERİSİ x${this.snowChain + 1}`, '', Math.min(3, (this.snowChain + 1) / 5), 3);     // every 5th pile in a row
         break;
       }
       case 'star':
@@ -3128,8 +3288,10 @@ export class Runner {
       if (audio.stomp) audio.stomp(Math.min(6, n - 1)); else audio.pop(0.6, Math.min(8, n + 2));
       platform.haptic('light');
       ui.stompCombo?.(n);              // (the HUD counts the 'stomp' mission event itself; endless_end carries the run total)
-      this.burst(10, 0xfff2b0, 3);
+      this.burst(10 + Math.min(2, n), 0xfff2b0, 3 + Math.min(3, n * 0.5));
       this.mistBurst(5, 0xffffff, 2.5, 0.8);
+      this.fovPunch(2 + Math.min(4, n));        // a longer stomp chain hits harder (and from the 2nd on gets a tiny hit-pause)
+      if (n >= 2 && this.time - this.lastSmashStop > 0.3) { this.hitStop = Math.max(this.hitStop, 0.02); this.lastSmashStop = this.time; }
       if (n >= 3 && n % 2 === 1) this.float(`EZDİN x${n}!`, 'big');
       return;
     }
@@ -3232,9 +3394,13 @@ export class Runner {
     ui.stompCombo?.(0);
     this.state = 'dying';
     this.cause = cause;
-    if (cause !== 'smash' && cause !== 'wall') this.killKind = null;       // (killKind only names what a head-on hit / the barrier was)
+    if (cause !== 'smash' && cause !== 'wall' && cause !== 'explode') this.killKind = null;       // (killKind only names what a head-on hit / the barrier / the burst was)
     this.deadT = 0;
     this.deathZoom = 0;
+    this._dieAt = typeof performance !== 'undefined' ? performance.now() : 0;      // a tap after this skips the wait (see updateDying)
+    this._skipRecap = false;
+    this.flowStateEnd();
+    ui._annReset?.();            // clear the announcement lanes: the death card must never be dropped behind a "TÖKEZLEDİN!"
     this.deathCard();
     music.stinger('death');
     music.duck(true);
@@ -3249,19 +3415,24 @@ export class Runner {
     const ICON = { wall: '🧱', fall: '🕳️', melt: '💧', yeti: '👹', smash: '💥', explode: '💣' };
     const TXT = { wall: 'DUVARA ÇARPTIN', fall: 'DÜŞTÜN', melt: 'ERİDİN', yeti: 'YETİ YAKALADI', smash: 'ÇARPTIN', explode: 'PATLADIN' };
     const d = Math.round(this.b.s);
-    this.ctx.ui.float?.((ICON[this.cause] || '💀') + ' ' + (TXT[this.cause] || 'BİTTİ') + ' · ' + d.toLocaleString('tr-TR') + ' m', window.innerWidth * 0.5, window.innerHeight * 0.3, 'bad');
+    const kn = this.killKind && (this.cause === 'smash' || this.cause === 'explode') ? KILL_NAME[this.killKind] : null;      // "ÇARPTIN (KAYA)": WHAT got you
+    this.ctx.ui.float?.((ICON[this.cause] || '💀') + ' ' + (TXT[this.cause] || 'BİTTİ') + (kn ? ' (' + kn + ')' : '') + ' · ' + d.toLocaleString('tr-TR') + ' m', window.innerWidth * 0.5, window.innerHeight * 0.3, 'bad');
   }
 
   updateDying(dt, rdt) {
     const b = this.b;
     this.deadT += rdt;
+    // Retry should be fast: a tap skips the rest of the death scene (and the recap strip). Only a touch that STARTS 0.35 s or more
+    // after the hit counts, so the frantic swipes right at the crash can't skip what killed you.
+    const inp = this.ctx.input;
+    if (this.deadT > 0.4 && inp && inp.swipe && inp.swipe.t > this._dieAt + 350) { this._skipRecap = true; this.finishOver(); return; }
     if (this.deadT < 0.6) this.deathZoom = Math.min(1, this.deadT / 0.4);
-    let T = 1.4;
+    let T = 1.15;            // (was 1.4 / 1.8 / 1.5: the read-out is the first ~0.7 s; the rest was waiting)
     if (this.cause === 'fall') {
       b.vh -= RCFG.gravity * dt;
       b.h = Math.max(-70, b.h + b.vh * dt);
       b.s += b.vs * 0.5 * dt;
-      T = 1.8;
+      T = 1.5;
     } else if (this.cause === 'yeti') {
       // The Yeti catches up and scoops the ball.
       this.gap = Math.max(-1, this.gap - 25 * dt);
@@ -3275,7 +3446,7 @@ export class Runner {
       b.r = Math.max(0.04, b.r - rdt * 0.5);
       if (Math.random() < rdt * 40) this.mistBurst(1, 0xaed8ff, 1.5, 0.6);
       if (this.deadT > 1.0) this.ctx.ball.group.visible = false;
-      T = 1.5;
+      T = 1.3;
     } else {
       b.vs *= Math.exp(-4 * dt);
     }
@@ -3348,6 +3519,7 @@ export class Runner {
     const ev = this.rcp.slice();
     if (this.rcpN >= 4) ev.push({ s: this.rcpS, k: 'combo', n: this.rcpN });
     ev.push({ s: this.b.s, k: 'death' });
+    if (this._skipRecap || ev.length < 2) { done(); return; }       // nothing to recap but the death itself (or the player already tapped past it): straight to the result
     const LB = { rec: 'REKOR', boss: 'BOSS', combo: 'KOMBO', wall: 'DUVAR', fall: 'DÜŞÜŞ', melt: 'ERİME', yeti: 'YETİ', smash: 'ÇARPMA', explode: 'PATLAMA' };
     const IC = { rec: '🏆', boss: '🧌', combo: '🔥', wall: '🧱', fall: '🕳️', melt: '💧', yeti: '👹', smash: '💥', explode: '💣' };
     const el = this._rcpEl = document.createElement('div');
@@ -3369,7 +3541,7 @@ export class Runner {
       el.querySelector('.rf').style.width = '100%';
       el.querySelectorAll('.ri').forEach((n) => { n.style.transform = 'translateX(-50%) scale(1)'; });
     }));
-    this._rcpTm = setTimeout(end, 1500);
+    this._rcpTm = setTimeout(end, 1250);
   }
 
   // The result screen. While a revive is possible the run is NOT recorded yet (a revive continues the same run).
@@ -3477,6 +3649,7 @@ export class Runner {
     this.hungerWarn = false;
     this.nearChain = 0;
     this.stompN = 0;
+    this.turnBufT = 0; this.laneBuf = 0; this.laneBufT = 0; this.pTurns = 0; this.flowSt = 0; this.fovP = 0; this._skipRecap = false;
     this.jnId = null; this.jnDone = false; this.jnOpen = false; this.jnNear = false; this.juncSlow = false;
     const J = tr.junctionAt ? tr.junctionAt(b.s) : null;
     if (J && b.s >= J.s - Math.max(J.s - J.s0, RCFG.juncMinSecs * b.vs) - 1) { this.jnId = J.id !== undefined ? J.id : J.s; this.jnDone = true; }   // revived inside a turn window: that corner is forgiven
@@ -3568,9 +3741,15 @@ export class Runner {
       _tp.copy(pos).addScaledVector(f.tan, -this.rShown);
       fx.puff(_tp.x, _tp.y, _tp.z, (Math.random() - 0.5) * 2, -1, (Math.random() - 0.5) * 2, 0.8, 0.6, Math.random() < 0.5 ? 0xffb050 : 0xdddddd, 0.6);
     }
+    // FLOW STATE: sparkles trail off the ball (golden and icy), allocation-free ring-buffer puffs
+    if (playing && this.flowK > 0.3 && Math.random() < dt * 16 * this.flowK) {
+      const r = this.rShown;
+      _tp.copy(pos).addScaledVector(f.tan, -r * (1.2 + Math.random() * 2.5)).addScaledVector(f.right, (Math.random() - 0.5) * r * 2.4).addScaledVector(f.up, -r * 0.5 + Math.random() * r * 1.2);
+      fx.puff(_tp.x, _tp.y, _tp.z, 0, 1.5, 0, 0.16 + Math.random() * 0.12, 0.6, Math.random() < 0.5 ? 0xffe27a : 0xbfe6ff, 0.85);
+    }
     // Ribbon trail pressed into the snow (uses the equipped trail's material).
     this.updateTrail(f, pos);
-    this.ctx.ui.speedLines?.(playing && this.camLoopK < 0.2 && !ROUND_KINDS.has(this.track.pieceAt(b.s)?.kind) ? Math.min(1.4, Math.pow(Math.max(0, speedK - 0.2) / 0.8, 1.3) + (this.rocketT > 0 ? 0.5 : 0) + (b.vs > RCFG.maxSpeed ? 0.3 : 0)) : 0);
+    this.ctx.ui.speedLines?.(playing && this.camLoopK < 0.2 && !ROUND_KINDS.has(this.track.pieceAt(b.s)?.kind) ? Math.min(1.4, Math.pow(Math.max(0, speedK - 0.2) / 0.8, 1.3) + (this.rocketT > 0 ? 0.5 : 0) + (b.vs > RCFG.maxSpeed ? 0.3 : 0) + 0.3 * this.flowK) : 0);
   }
 
   trailPush(x, y, z, rx, ry, rz, w, gap) {
@@ -3732,6 +3911,41 @@ export class Runner {
   topMsg(text, cls) {
     this.ctx.ui.float(text, window.innerWidth * 0.5, window.innerHeight * 0.21, cls || 'big');
   }
+
+  // Skill callout: what you just did and what it paid ("KIL PAYI x3 +150"), one small element that rides just below the ball. ui.float
+  // is rationed to about one centre message a second and drops what it cannot show, so a skill action would often get no reply;
+  // this one answers EVERY time (a stronger callout holds the slot for ~0.5 s, a weaker one waits its turn by being skipped).
+  // Event-driven only: no per-frame work, and after the first call no allocation (one element, one reused animation).
+  // lvl 0..3 = heat (colour), prio: 3 small stuff, 5 skill, 7 multiplier step, 9 milestones.
+  skillTag(main, sub, lvl, prio) {
+    if (this.state !== 'play' || this.countT > 0 || typeof document === 'undefined') return;
+    if (this.time < this.tagT && prio < this.tagPrio) return;
+    this.tagT = this.time + (prio >= 5 ? 0.55 : 0.3);
+    this.tagPrio = prio;
+    let el = this._tagEl;
+    if (!el) {
+      el = this._tagEl = document.createElement('div');
+      el.style.cssText = 'position:fixed;left:50%;top:60%;z-index:31;pointer-events:none;text-align:center;white-space:nowrap;opacity:0;font-weight:900;font-size:clamp(18px,5.6vw,27px);line-height:1.05;letter-spacing:.03em;' +
+        'text-shadow:0 3px 0 var(--ink,#17345c),2px 2px 0 var(--ink,#17345c),-2px 2px 0 var(--ink,#17345c),2px -2px 0 var(--ink,#17345c),-2px -2px 0 var(--ink,#17345c),0 6px 12px rgba(10,30,60,.35)';
+      el.innerHTML = '<div></div><small style="display:block;margin-top:3px;font-size:.6em;letter-spacing:.05em;color:#ffe9a0"></small>';
+      this._tagM = el.firstChild; this._tagS = el.lastChild;
+      document.body.appendChild(el);
+      this._tagA = el.animate ? el.animate(TAG_KF, TAG_OPT) : null;
+    }
+    this._tagM.textContent = t(main);
+    this._tagS.textContent = sub ? t(sub) : '';
+    this._tagS.style.display = sub ? 'block' : 'none';
+    el.style.color = TAG_COL[clamp(lvl | 0, 0, 3)];
+    const W = window.innerWidth, H = window.innerHeight;
+    _v2.copy(this.ctx.ball.group.position).project(this.ctx.camera);
+    el.style.left = clamp((_v2.x * 0.5 + 0.5) * W, W * 0.26, W * 0.74) + 'px';
+    el.style.top = clamp((-_v2.y * 0.5 + 0.5) * H + H * 0.13, H * 0.3, H * 0.92) + 'px';       // a hand's width below the ball, off the road ahead
+    if (this._tagA) { this._tagA.cancel(); this._tagA.play(); }
+    else { el.style.opacity = '1'; clearTimeout(this._tagTm); this._tagTm = setTimeout(() => { el.style.opacity = '0'; }, 800); }     // (no Web Animations: just show it for a moment)
+  }
+
+  /** A quick widening of the view (degrees as asked of main.js's low-pass: about a third of it shows). Decays in updateCamera. */
+  fovPunch(deg) { this.fovP = Math.min(9, Math.max(this.fovP, deg)); }
 
   tickFloatQ() {
     const p = this.floatPend;
@@ -3965,17 +4179,25 @@ export class Runner {
     if (this.kick > 8) this.kick = 8;
     this.kick *= Math.exp(-7 * dt);
     if (this.kick < 0.01) this.kick = 0;
+    // Sustained extras ease in and out here (and get low-passed again by main.js): the view keeps opening past the "fast" mark up
+    // to top speed, and on boosts (turbo pads, ice slide, ÖFKE, FLOW STATE). The punch (perfect turn, near miss, stomp ...) is a
+    // quick spike that decays on its own. Neither touches the camera's position, only its lens.
+    const xT = playing ? Math.min(7, 3 * clamp((b.vs - RCFG.refSpeed) / (RCFG.maxSpeed - RCFG.refSpeed), 0, 1) + 2.5 * this.flowK + (this.furyT > 0 ? 2 : 0) + (this.turboT > 0 ? 1.5 : 0) + (this.slideT > 0 ? 1.2 : 0)) : 0;
+    this.fovX += (xT - this.fovX) * kfil(snap, dt, 3);
+    this.fovP *= Math.exp(-4.5 * dt);
+    if (this.fovP < 0.02) this.fovP = 0;
     const ud = cam.userData;
-    ud.fovKick = this.kick;
+    ud.fovKick = this.kick + this.fovP * 0.35;
     // main.js low-passes fovBoost at 4/s, which keeps only ~27% of a short pulse: until it applies fovKick itself (and sets
     // fovKickOk) the pulse is sent through fovBoost with a gain that survives that filter (a smash or near miss: ~1.5 degrees).
-    ud.fovBoost = -2 + speedK * 5 + (this.rocketT > 0 ? 6 : 0) + (this.riskT > 0 ? 4 : 0) + (ud.fovKickOk ? 0 : this.kick * 1.6) - (this.state === 'dying' ? 5 * (this.deathZoom || 0) : 0);
+    ud.fovBoost = -2 + speedK * 5 + this.fovX + (this.rocketT > 0 ? 6 : 0) + (this.riskT > 0 ? 4 : 0) + (ud.fovKickOk ? 0 : this.kick * 1.6 + this.fovP) - (this.state === 'dying' ? 5 * (this.deathZoom || 0) : 0);
   }
 
   dispose() {
     for (const g of this.penMeshes || []) { this.ctx.scene.remove(g); g.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); }); }
     this.penMeshes = [];
     this._rcpKill();
+    this._tagA?.cancel(); clearTimeout(this._tagTm); this._tagEl?.remove(); this._tagEl = this._tagM = this._tagS = this._tagA = null;
     this.stormEl?.remove(); this.stormEl = null;
     if (this.lmGate) { this.ctx.scene.remove(this.lmGate); this.lmGate.traverse((o) => { if (o.isMesh) { o.geometry.dispose(); o.material.map?.dispose(); o.material.dispose(); } }); this.lmGate = null; }
     document.getElementById('rcol')?.remove(); this._baitEl = this._scarfEl = this._cannonEl = this._breadEl = null;
