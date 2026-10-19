@@ -54,6 +54,7 @@ export const words = {
   // ---- achievements panel / settings
   'BAŞARIMLAR': 'ACHIEVEMENTS', 'Başarımlar': 'Achievements', 'Gizli bir şey var...': "There's a secret here...",
   'Henüz açık başarım yok. Oyna, kazan!': 'No achievements unlocked yet. Play and win!',
+  'Gizlilik Politikası': 'Privacy Policy',
   'AYARLAR': 'SETTINGS', 'Ayarlar': 'Settings', 'SES': 'SOUND', 'MÜZİK': 'MUSIC', 'TİTREŞİM': 'VIBRATION', 'GÖRÜNÜM': 'LOOK', 'DİL': 'LANGUAGE',
   'İSTATİSTİKLER': 'STATS', 'SEVİYE': 'LEVEL', 'TOPLAM KOŞU': 'TOTAL RUNS', 'EN UZUN KOŞU': 'LONGEST RUN', 'TOPLAM MESAFE': 'TOTAL DISTANCE',
   'YUTULAN': 'SWALLOWED', 'SONSUZ REKORU': 'ENDLESS RECORD', 'KIRILAN ENGEL': 'OBSTACLES SMASHED', 'KIL PAYI': 'CLOSE CALLS',
