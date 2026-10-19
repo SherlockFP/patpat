@@ -1674,12 +1674,16 @@ Object.assign(Track.prototype, {
       this._boxS(mb, s, e, Math.min(u0, u1) - 0.04, Math.max(u0, u1) + 0.04, 2.5, 2.68, cap, cap);
     }
     // three chevron signs on the barrier (24 m, 12 m and 0 m before the corner): "this way!"
+    // The boards stand OUTSIDE the road, on a mast on the barrier with arms reaching out. They must never hang over a lane:
+    // the chase camera rides 4-8 m up over the ball's side, so a board over the outer lane covered the ball and the camera
+    // flew through it like a portal (scripts/check-camera-clearance.mjs guards this).
     for (const d of [24, 12, 0]) {
       const s = J.s - d;
       if (s < sa + 1) continue;
-      const uc = ou * (hw - 0.75), uw = ou * (hw - 0.15);
-      this._boxS(mb, s - 0.12, s + 0.12, uw - 0.1, uw + 0.1, 2.6, 3.0, cap, cap);          // post
-      this._signBoard(mb, s, uc, 1.5, 2.95, 4.65, dir, C);
+      const half = 1.5, uw = ou * (hw - 0.15), uc = ou * (hw + 0.15 + 0.14 + half), uFar = ou * (hw + 0.29 + 2 * half);
+      this._boxS(mb, s - 0.12, s + 0.12, uw - 0.1, uw + 0.1, 2.6, 4.85, cap, cap);          // mast on the barrier
+      for (const ha of [3.1, 4.5]) this._boxS(mb, s + 0.1, s + 0.22, Math.min(uw, uFar), Math.max(uw, uFar), ha - 0.07, ha + 0.07, cap, cap);   // arms behind the board
+      this._signBoard(mb, s, uc, half, 2.95, 4.65, dir, C);
     }
   },
 

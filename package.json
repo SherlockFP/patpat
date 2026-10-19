@@ -9,7 +9,8 @@
     "preview": "vite preview --host",
     "cap:sync": "npm run build && npx cap sync",
     "cap:android": "npm run build && npx cap sync android && npx cap open android",
-    "build:pages": "vite build --outDir docs --emptyOutDir && node -e \"require('fs').writeFileSync('docs/.nojekyll','')\""
+    "build:pages": "vite build --outDir docs --emptyOutDir && node -e \"require('fs').writeFileSync('docs/.nojekyll','')\"",
+    "check:camera": "node scripts/check-camera-clearance.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",
