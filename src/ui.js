@@ -23,6 +23,43 @@ export function fmtTons(t) {
   return `${NF.format(Math.round(t))} ton`;
 }
 const clamp01 = (x) => (x > 0 ? (x < 1 ? x : 1) : 0);
+
+// ---- pure helpers (checked by scripts/check-ui-math.mjs) ----
+export const MILESTONE_STEP = 500;
+const MS_TAGS = ['GÜZEL!', 'HARİKA!', 'SÜPER!', 'MUHTEŞEM!', 'EFSANE!'];
+// highest unseen milestone index once `dist` passes it (1 = 500 m, 2 = 1000 m ...), else 0. `last` = index already celebrated.
+export const milestoneIdx = (dist, last) => { const k = Math.floor(Math.max(0, Number(dist) || 0) / MILESTONE_STEP); return k > last ? k : 0; };
+export const milestoneText = (k) => { const m = k * MILESTONE_STEP; return m % 1000 ? `${fmtN(m)} m` : `${fmtN(m / 1000)} km`; };
+export const milestoneTag = (k) => MS_TAGS[Math.max(0, Math.min(MS_TAGS.length - 1, k - 1))];
+// XP bar endpoints from the run start (`pre`) to now; a level-up restarts the bar at 0. pre/now = { level, frac }.
+export function xpBar(pre, now) {
+  const up = now.level > pre.level;
+  const from = up ? 0 : clamp01(pre.frac);
+  return { from, to: Math.max(from, clamp01(now.frac)), up };
+}
+// Season bar toward the next tier. needs = ascending token thresholds; pre/tok = tokens at run start / now.
+export function seasonBar(pre, tok, needs) {
+  pre = Math.min(pre, tok);
+  let lo = 0, hi = 0, preLo = 0;
+  for (const n of needs) { if (n <= tok) lo = n; else { hi = n; break; } }
+  if (!hi) return { from: 1, to: 1, up: false, left: 0, hi: 0, done: true };
+  for (const n of needs) if (n <= pre) preLo = n;
+  const up = preLo < lo, span = hi - lo;
+  const from = up ? 0 : clamp01((pre - lo) / span);
+  return { from, to: Math.max(from, clamp01((tok - lo) / span)), up, left: hi - tok, hi, done: false };
+}
+// Which records did a run break? dist: farthest ever; score: most points ever (a first-ever score is not a "record").
+export const recKind = (isDist, score, prevScore) => ({ dist: !!isDist, score: prevScore > 0 && score > prevScore });
+export const recTitle = (k) => (k.dist && k.score ? '★ ÇİFT REKOR! ★' : k.dist ? 'YENİ REKOR!' : k.score ? 'YENİ SKOR REKORU!' : '');
+
+// Respect the OS "reduce motion" setting (JS-driven pops; style.css handles the CSS animations).
+const _mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+export const reduceMotion = () => !!(_mq && _mq.matches);
+// Small GPU-only scale pulse (transform only). Event-driven and rate-limited by the callers, never per frame.
+function pop(el, k = 1.1, ms = 150) {
+  if (!el || !el.animate || reduceMotion()) return;
+  try { el.animate([{ transform: 'scale(1)' }, { transform: `scale(${k})`, offset: 0.35 }, { transform: 'scale(1)' }], { duration: ms, easing: 'ease-out' }); } catch { /* optional */ }
+}
 // Tiny sound hooks (main.js exposes the audio engine as window.__cigSfx); every one is optional and rate-limited inside audio.js.
 function snd(name, a) {
   try { const s = typeof window !== 'undefined' ? window.__cigSfx : null; if (s && s[name]) s[name](a); } catch { /* audio is optional */ }
@@ -100,6 +137,7 @@ export class UI {
     this._tcDir = 0; this._tcU = -1; this._hgOn = false; this._hgQ = -1; this._hgHue = -1; this._hgWarn = false;
     this._stompAt = 0; this._cg = { kg: -1, tnRaw: null, fill: -1, dm: -1, bk: -1 };
     this._tsLast = ''; this._tsAt = 0;
+    this._ms = 0; this._tkAt = 0; this._noTick = 0; this._pre = null; this._best = 0; this._bestD = 0; this._hc = null;
     this._tutorTap = null;
     // A revive button wired through the result payload (onRevive) must win over any generic btn-next handler.
     this.el.next?.addEventListener('click', (e) => {
@@ -177,6 +215,8 @@ export class UI {
     this._annReset();
     this.comboReset();
     this.scoreReset();
+    this._ms = 0;
+    this._pre = this._progSnap();   // XP / season at run start: the result screen animates its bars from here
     // the swipe hint only teaches brand-new players
     let runs = 0;
     try { runs = meta.stats().runs || 0; } catch { runs = 0; }
@@ -184,17 +224,24 @@ export class UI {
     this.lastBiome = biomeName;
   }
 
+  // Persistent nodes (coins | metres | record gap): only the part that changed is rewritten, and a coin pickup pops the coin number.
   _coinsRender() {
     const el = this.el.coins;
-    el.textContent = `❄️ ${this._co}
-${this._di} m`;
-    if (this._rg > 0) {
-      const sp = document.createElement('span');
-      sp.className = 'rec-gap';
-      sp.textContent = `
-REKOR −${this._rg} m`;
-      el.appendChild(sp);
+    let h = this._hc;
+    if (!h || h.p !== el) {
+      const mk = (c) => { const s = document.createElement('span'); s.className = c; return s; };
+      el.textContent = '';
+      h = this._hc = { p: el, c: mk('hc-c'), d: mk('hc-d'), g: mk('rec-gap'), co: null, di: null, rg: -1, pt: 0 };
+      el.append(h.c, '\n', h.d, h.g);
     }
+    if (h.co !== this._co) {
+      const up = h.co !== null && this._co > h.co;
+      h.co = this._co; h.c.textContent = `❄️ ${this._co}`;
+      if (up) { const t = performance.now(); if (t - h.pt > 90) { h.pt = t; pop(h.c, 1.22, 170); } }   // a flake stream pops ~10x a second at most
+    }
+    if (h.di !== this._di) { h.di = this._di; h.d.textContent = `${this._di} m`; }
+    const rg = this._rg > 0 ? this._rg : 0;
+    if (h.rg !== rg) { h.rg = rg; h.g.textContent = rg ? `\nREKOR −${rg} m` : ''; }
   }
 
   runnerStats(score, coins, mult, biomeT, dist, biomeName) {
@@ -204,8 +251,40 @@ REKOR −${this._rg} m`;
     if (coins !== this._co || dist !== this._di) { this._co = coins; this._di = dist; this._coinsRender(); }
     if (biomeName && biomeName !== this.lastBiome) { this.el.level.textContent = String(biomeName).toLocaleUpperCase('tr-TR'); this.lastBiome = biomeName; }
     const mm = mult > 1 ? mult : 0;
-    if (mm !== (this._mu || 0)) { this._mu = mm; this._cmRender(); }
+    if (mm !== (this._mu || 0)) { const up = Math.floor(mm) > Math.floor(this._mu || 0); this._mu = mm; this._cmRender(); if (up) pop(this._cmKu, 1.3, 260); }   // pop when the multiplier reaches a new whole step (x2 -> x3 ...)
+    if (dist >= MILESTONE_STEP) {
+      const k = milestoneIdx(dist, this._ms);
+      if (k) { this._ms = k; if (!/^\d+-\d+ · /.test(this.lastBiome || '')) this.runnerMilestone(k); }   // campaign levels have their own finish line
+    }
     this.setProgress(biomeT);
+  }
+
+  // Every 500 m: a gold pill under the HUD (centre announcement lane, milestone priority), edge glow and chime.
+  runnerMilestone(k) {
+    const txt = milestoneText(k), tag = milestoneTag(k);
+    this._say('c', {
+      text: 'ms' + k, prio: 2, ms: 1500,
+      show: () => {
+        const b = document.createElement('div');
+        b.className = `b ms${k % 2 ? '' : ' km'}`;
+        const n = document.createElement('b'); n.textContent = txt;
+        const s = document.createElement('small'); s.textContent = tag;
+        b.append(n, s);
+        this.el.banner.innerHTML = '';
+        this.el.banner.appendChild(b);
+        this.flash('gold');
+        snd('chime');
+        return () => { b.getAnimations?.().forEach((an) => an.cancel()); b.style.opacity = '0'; this.el.banner.innerHTML = ''; };
+      },
+    });
+  }
+
+  // XP level fraction + season tokens right now (defaults when the meta layer is unavailable).
+  _progSnap() {
+    const s = { level: 1, frac: 0, xp: 0, tok: 0, sid: '', needs: [] };
+    try { const li = meta.levelInfo(); s.level = li.level; s.frac = li.frac; s.xp = meta.xp; } catch { /* ignore */ }
+    try { const se = meta.season(); s.tok = se.tokens; s.sid = se.id; s.needs = se.tiers.map((t) => t.need); } catch { /* ignore */ }
+    return s;
   }
 
   // Size = health pips + growth, Yeti closeness, active power-ups. Understands both the old ({gap, yetiMax}) and the new
@@ -290,6 +369,8 @@ REKOR −${this._rg} m`;
     let bestDist = p && p.bestDist;
     if (!(bestDist > 0)) { try { bestDist = save.runnerBestDist(); } catch { bestDist = 0; } }
     const isRec = !!(p && (p.isBestDist ?? p.isBest));
+    const rk = recKind(isRec, score, this._best);   // _best / _bestD = records at the START of this run
+    const anyRec = rk.dist || rk.score;
 
     // what the soft toasts / mission rows should say (queued mid-run notices are drained here, never shown during play)
     const mrep = this.missionBlock(p && p.missions);
@@ -301,8 +382,7 @@ REKOR −${this._rg} m`;
     if (isRec) note = '';
     else if (toRecord > 0 && toRecord < Math.max(400, distance * 0.6)) note = `Rekora ${fmtN(toRecord)} m kaldı!`;
     else if (rank > 0 && rank <= 3) note = `#${rank}. en iyi koşun`;
-    const isScoreRec = !!(p && p.isBest) || isRec;
-    const chips = [`<div class="rx-chip${isScoreRec ? ' gold' : ''}"><small>EN İYİ</small><b>${isScoreRec ? '★ ' : ''}${fmtN(Math.max(best, score))}</b></div>`];
+    const chips = [`<div class="rx-chip${anyRec ? ' gold' : ''}"><small>EN İYİ</small><b>${anyRec ? '★ ' : ''}${fmtN(Math.max(best, score))}</b></div>`];
     if (p && p.perk) chips.push(`<div class="rx-chip"><small>YETENEK</small><b>${p.perk.icon} ${tr(p.perk.name)}</b></div>`);
     if (coins) chips.push(`<div class="rx-chip"><small>KAZANÇ</small><b>❄️ +${fmtN(coins)}</b></div>`);
     if ((this._bestCombo || 0) >= 3) chips.push(`<div class="rx-chip"><small>KOMBO</small><b>🔥 x${this._bestCombo}</b></div>`);
@@ -310,6 +390,7 @@ REKOR −${this._rg} m`;
     try { seaTok = Math.floor(Number(p && (p.seasonTokens ?? (p.stats && p.stats.seasonTokens))) || meta.stats().seasonTokens || 0); } catch { seaTok = 0; }
     if (seaTok > 0) chips.push(`<div class="rx-chip"><small>SEZON</small><b>+${fmtN(seaTok)} 🧣</b></div>`);
     html += `<div class="rx-stats">${chips.join('')}</div>`;
+    html += this.progressBlock();
     if (p && p.mutator) html += `<div class="rx-line">${tr('BU HAFTA: ' + p.mutator.name)} ${p.mutator.icon}${p.mutator.score > 1 ? ' · ' + tr('x' + p.mutator.score + ' puan') : ''}</div>`;
     if (p && p.weeklyBest) html += `<div class="rx-line">🏆 Haftalık rekor! ${fmtN(p.weeklyRecord || score)}</div>`;
     if (p && p.synergies) html += `<div class="rx-line">${tr('SİNERJİ:')} ${p.synergies.map((x) => tr(x)).join(' · ')}</div>`;
@@ -352,9 +433,13 @@ REKOR −${this._rg} m`;
     this.el.result.classList.add('runner');
     this.shareCardBtn({ mode: 'YETİ RUSH', big: fmtN(distance), unit: 'metre', isRec, challenge: 'Beni geçebilir misin? 🏔️' });
     this.el.resTitle.textContent = title;
-    this.el.resBadge.classList.toggle('hidden', !isRec);
+    this.el.resBadge.classList.toggle('hidden', !anyRec);
+    this.el.resBadge.textContent = recTitle(rk);
     this.el.resLabel.textContent = 'metre';
-    this.el.resSub.textContent = isRec ? '' : `REKOR ${fmtN(bestDist)} m`;
+    // a record shows what it beat; otherwise the target to chase
+    const prevD = Math.round(this._bestD || 0);
+    this.el.resSub.textContent = rk.dist ? (prevD > 0 ? `ÖNCEKİ REKOR ${fmtN(prevD)} m · +${fmtN(Math.max(0, distance - prevD))} m` : '')
+      : rk.score ? `ÖNCEKİ SKOR REKORU ${fmtN(this._best)}` : `REKOR ${fmtN(bestDist)} m`;
     this.el.resCoins.classList.add('hidden');
     this.el.resCoins.innerHTML = '';
 
@@ -373,16 +458,39 @@ REKOR −${this._rg} m`;
     if (show) { void this.el.next.offsetWidth; this.el.next.classList.add('rv-ring'); }   // 3 s countdown ring
     clearTimeout(this._rvTm); this._rvTm = show ? setTimeout(() => { this.el.next.classList.remove('rv-ring'); }, 3000) : 0;
     this.el.retry.classList.remove('hidden');
-    this.el.retry.textContent = '↻ TEKRAR';
+    // the one-tap TEKRAR carries the next target right under the thumb
+    this.retryLabel(rk.dist ? `Rekoru geç: ${fmtN(distance)} m` : toRecord > 0 && distance >= 50 ? `Rekora ${fmtN(toRecord)} m kaldı!` : '');
     this.el.menuBtn.classList.remove('hidden');
 
-    this.resultFx(isScoreRec);
+    this.resultFx(anyRec);
     this.goalAnimate();
     this.countUp(distance, (v, e) => {
       this.el.resPct.textContent = `${fmtN(v)} m`;
       this.el.resTons.textContent = `SKOR ${fmtN(score * e)}`;
-    }, 1400, { tick: true, done: () => this.resultScoreDone(isScoreRec) });
+    }, 1400, { tick: true, done: () => this.resultScoreDone(anyRec) });
     this.flushNotices(mrep.notices);
+  }
+
+  // TEKRAR: big label + an optional small target line (no sub line = plain label, also used to reset it for other result screens)
+  retryLabel(sub) {
+    const b = this.el.retry;
+    b.textContent = '↻ TEKRAR';
+    if (sub) { const s = document.createElement('small'); s.className = 'rt-sub'; s.textContent = sub; b.appendChild(s); }
+  }
+
+  // SEVİYE (XP) and SEZON bars of the result: they start where they stood at the run start and fill up while the numbers count.
+  progressBlock() {
+    const pre = this._pre;
+    if (!pre) return '';
+    const cur = this._progSnap();
+    const row = (cls, label, b, val) => `<div class="pg-row ${cls}${b.up ? ' up' : ''}"><span class="pg-l">${label}</span><div class="pg-b"><i class="gain" style="transform:scaleX(${b.from.toFixed(3)})" data-to="${b.to.toFixed(3)}"></i></div><b class="pg-v">${val}</b></div>`;
+    const xb = xpBar(pre, cur), gx = Math.max(0, Math.round(cur.xp - pre.xp));
+    let h = row('lv', `SEVİYE ${cur.level}${xb.up ? ' ▲' : ''}`, xb, gx ? `+${fmtN(gx)} XP` : '');
+    if (cur.needs.length && pre.sid === cur.sid) {
+      const sb = seasonBar(pre.tok, cur.tok, cur.needs), gt = cur.tok - pre.tok;
+      if (!sb.done) h += row('sz', 'SEZON', sb, `${fmtN(cur.tok)}/${fmtN(sb.hi)} 🧣${gt > 0 ? ` +${fmtN(gt)}` : ''}`);
+    }
+    return `<div class="rx-pg">${h}</div>`;
   }
 
   // closest unfinished mission, e.g. '3/5 kombo'
@@ -467,6 +575,7 @@ REKOR −${this._rg} m`;
   goalAnimate() {
     this.timers.push(setTimeout(() => {
       for (const i of this.el.resExtra.querySelectorAll('.rg-b i.gain')) i.style.width = `${i.dataset.to}%`;
+      for (const i of this.el.resExtra.querySelectorAll('.pg-b i.gain')) i.style.transform = `scaleX(${i.dataset.to})`;   // transform: no layout work
     }, 900));
   }
 
@@ -509,15 +618,15 @@ REKOR −${this._rg} m`;
     for (const ch of this.el.resExtra.children) { ch.classList.add('slidein'); ch.style.animationDelay = `${0.5 + i * 0.12}s`; i++; }
     if (rec) {
       R.classList.add('rec');
-      this.timers.push(setTimeout(() => this.confetti(), 1100));
+      if (!reduceMotion()) this.timers.push(setTimeout(() => this.confetti(), 1100));
     }
-    this.timers.push(setTimeout(() => this.coinFly(), 1000));
+    if (!reduceMotion()) this.timers.push(setTimeout(() => this.coinFly(), 1000));
   }
 
   resultScoreDone(rec) {
     const t = this.el.resTons;
     t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop');
-    if (rec) snd('chime'); else snd('ui', 'confirm');
+    if (rec) { pop(this.el.resPct, 1.14, 420); snd('chime'); } else snd('ui', 'confirm');
   }
 
   confetti() {
@@ -854,6 +963,8 @@ REKOR −${this._rg} m`;
     let b = 0;
     try { b = save.runnerBest(); } catch { b = 0; }
     this._best = b;
+    try { this._bestD = save.runnerBestDist() || 0; } catch { this._bestD = 0; }   // before this run: the result screen shows the improvement
+    this._noTick = 0;
     this.el.tons.className = 'hud-tons';
     this.el.tons.textContent = '0';
   }
@@ -866,15 +977,21 @@ REKOR −${this._rg} m`;
     const big = delta >= 20 && delta > this._rate * 4 + 10;
     if (!big) this._rate = this._rate * 0.9 + delta * 0.1;
     const el = this.el.tons;
+    const now = performance.now();
     if (big) {
       const k = delta >= 300 ? 1.5 : delta >= 100 ? 1.3 : 1.18;
-      try { el.animate([{ transform: 'scale(1)', color: '#fff' }, { transform: `scale(${k})`, color: '#ffd23a', offset: 0.3 }, { transform: 'scale(1)', color: '#fff' }], { duration: 420, easing: 'cubic-bezier(.2,1.6,.4,1)' }); } catch { /* optional */ }
+      this._noTick = now + 450;
+      if (!reduceMotion()) { try { el.animate([{ transform: 'scale(1)', color: '#fff' }, { transform: `scale(${k})`, color: '#ffd23a', offset: 0.3 }, { transform: 'scale(1)', color: '#fff' }], { duration: 420, easing: 'cubic-bezier(.2,1.6,.4,1)' }); } catch { /* optional */ } }
       this.scorePop(delta);
       this.comboDerive();
+    } else if (delta >= 8 && now - this._tkAt > 170 && now > this._noTick) {
+      this._tkAt = now;   // a small pickup-sized chunk (the steady distance drip is 1-4 a frame and stays calm): light tick, max ~6 a second
+      pop(el, 1.07, 130);
     }
     const m = (v, st) => Math.floor(v / st);
     if (m(sc, 1000) > m(prev, 1000)) {
       const ms = m(sc, 10000) > m(prev, 10000) ? 3 : m(sc, 5000) > m(prev, 5000) ? 2 : 1;
+      this._noTick = now + (ms === 3 ? 1900 : ms === 2 ? 1400 : 1000);   // the gold flourish owns the transform meanwhile
       el.classList.remove('gold1', 'gold2', 'gold3'); void el.offsetWidth; el.classList.add(`gold${ms}`);
       snd('chime');
     }
@@ -892,7 +1009,7 @@ REKOR −${this._rg} m`;
   }
 
   scorePop(delta) {
-    if (this._pops >= 3 || typeof document === 'undefined') return;
+    if (this._pops >= 3 || typeof document === 'undefined' || reduceMotion()) return;
     this._pops++;
     const d = document.createElement('div');
     d.className = 'score-pop';
@@ -1368,6 +1485,8 @@ REKOR −${this._rg} m`;
     this.el.next.classList.remove('revive');
     this.el.next.classList.add('next');
     this.el.retry.classList.remove('hidden');
+    this.retryLabel('');
+    this.el.resBadge.textContent = 'YENİ REKOR!';
     this.el.menuBtn.classList.remove('hidden');
     this.reviveFn = null;
     this.el.resCoins.classList.toggle('hidden', !coins);

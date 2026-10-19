@@ -17,11 +17,13 @@ import { ACTS, LEVELS, levelById, BONUS } from './campaign.js';
 import { dagPlan, DAG_COUNT, planBrief } from './cigplan.js';
 import { nextGoal, vitrinInfo } from './shop.js';
 import { hideBoot, runnerDeathText } from './ui.js';
+import { PUBLIC_URL } from './sharecard.js';
 import { getLang, setLang } from './i18n.js';
 import { hasArenaInvite } from './agar/invite.js';
 
 const STYLE_ID = 'freemon-menus-style';
 const VERSION = '0.3.0';
+const PRIVACY_URL = PUBLIC_URL + 'privacy.html';
 const LEVELS_PER_ACT = 10;
 const ACT_SUF = ['i', 'yi', 'ü', 'ü', 'i', 'yı', 'yi', 'i', 'u', 'u']; // Turkish accusative: Act 1'i, 2'yi, 3'ü ...
 const WORD = 'PATPAT';
@@ -980,6 +982,8 @@ const CSS = `
 .fm-sum .sp i { width: 18px; height: 9px; border-radius: 5px; background: rgba(255, 255, 255, 0.22); }
 .fm-sum .sp i.on { background: linear-gradient(90deg, #ffe066, #ff9a3a); }
 .fm-sum .sr { font-size: 15px; line-height: 1; }
+.fm-sum .ss { font-size: 13px; line-height: 1; color: #ffd9a0; white-space: nowrap; }
+.fm-priv { display: inline-block; margin: 6px 0 2px; padding: 12px 18px; font-size: 13px; color: var(--ink); text-decoration: underline; text-shadow: none; cursor: pointer; }
 .fm-sum .sr.rdy { color: var(--gold); font-size: 11px; background: #ff7a2f; padding: 3px 7px; border-radius: 9px; }
 .fm-today { flex-wrap: wrap; overflow: visible; justify-content: center; row-gap: 5px; touch-action: auto; }
 .fm-tdots { display: none; }
@@ -1966,6 +1970,11 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const cr = el('div', 'fm-credits');
     cr.appendChild(el('div', '', '3D modeller: Kenney (kenney.nl) — CC0 · Ses efektleri: Kenney, rubberduck (OpenGameArt) — CC0 · Müzik ve kod: PATPAT ekibi'));
     cr.appendChild(el('em', '', `PATPAT v${VERSION}`));
+    // privacy policy (also bundled as privacy.html): opens in the system browser, so the game itself is never navigated away
+    const pv = el('a', 'fm-priv', 'Gizlilik Politikası');
+    pv.href = PRIVACY_URL; pv.target = '_blank'; pv.rel = 'noopener noreferrer';
+    pv.addEventListener('click', () => sfx('click'));
+    cr.appendChild(pv);
     p.list.appendChild(cr);
     return p;
   }
@@ -3237,7 +3246,10 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     add(bot, add(el('div', 'fm-playw'), r.play));
     r.today = button('fm-today', '', () => { sfx('open'); openToday(); }, 'Bugün: ödüller ve görevler');
     r.todayBdg = el('span', 'fm-tbdg off', '');
-    add(r.today, el('span', 'tic', '📅'), el('span', 'ttx', 'BUGÜN'), r.todayBdg);
+    // streak flame + a slim bar = progress to the next SEZON AVI reward: the whole daily hub at a glance, one tap opens it
+    r.tstat = el('span', 'tstat', '');
+    r.tbarFill = el('i');
+    add(r.today, el('span', 'tic', '📅'), el('span', 'ttx', 'BUGÜN'), r.tstat, r.todayBdg, add(el('span', 'tbar'), r.tbarFill));
     bot.appendChild(r.today);
     r.arena = button('fm-arena', '', () => { sfx('confirm'); if (cb.onAgar) cb.onAgar(); }, 'Kartopu Arena');
     add(r.arena, el('span', 'ico', '⚔️'), add(el('span', 'tx'), el('b', '', 'KARTOPU ARENA'), el('small', '', 'Dev harita · botlar · arkadaşlarınla oda kur')));
@@ -3289,6 +3301,15 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     }, 700);
   }
 
+  // progress toward the next SEZON AVI reward (1 once every tier has been reached)
+  function seasonProgress(se) {
+    const nxt = se.tiers.find((t) => t.state === 'locked');
+    if (!nxt) return 1;
+    const prev = [...se.tiers].reverse().find((t) => t.need <= se.tokens);
+    const lo = prev ? prev.need : 0;
+    return Math.max(0, Math.min(1, (se.tokens - lo) / Math.max(1, nxt.need - lo)));
+  }
+
   function updateMain() {
     const r = refs;
     if (!r) return;
@@ -3301,6 +3322,12 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.coinsPill.set(coins(), false);
     r.crPill.set(meta.crystals, false);
     try { const tc = todayItems().count; r.todayBdg.textContent = tc > 9 ? '9+' : String(tc); r.todayBdg.classList.toggle('off', !tc); r.today.classList.toggle('hot', tc > 0); } catch { /* ignore */ }
+    try {
+      const se = meta.season(), sk = meta.daily().streak;
+      r.tstat.textContent = sk > 0 ? `🔥 ${sk}` : '';
+      setCss(r.tbarFill, '--f', String(seasonProgress(se)));
+      r.today.classList.toggle('sea', se.ready > 0);
+    } catch { /* ignore */ }
 
     const mult = meta.multiplier();
     r.multChip.textContent = `✖️ ×${mult} ÇARPAN`;
@@ -3360,17 +3387,14 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       clear(r.sum);
       const pips = el('span', 'sp');
       for (let k = 0; k < Math.max(nT, 1); k++) pips.appendChild(el('i', k < nDone ? 'on' : ''));
-      add(r.sum, el('span', 'sl', `GÜNLÜK ${nDone}/${nT}`), pips, rdy ? el('span', 'sr rdy', 'AL') : el('span', 'sr', '🎁'));
+      add(r.sum, el('span', 'sl', `GÜNLÜK ${nDone}/${nT}`), pips, db.streak > 0 ? el('span', 'ss', `🔥${db.streak}`) : null, rdy ? el('span', 'sr rdy', 'AL') : el('span', 'sr', '🎁'));
     }
     // BUGÜN: live events as round shortcuts in the side rails (right rail first, then left under the globe / post)
     try {
       const chips = [];
       try {
         const se = meta.season();
-        const nxt = se.tiers.find((t) => t.state === "locked");
-        const prev = [...se.tiers].reverse().find((t) => t.need <= se.tokens);
-        const lo = prev ? prev.need : 0;
-        const frac = nxt ? Math.max(0, Math.min(1, (se.tokens - lo) / Math.max(1, nxt.need - lo))) : 1;
+        const frac = seasonProgress(se);
         const gf = Math.max(0, Math.min(1, se.claimed / Math.max(1, se.total)));
         if (se.daysLeft <= 3 && se.msLeft > 0) chips.push({ ic: "⏳", lb: `Sezon ${se.msLeft < 86400000 ? Math.max(1, Math.ceil(se.msLeft / 3600000)) + "s" : se.daysLeft + "g"}`, red: true, rank: -1, fn: () => openSeason(), aria: "Sezon bitiyor" });
         chips.push({ sez: true, hot: se.ready > 0, frac, gf, lb: `Sezon ${se.claimed}/${se.total}`, rank: -2, fn: () => openSeason(), aria: "Sezon Avı" });

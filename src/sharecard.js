@@ -8,6 +8,17 @@ import { SKINS } from './skins.js';
 let ctx3d = null;
 export function setShareContext(c) { ctx3d = c; }
 
+// The link printed on the card and shared with it. A hosted build uses its own address; the Capacitor app (https://localhost)
+// and dev / LAN servers would share a dead link, so they fall back to the public site. Change the domain here when the game moves.
+export const PUBLIC_URL = 'https://sherlockfp.github.io/patpat/';
+export function shareUrl() {
+  try {
+    const { protocol, hostname, origin, pathname } = location;
+    const hosted = /^https?:$/.test(protocol) && !!hostname && hostname !== 'localhost' && !/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[)/.test(hostname) && !hostname.endsWith('.local');
+    return hosted ? origin + pathname.replace(/index\.html$/, '') : PUBLIC_URL;
+  } catch { return PUBLIC_URL; }
+}
+
 const W = 1080, H = 1350;
 const INK = '#14213d';
 
@@ -119,7 +130,7 @@ export function drawCard({ mode, big, unit, isRec, challenge }) {
 
   // challenge + url
   fit(c, challenge, W / 2, 1110, W - 120, 72, '#ffffff', 16);
-  const url = location.origin + location.pathname;
+  const url = shareUrl();
   c.fillStyle = INK; rr(c, 90, 1190, W - 180, 96, 40); c.fill();
   c.fillStyle = '#ffd23f'; c.font = '900 40px system-ui, sans-serif';
   let u = url.replace(/^https?:\/\//, '');
@@ -138,7 +149,7 @@ async function toast(msg) {
 
 /** opts: { mode, big, unit, isRec, challenge, text } — call from a click handler */
 export async function shareCard(opts) {
-  const url = location.origin + location.pathname;
+  const url = shareUrl();
   const text = opts.text || `PATPAT ${t(opts.mode)}: ${opts.big} ${t(opts.unit)}${opts.isRec ? ' — ' + t('YENİ REKOR!') : ''} ${t(opts.challenge)}`;
   let cv;
   try { cv = drawCard(opts); } catch { cv = null; }
