@@ -9,7 +9,13 @@
     "preview": "vite preview --host",
     "cap:sync": "npm run build && npx cap sync",
     "cap:android": "npm run build && npx cap sync android && npx cap open android",
-    "build:pages": "vite build --outDir docs --emptyOutDir && node -e \"require('fs').writeFileSync('docs/.nojekyll','')\""
+    "build:pages": "vite build --outDir docs --emptyOutDir && node -e \"require('fs').writeFileSync('docs/.nojekyll','')\"",
+    "check:camera": "node scripts/check-camera-clearance.mjs",
+    "check:visuals": "node scripts/check-governor.mjs && node scripts/check-fx.mjs && node scripts/check-look.mjs && node scripts/check-shaders.mjs",
+    "check:audio": "node scripts/check-audio.mjs",
+    "check:ui": "node scripts/check-ui-math.mjs",
+    "check:feel": "node scripts/check-feel.mjs && node scripts/check-feel-sim.mjs",
+    "check": "npm run check:camera && npm run check:visuals && npm run check:audio && npm run check:ui && npm run check:feel"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",

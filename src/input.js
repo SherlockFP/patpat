@@ -6,7 +6,11 @@
 //  * jump / duck: a vertical flick measured over the last 120 ms of finger travel (so "touch, hesitate, flick" works and
 //    "lane swipe, then up" works inside one touch). After every action the gesture re-anchors.
 //  * endGesture(): the game says "this touch already did its job" (e.g. it was a junction turn): the rest of the touch is ignored.
+//  * swipe on release: a quick short flick (REL_PX in under REL_MS) that never reached the live thresholds above still fires
+//    once when the finger lifts, so no swipe is ever dropped just for being small.
 const LANE_PX = 28;        // travel that fires a lane change
+const REL_PX = 16;         // a flick this long (> the 14 px tap slop) fires on release
+const REL_MS = 200;        // ... when the whole touch lasted less than this
 const LANE_MORE_PX = 150;  // extra travel for a second lane in the same direction
 const LANE_BACK_PX = 24;   // reversing by this much fires the opposite lane
 const FLICK_PX = 36;       // vertical travel inside FLICK_MS that fires jump / duck
@@ -33,6 +37,7 @@ export class Input {
     this.hDir = 0;                   // direction of the last horizontal action in this touch (0 = none yet)
     this.extX = 0;                   // furthest finger x along hDir since the last action
     this.swallow = false;            // endGesture(): ignore the rest of this touch
+    this.fired = false;              // this touch already fired a lane / jump / duck (no release-flick on top)
     this.ring = new Float64Array(RING * 3);   // last pointer samples: t, x, y
     this.ringN = 0; this.ringI = 0;
 
@@ -44,6 +49,7 @@ export class Input {
       const now = performance.now();
       this.swipe.x = e.clientX; this.swipe.y = e.clientY; this.swipe.t = now;
       this.swallow = false;
+      this.fired = false;
       this.hDir = 0;
       this.anchor(e.clientX, e.clientY);
       this.ringN = 0; this.ringI = 0;
@@ -64,11 +70,18 @@ export class Input {
     });
     const up = (e) => {
       if (e.pointerId !== this.pointerId) return;
+      const spent = this.swallow || this.fired;      // this touch already did its job (a live swipe, or the game used it)
       this.pointerId = null;
       this.down = false;
       this.swallow = false;
-      // A tap = short press with little travel; two taps within 300 ms = double-tap.
       const sw = this.swipe, now = performance.now();
+      // Swipe on release: a quick short flick that never reached the live thresholds still counts, once.
+      if (!spent && e.type === 'pointerup' && now - sw.t < REL_MS) {
+        const dx = e.clientX - sw.x, dy = e.clientY - sw.y, ax = Math.abs(dx), ay = Math.abs(dy);
+        if (ax >= REL_PX && ax > ay * 1.2) this.fireLane(Math.sign(dx), e.clientX, e.clientY);
+        else if (ay >= REL_PX && ay > ax * 1.2) this.fireVertical(dy < 0, e.clientX, e.clientY);
+      }
+      // A tap = short press with little travel; two taps within 300 ms = double-tap.
       if (now - sw.t < 220 && Math.abs(e.clientX - sw.x) < 14 && Math.abs(e.clientY - sw.y) < 14) {
         if (now - this.lastTapT < 300) { this.doubleTapQueued = true; this.lastTapT = 0; } else this.lastTapT = now;
       }
@@ -113,12 +126,14 @@ export class Input {
   fireLane(d, x, y) {
     this.laneQueued = Math.max(-2, Math.min(2, this.laneQueued + d));
     this.hDir = d;
+    this.fired = true;
     this.anchor(x, y);
     this.ringN = 0;                       // a new action starts a fresh flick window
   }
 
   fireVertical(up, x, y) {
     if (up) this.jumpQueued = true; else this.diveQueued = true;
+    this.fired = true;
     this.anchor(x, y);
     this.ringN = 0;
   }

@@ -12,6 +12,12 @@
 // v2 mix philosophy: PLEASANT, never shrill. Master level is -6 dB vs v1, a gentle lowpass sits on the master bus (nothing above ~6.5 kHz),
 // every synth voice has rounder / shorter envelopes, and every repetitive sound (flakes, pops, near-miss, whoosh, thuds) is rate-limited.
 //
+// v3 game-feel set: pickupStreak (climbing key-aware ladder + sparkle), turnOk, nearMiss, comboTier, newBest, popBurst, roar and
+// yetiNear. Their pitches come from the running runner music through globalThis.__cigMusicKey (see runner/music.js) so they land in
+// its key and chord; without music (CIG, arena, menus) they fall back to the G pentatonic of the ambient bed. Big moments duck the
+// music bus (sidechain-style), the master has a compressor + soft limiter, and a global voice-rate governor drops pile-ups of small
+// sounds. The context unlocks on the first touch and resumes by itself when the app comes back.
+//
 // Mixing notes: all noise buffers are normalised to RMS ~0.3, so the numbers
 // below are "roughly RMS-ish" levels. Tune per sound with MIX (synth) and SM (samples,
 // 1 = the file's own loudness-normalised level, see sfx.js), or MASTER_LEVEL.
@@ -36,7 +42,15 @@ const MIX = {
   pop: 1.1, bump: 0.85, crash: 0.6, roll: 0.9, whoosh: 0.7, land: 0.9,
   milestone: 0.5, ui: 1.2, star: 0.9, win: 1.0, lose: 1.0,
   hop: 0.9, flake: 1.0, stomp: 1.0, chime: 0.9, pof: 1.0, near: 0.7,
+  turn: 0.8, tier: 0.8, best: 0.8, burst: 0.9, roar: 0.9, yeti: 1.0,
 };
+
+// Pickup streak: rungs 0..RUNG_TOP of the music's scale (about 1.5-2 octaves), sparkle layer from SPARK_AT up; a pause longer than
+// STREAK_GAP starts the climb again. Pickups are never closer than STREAK_MIN apart (a magnet pulling ten flakes is not a buzz).
+const RUNG_TOP = 9, SPARK_AT = 7, STREAK_GAP = 0.9, STREAK_MIN = 0.055;
+const FALLBACK_CHORD = [67, 71, 74]; // G major (MIDI), the key of the ambient bed and the pop walk
+// Global governor: at most GOV_N one-shots (below P_BIG) start inside GOV_WIN seconds; the rest of a pile-up is dropped.
+const GOV_N = 6, GOV_WIN = 0.1;
 
 /** Per-use sample trim (volume of the sample layer; the synth layer keeps MIX). */
 const SM = {
@@ -74,14 +88,22 @@ let graceUntil = 0; // ms: a resume() is in flight, scheduling is allowed meanwh
 let lastResumeTry = 0;
 let voices = []; // oldest first
 let roll = null;
-const lastAt = { milestone: -1, pop: -1, popS: -1, bump: -1, crash: -1, land: -1, ui: -1, whoosh: -1, hop: -1, flake: -1, stomp: -1, near: -1, turn: -1, pof: -1, chime: -1, star: -1 };
-let flakeChain = 0, flakeT = -9; // consecutive flake pickups walk up the scale gently, reset after a pause
+let yeti = null; // chase bed + footfalls, see yetiNear()
+const lastAt = {
+  milestone: -1, pop: -1, popS: -1, bump: -1, crash: -1, land: -1, ui: -1, whoosh: -1, hop: -1, flake: -1, stomp: -1, near: -1, turn: -1,
+  pof: -1, chime: -1, star: -1, shim: -99, spark: -99, tier: -99, best: -99, burst: -99, roar: -99,
+};
+let streakN = 0, streakT = -9; // consecutive pickups walk up the ladder, reset after a pause
+const gov = new Float64Array(GOV_N).fill(-9); // start times of the last GOV_N one-shots (ring)
+let govI = 0;
 
 // ---------------------------------------------------------------- small utils
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const num = (x, d) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
 const clamp01 = (x) => (x > 0 ? (x < 1 ? x : 1) : 0);
+const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+/** Sidechain-style duck of the runner music bus: amount 0..0.6 of its level, held `sec`, then it swells back (see music.js dip()). */
 const dipMusic = (a, sec) => { try { const f = globalThis.__cigMusicDip; if (f) f(a, sec); } catch (e) { /* ignore */ } };
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -214,6 +236,10 @@ function stealVoice(v) {
  */
 function begin(prio, dur, trim) {
   const now = ctx.currentTime;
+  // rate governor: when GOV_N sounds already started inside GOV_WIN, small ones (below P_BIG) are dropped; big ones always go through
+  if (prio < P_BIG && now - gov[govI] < GOV_WIN) return null;
+  gov[govI] = now;
+  govI = (govI + 1) % GOV_N;
   for (let i = voices.length - 1; i >= 0; i--) {
     if (voices[i].end < now - 0.25) endVoice(voices[i]); // safety net if `ended` never fired
   }
@@ -294,13 +320,13 @@ function osc(v, type, freq, t, dur) {
   return o;
 }
 
-/** Pitched blip: osc -> percussive gain. f1 (optional) = pitch glide target over sweepT. */
-function tone(v, type, t, f0, f1, sweepT, peak, atk, dec) {
+/** Pitched blip: osc -> percussive gain. f1 (optional) = pitch glide target over sweepT; `dest` (optional) replaces the voice output. */
+function tone(v, type, t, f0, f1, sweepT, peak, atk, dec, dest) {
   const o = osc(v, type, f0, t, atk + dec + 0.03);
   if (f1 && f1 !== f0) sweep(o.frequency, t, f0, f1, sweepT);
   const g = gain0();
   env(g.gain, t, peak, atk, dec);
-  link(o, g, v.out);
+  link(o, g, dest || v.out);
   return o;
 }
 
@@ -391,14 +417,65 @@ function startSamples() {
 
 // ------------------------------------------------------------- scale helpers
 
-/** Semitones above the root for combo count: major pentatonic, 2 octaves, then loops the upper octave. */
+/** Semitones above the root for combo count: major pentatonic, 2 octaves, then loops the upper octave (negative steps go below the root). */
 function scaleSemis(combo) {
   let s = combo;
   if (s > 10) s = 5 + ((s - 11) % 6); // cycle steps 5..10
-  return 12 * Math.floor(s / 5) + PENT[s % 5];
+  const o = Math.floor(s / 5);
+  return 12 * o + PENT[s - 5 * o];
+}
+
+/** The runner music's key hook (runner/music.js), or null while it is not loaded. */
+const keyHook = () => globalThis.__cigMusicKey || null;
+
+/**
+ * Pitch (Hz) of rung `step` of the pickup scale: in the key and chord of the running music, else the G pentatonic of the ambient bed
+ * (the old walk). Rung 0 sits around G5 / the key's root in 70..81 MIDI; negative rungs go below.
+ */
+function stepHz(step) {
+  const s = step > 10 ? 5 + ((step - 11) % 6) : step; // same loop as scaleSemis for long chains
+  const k = keyHook();
+  if (k) {
+    const m = k.ladder(s);
+    if (m >= 0) return mtof(m);
+  }
+  return BASE_HZ * 2 * Math.pow(2, scaleSemis(s) / 12);
+}
+
+const CHORD = [0, 0, 0]; // reused by chord()
+
+/** Current chord of the music (3 ascending MIDI notes, pad register) - or G major when no music runs. Returns the shared array. */
+function chord() {
+  const k = keyHook();
+  if (k && k.chord(CHORD) >= 3) return CHORD;
+  CHORD[0] = FALLBACK_CHORD[0]; CHORD[1] = FALLBACK_CHORD[1]; CHORD[2] = FALLBACK_CHORD[2];
+  return CHORD;
 }
 
 // ----------------------------------------------------------------- lifecycle
+
+/** Linear up to LIM_KNEE, then a smooth tanh shoulder that reaches +-1 asymptotically. */
+const LIM_KNEE = 0.7;
+function limiterCurve() {
+  const n = 2048, a = new Float32Array(n), room = 1 - LIM_KNEE;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1, ax = Math.abs(x);
+    const y = ax <= LIM_KNEE ? ax : LIM_KNEE + room * Math.tanh((ax - LIM_KNEE) / room);
+    a[i] = x < 0 ? -y : y;
+  }
+  return a;
+}
+
+/** Old iOS: a started silent buffer inside the gesture unlocks the output. Harmless everywhere else. */
+function unlockSilent(c) {
+  try {
+    const ss = c.createBufferSource();
+    ss.buffer = c.createBuffer(1, 1, 22050);
+    ss.connect(c.destination);
+    ss.onended = () => { try { ss.disconnect(); } catch (e) { /* ignore */ } };
+    ss.start(0);
+  } catch (e) { /* ignore */ }
+}
 
 function build(c) {
   const m = c.createGain();
@@ -413,17 +490,15 @@ function build(c) {
   mlp.type = 'lowpass';
   mlp.frequency.value = Math.min(MASTER_LP, c.sampleRate * 0.45);
   mlp.Q.value = 0.55;
+  // safety limiter after the compressor: transparent below ~-3 dBFS, folds peaks above it smoothly instead of hard-clipping the output
+  // (stacked stabs + a crash can still overshoot a 4 ms compressor attack). No oversampling: it only works on rare peaks.
+  const lim = c.createWaveShaper();
+  lim.curve = limiterCurve();
   m.connect(mlp);
   mlp.connect(comp);
-  comp.connect(c.destination);
-  // old iOS: a started silent buffer inside the gesture unlocks output
-  try {
-    const sb = c.createBuffer(1, 1, 22050);
-    const ss = c.createBufferSource();
-    ss.buffer = sb;
-    ss.connect(c.destination);
-    ss.start(0);
-  } catch (e) { /* ignore */ }
+  comp.connect(lim);
+  lim.connect(c.destination);
+  unlockSilent(c);
   const b = c.createGain();
   b.gain.value = 1;
   b.connect(m);
@@ -461,6 +536,27 @@ function init() {
   } catch (e) { /* ignore */ }
 }
 
+// Mobile unlock: the first touch / key / click creates and starts the context (so the very first sound is not lost to the autoplay
+// lock), and while it is suspended or interrupted (phone call, app switch, tab switch) every gesture retries. Once it runs, a gesture
+// costs one state check.
+function onGesture() {
+  if (ctx && ctx.state === 'running' && !paused) return;
+  init();
+  if (ctx && ctx.state !== 'running') unlockSilent(ctx);
+}
+
+try {
+  if (typeof window !== 'undefined' && window.addEventListener && typeof document !== 'undefined') {
+    for (const ev of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'click', 'keydown']) {
+      window.addEventListener(ev, onGesture, { capture: true, passive: true });
+    }
+    // coming back to the tab / page-cache restore: the OS may have suspended the context meanwhile
+    const back = () => { if (ctx && !document.hidden) { paused = false; if (ctx.state !== 'running') resumeCtx(); } };
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('pageshow', back);
+  }
+} catch (e) { /* ignore */ }
+
 function setMuted(b) {
   muted = !!b;
   saveMuted();
@@ -469,7 +565,7 @@ function setMuted(b) {
     master.gain.cancelScheduledValues(t);
     master.gain.setTargetAtTime(muted ? 0 : MASTER_LEVEL, t, 0.015);
   }
-  if (muted) silenceRoll();
+  if (muted) { silenceRoll(); silenceYeti(); }
 }
 
 function isMuted() { return muted; }
@@ -478,6 +574,7 @@ function suspend() {
   if (!ctx) return;
   paused = true;
   silenceRoll();
+  silenceYeti();
   const p = ctx.suspend();
   if (p && typeof p.catch === 'function') p.catch(() => {});
 }
@@ -576,7 +673,8 @@ function pop(size01, combo) {
   const t = ctx.currentTime + 0.002;
   const cm = Math.min(c, 10) / 10;
 
-  const f = BASE_HZ * Math.pow(2, (scaleSemis(c) - s * 5) / 12) * rand(0.985, 1.015);
+  // bigger = lower, in whole scale steps (so it stays in the music's key); an octave below the flake ladder
+  const f = stepHz(c - Math.round(s * 3)) * 0.5 * rand(0.99, 1.01);
   const lp = filt('lowpass', 2400 - 600 * s, 0.6);
   lp.connect(v.out);
   const o = osc(v, 'sine', f * 0.8, t, 0.2);
@@ -585,7 +683,8 @@ function pop(size01, combo) {
   const g = gain0();
   env(g.gain, t, 0.26 * (1 + 0.25 * cm), 0.004, 0.11 + 0.05 * s);
   link(o, g, lp);
-  tone(v, 'triangle', t, f * 2, 0, 0, 0.035, 0.002, 0.05); // soft overtone, no sparkle
+  tone(v, 'triangle', t, f * 2, 0, 0, 0.035, 0.002, 0.05); // soft overtone
+  if (c >= SPARK_AT && (c <= 12 || Math.random() < 0.5)) sparkle(v, t, (c - SPARK_AT + 1) / (RUNG_TOP - SPARK_AT + 1), f * 2); // top of the scale: glitter
   // snow puff: low band only
   nz(v, whiteBuf, t, 'bandpass', 900 - 300 * s, 600, 0.9, 0.08, 0.35 * (0.6 + 0.4 * s), 0.004, 0.06 + 0.05 * s);
   // body for the big stuff
@@ -598,27 +697,49 @@ function pop(size01, combo) {
 }
 
 /**
- * Flake pickup: a tiny round "tink" (sine + quiet octave, lowpassed) that steps up the pentatonic while you keep collecting and
- * resets after a pause. >= 60 ms apart, so a magnet pulling ten flakes never turns into a buzz.
+ * Glitter run for the top of the pickup ladder: grains on the note, its fifth and its octave (f, 1.5 f, 2 f - always consonant with
+ * the note) plus an airy glint. amt 0..1 sets the level and the grain count. Rate-limited; grains above 5.2 kHz are skipped.
  */
-function flake(step) {
-  if (!ready() || !throttle('flake', 0.06)) return;
+function sparkle(v, t, amt, f) {
+  const a = clamp01(amt);
+  if (a < 0.1 || !throttle('spark', 0.12)) return;
+  const n = a > 0.6 ? 3 : 2;
+  for (let i = 0; i < n; i++) {
+    const fg = f * (i === 0 ? 1 : i === 1 ? 1.5 : 2);
+    if (fg < 5200) tone(v, 'sine', t + 0.034 * (i + 1), fg, 0, 0, 0.02 + 0.05 * a, 0.002, 0.07 + 0.04 * i);
+  }
+  nz(v, whiteBuf, t + 0.02, 'highpass', 4200, 0, 0.7, 0, 0.05 * a, 0.002, 0.08);
+}
+
+/**
+ * Pickup streak (snow flakes, coins, snow piles): consecutive pickups climb the music's scale one rung each (rung 0 = the key's root,
+ * RUNG_TOP = about two octaves up), brighter as they climb, with a glitter layer on the top rungs. A pause longer than STREAK_GAP
+ * starts the climb again. `i` = explicit rung (the game keeps its own chain); omit it to let the audio count. >= 55 ms apart, so a
+ * magnet pulling ten flakes never turns into a buzz.
+ */
+function pickupStreak(i) {
+  if (!ready() || !throttle('flake', STREAK_MIN)) return;
   const t = ctx.currentTime;
-  if (t - flakeT > 0.7) flakeChain = 0; else flakeChain++;
-  flakeT = t;
-  const k = Number.isFinite(step) ? Math.max(0, Math.floor(step)) : flakeChain;
-  const v = begin(P_POP, 0.25, MIX.flake);
+  const k0 = Number.isFinite(i) ? Math.max(0, Math.floor(i)) : t - streakT > STREAK_GAP ? 0 : streakN + 1;
+  streakN = Math.min(k0, 99);
+  streakT = t;
+  const k = Math.min(k0, RUNG_TOP);
+  const v = begin(P_POP, 0.45, MIX.flake);
   if (!v) return;
   const tt = t + 0.002;
-  const f = BASE_HZ * 2 * Math.pow(2, scaleSemis(Math.min(k, 9)) / 12);
-  const lp = filt('lowpass', 3200, 0.5);
+  const r = k / RUNG_TOP;
+  const f = stepHz(k);
+  const lp = filt('lowpass', 3400 + 1400 * r, 0.5);
   lp.connect(v.out);
-  const o = osc(v, 'sine', f, tt, 0.2);
-  const g = gain0();
-  env(g.gain, tt, 0.17, 0.003, 0.09);
-  link(o, g, lp);
-  tone(v, 'sine', tt, f * 2, 0, 0, 0.03, 0.002, 0.05);
+  tone(v, 'sine', tt, f, 0, 0, 0.17 - 0.03 * r, 0.003, 0.1 + 0.05 * r, lp); // (the ear is most sensitive up high: the base eases off as it climbs)
+  tone(v, 'sine', tt, f * 2, 0, 0, 0.03 + 0.03 * r, 0.002, 0.06, lp); // octave: brighter as the streak grows
+  tone(v, 'sine', tt, f * 2.76, 0, 0, 0.01 + 0.014 * r, 0.001, 0.04, lp); // glassy bell partial
+  nz(v, whiteBuf, tt, 'highpass', 3200, 0, 0.7, 0, 0.03, 0.001, 0.012); // attack tick
+  sparkle(v, tt, (k - SPARK_AT + 1) / (RUNG_TOP - SPARK_AT + 1), f);
 }
+
+/** Flake pickup (kept for the runner): the pickup streak, optionally at an explicit rung. */
+function flake(step) { pickupStreak(step); }
 
 /** Warm thud for stomping a critter: a round low body that rises a semitone per combo step (max 6), plus a muffled puff. */
 function stomp(combo) {
@@ -672,22 +793,79 @@ function chime(kind) {
   n(t + 0.09, f2, 0.18, 0.7);
 }
 
-/** Successful junction turn / lane swoosh: a soft low-passed air puff. */
-function turn() {
-  if (!ready() || !throttle('turn', 0.25)) return;
-  const v = begin(P_FX, 0.5, MIX.near);
-  if (!v) return;
-  const t = ctx.currentTime + 0.002;
-  swell(v, whiteBuf, t, 'bandpass', 500, 1300, 700, 0.9, 0.45, 0.14, 0.36);
+/** One note of a bright stab: two detuned saws through a lowpass that pops open and closes, plus a sine an octave up. */
+function stabNote(v, t, f, peak, dec, cut) {
+  const lp = filt('lowpass', cut * 0.4, 0.9);
+  lp.frequency.setValueAtTime(cut * 0.4, t);
+  lp.frequency.exponentialRampToValueAtTime(cut, t + 0.015);
+  lp.frequency.exponentialRampToValueAtTime(cut * 0.3, t + dec);
+  const g = gain0();
+  env(g.gain, t, peak, 0.004, dec);
+  link(lp, g, v.out);
+  for (let i = 0; i < 2; i++) {
+    const o = osc(v, 'sawtooth', f, t, dec + 0.04);
+    o.detune.value = i ? 7 : -7;
+    o.connect(lp);
+  }
+  tone(v, 'sine', t, f * 2, 0, 0, peak * 0.45, 0.003, dec * 0.6);
 }
 
-/** Near-miss / passing air: a very soft, short puff. At most 2 per second. */
-function near() {
-  if (!ready() || !throttle('near', 0.5)) return;
-  const v = begin(P_FX, 0.4, MIX.near);
+/** Bell shimmer for a perfect turn: a fast run up the chord two octaves above the stab, ringing, over an airy sweep. */
+function shimmer(v, t, ch) {
+  for (let n = 0; n < 5; n++) {
+    const f = mtof(ch[n % 3] + 24 + 12 * ((n / 3) | 0));
+    if (f > 5000) continue;
+    const tn = t + n * 0.045;
+    tone(v, 'sine', tn, f, 0, 0, 0.1 - 0.012 * n, 0.002, 0.45);
+    tone(v, 'sine', tn, f * 2.76, 0, 0, 0.02, 0.001, 0.14);
+  }
+  swell(v, whiteBuf, t, 'bandpass', 2500, 6000, 4000, 1.2, 0.16, 0.18, 0.5);
+}
+
+/**
+ * Successful junction turn: the air of the corner plus a bright stab of the music's current chord (three chord tones an octave up,
+ * strummed 12 ms apart). perfect = true (a turn in the perfect window) adds the bell shimmer on top - also when a plain stab for the
+ * same turn has just played (the shimmer has its own 0.3 s limiter), so call order between turn() and turnOk(true) does not matter.
+ */
+function turnOk(perfect) {
+  if (!ready()) return;
+  const stab = throttle('turn', 0.25);
+  const shim = (perfect === true || perfect > 0) && throttle('shim', 0.3);
+  if (!stab && !shim) return;
+  const v = begin(P_BIG, 1.1, MIX.turn);
   if (!v) return;
   const t = ctx.currentTime + 0.002;
-  swell(v, whiteBuf, t, 'bandpass', 600, 1500, 800, 0.8, 0.4, 0.06, 0.26);
+  const ch = chord();
+  if (stab) {
+    dipMusic(0.12, 0.3);
+    swell(v, whiteBuf, t, 'bandpass', 500, 1300, 700, 0.9, 0.35, 0.12, 0.34);
+    for (let n = 0; n < 3; n++) stabNote(v, t + 0.012 + n * 0.012, mtof(ch[n] + 12), 0.07, 0.3, 4200);
+  }
+  if (shim) {
+    dipMusic(0.18, 0.5);
+    shimmer(v, t + 0.03, ch);
+  }
+}
+
+/** Successful junction turn (the name the runner already calls). */
+function turn(perfect) { turnOk(perfect); }
+
+/**
+ * Near miss: a whoosh that rises and falls (the thing passing your ear) and a crisp tuned tick as it goes by. closeness 0..1 (default
+ * 0.6) trims the level. At most ~4 per second.
+ */
+function nearMiss(closeness) {
+  if (!ready() || !throttle('near', 0.22)) return;
+  const v = begin(P_FX, 0.5, MIX.near * (0.75 + 0.25 * clamp01(num(closeness, 0.6))));
+  if (!v) return;
+  const t = ctx.currentTime + 0.002;
+  swell(v, whiteBuf, t, 'bandpass', 500, 2400, 900, 0.9, 0.6, 0.1, 0.3);
+  swell(v, brownBuf, t, 'lowpass', 260, 520, 200, 0.7, 0.35, 0.1, 0.28); // air body
+  const tk = t + 0.045;
+  const f = stepHz(2);
+  tone(v, 'triangle', tk, f, f * 0.85, 0.03, 0.2, 0.001, 0.07);
+  tone(v, 'sine', tk, f * 2, 0, 0, 0.05, 0.001, 0.04);
+  nz(v, whiteBuf, tk, 'highpass', 2600, 0, 0.8, 0, 0.22, 0.001, 0.014);
 }
 
 /** Player jump / hop: a quick soft air blip + a low thump. k 0..1. */
@@ -706,6 +884,7 @@ function bump(intensity01) {
   const k = clamp01(num(intensity01, 0.5));
   const v = begin(P_BIG, 0.9, MIX.bump);
   if (!v) return;
+  if (k > 0.5) dipMusic(0.08 + 0.2 * k, 0.15 + 0.2 * k);
   const t = ctx.currentTime + 0.002;
   const a = 0.4 + 0.6 * k;
   // with samples: the soft-impact body and the hit's mid knock carry most of it, the synth
@@ -724,9 +903,9 @@ function bump(intensity01) {
 function crash(intensity01) {
   if (!ready() || !throttle('crash', 0.12)) return;
   const k = clamp01(num(intensity01, 0.7));
-  if (k > 0.7) dipMusic(0.2, 0.6);
   const v = begin(P_BIG + 0.5, 1.8, MIX.crash);
   if (!v) return;
+  dipMusic(0.15 + 0.3 * k, 0.35 + 0.5 * k); // the hit lands on a clear mix; the music swells back under the rumble
   const t = ctx.currentTime + 0.002;
   const a = 0.55 + 0.45 * k;
   // samples bring the mid punch + the shattering; the synth keeps the sub boom + rumble
@@ -734,7 +913,11 @@ function crash(intensity01) {
   // its own noise burst / debris so the two don't smear together
   const sm = has('break') || has('crash_wood') || has('crash_rock') || has('crash_glass');
   const ds = sm ? 0.5 : 1;
-  tone(v, 'sine', t, rand(70, 90), 26, 0.6, 0.55 * a, 0.004, 0.95); // sub boom
+  // THUMP + CRUNCH on the first 150 ms: a kick-like low punch and a dense burst of snow/ice grains, then the long tail below
+  tone(v, 'sine', t, rand(115, 135), 36, 0.07, 0.8 * a, 0.001, 0.22);
+  nz(v, crackleBuf, t, 'bandpass', 2400, 1000, 0.8, 0.12, 0.85 * a, 0.001, 0.16);
+  if (has('snow_crunch')) smp('snow_crunch', SM.landCrunch * (0.7 + 0.3 * k), 0.85 * rand(0.95, 1.05), P_BIG + 0.5, t, 0);
+  tone(v, 'sine', t, rand(70, 90), 26, 0.6, 0.5 * a, 0.004, 0.8); // sub boom
   tone(v, 'triangle', t, rand(150, 190), 55, 0.25, 0.5 * a * (sm ? 0.7 : 1), 0.002, 0.28); // punch (phone speakers)
   nz(v, brownBuf, t, 'lowpass', 650, 150, 0.8, 0.7, 0.8 * a * (sm ? 0.85 : 1), 0.004, 0.8); // rumble body
   nz(v, whiteBuf, t, 'lowpass', 3800, 300, 0.8, 0.6, 0.75 * a * ds, 0.004, 0.5); // noise burst (rounded)
@@ -1064,15 +1247,42 @@ function win() {
   tone(v, 'sine', tc + 0.28, 2349, 0, 0, 0.04, 0.004, 0.3);
 }
 
+/**
+ * The snowball bursting (size ran out / a fatal hit): a clean snap, a cloud of snow blowing out over a low whump, a flurry of falling
+ * chunks and a short sprinkle of notes falling down the music's scale. size01 0..1 = how big the ball was. lose() plays it too.
+ */
+function popBurst(size01) {
+  if (!ready() || !throttle('burst', 0.5)) return;
+  const k = clamp01(num(size01, 0.6));
+  const v = begin(P_BIG + 0.5, 1.4, MIX.burst);
+  if (!v) return;
+  dipMusic(0.3 + 0.2 * k, 0.6 + 0.4 * k);
+  const t = ctx.currentTime + 0.002;
+  const a = 0.6 + 0.4 * k;
+  nz(v, whiteBuf, t, 'highpass', 2800, 0, 0.7, 0, 0.5 * a, 0.001, 0.02); // the snap
+  tone(v, 'sine', t, 1100, 220, 0.07, 0.35 * a, 0.001, 0.09);
+  swell(v, whiteBuf, t, 'bandpass', 3000, 900, 350, 0.7, 0.85 * a, 0.03, 0.55); // the cloud of snow
+  tone(v, 'sine', t, 150, 45, 0.22, 0.7 * a, 0.002, 0.4); // whump
+  tone(v, 'triangle', t, 260, 90, 0.12, 0.28 * a, 0.002, 0.16); // mid body for phone speakers
+  rattle(v, t, 0.04, 0.35 + 0.15 * k, 5 + Math.round(6 * k), 700, 2200, 0.8, 0.45 * a); // chunks falling
+  for (let i = 0; i < 5; i++) { // glitter falling down the scale
+    tone(v, 'sine', t + 0.07 + i * 0.055, stepHz(8 - i - (i >> 1)), 0, 0, 0.05 * (1 - i * 0.14), 0.002, 0.12);
+  }
+  if (has('impact_soft')) smp('impact_soft', SM.landSoft * (0.6 + 0.4 * k), 0.9 * rand(0.95, 1.05), P_BIG, t, 0.5);
+  if (has('snow_crunch')) smp('snow_crunch', SM.landCrunch * (0.6 + 0.4 * k), 0.8 * rand(0.95, 1.05), P_BIG, t + 0.012, 0);
+}
+
 function lose() {
   if (!ready()) return;
+  popBurst(ctx.currentTime - lastAt.crash < 0.4 ? 0.3 : 0.8); // (a crash that just played already was the impact)
+  const t0 = ctx.currentTime + 0.15; // the jingle lands after the burst
   if (has('jingle_lose')) { // the sample is the whole sound; the sad trombone below is the fallback
-    smp('jingle_lose', SM.lose, 1, P_JINGLE, ctx.currentTime + 0.01, 0);
+    smp('jingle_lose', SM.lose, 1, P_JINGLE, t0, 0);
     return;
   }
   const v = begin(P_JINGLE, 1.8, MIX.lose);
   if (!v) return;
-  const t = ctx.currentTime + 0.01;
+  const t = t0;
   // sad trombone: wah-wah-wah-waaah
   const notes = [[466.16, 0.26], [440, 0.26], [415.3, 0.26], [392, 0.9]];
   let total = 0;
@@ -1113,6 +1323,169 @@ function lose() {
     lp.frequency.exponentialRampToValueAtTime(1500, tk + (lastNote ? 0.25 : 0.09));
     lp.frequency.exponentialRampToValueAtTime(500, tk + d);
     tk += d + 0.03;
+  }
+}
+
+// ------------------------------------------------------- game-feel one-shots
+
+/**
+ * Combo / flow tier-up (tier 1..8): an ascending arpeggio up the music's current chord, more notes and a higher peak the higher the
+ * tier (4 notes at tier 1, 8 from tier 5), ending on a long bell with a tuned coin ping on top.
+ */
+function comboTier(n) {
+  if (!ready() || !throttle('tier', 0.4)) return;
+  const tier = Math.max(1, Math.min(8, Math.floor(num(n, 1))));
+  const v = begin(P_JINGLE, 1.6, MIX.tier);
+  if (!v) return;
+  dipMusic(0.16 + 0.02 * tier, 0.5 + 0.06 * tier);
+  const t = ctx.currentTime + 0.004;
+  const ch = chord();
+  const cnt = Math.min(8, 3 + tier);
+  const gap = Math.max(0.04, 0.07 - 0.004 * tier);
+  let f = 0;
+  for (let i = 0; i < cnt; i++) {
+    const ti = t + i * gap;
+    f = mtof(ch[i % 3] + 12 * ((i / 3) | 0));
+    const last = i === cnt - 1;
+    const pk = 0.11 + 0.1 * (i / cnt);
+    tone(v, 'triangle', ti, f, 0, 0, pk, 0.003, last ? 0.9 : 0.2);
+    tone(v, 'sine', ti, f * 2, 0, 0, pk * 0.45, 0.003, last ? 0.6 : 0.14);
+    if (last) {
+      tone(v, 'sine', ti, f * 1.5, 0, 0, pk * 0.35, 0.004, 0.7); // the fifth rings over it
+      tone(v, 'sine', ti + 0.05, f * 3, 0, 0, pk * 0.2, 0.003, 0.35);
+      if (has('coin')) smp('coin', SM.coin * 0.8, Math.min(2.2, Math.max(0.4, (f * 2) / COIN_HZ)), P_JINGLE, ti, 0);
+    }
+  }
+}
+
+/**
+ * New personal best during a run: a short brass-ish fanfare on the music's chord (ta-ta-TAAA, root / third / fifth, then the octave held),
+ * a riser leading in and bells glittering over the held note. Once per 3 s at most - call it once per run.
+ */
+function newBest() {
+  if (!ready() || !throttle('best', 3)) return;
+  const v = begin(P_JINGLE, 2, MIX.best);
+  if (!v) return;
+  dipMusic(0.35, 1.5);
+  const t = ctx.currentTime + 0.01;
+  const ch = chord();
+  swell(v, whiteBuf, t, 'bandpass', 500, 4500, 1500, 1.0, 0.25, 0.3, 0.5); // riser into the first note
+  const t0 = t + 0.25;
+  for (let i = 0; i < 3; i++) stabNote(v, t0 + i * 0.1, mtof(ch[i] + 12), 0.07, 0.16, 4800);
+  const tc = t0 + 0.34;
+  for (let i = 0; i < 3; i++) stabNote(v, tc, mtof(ch[i] + (i === 0 ? 24 : 12)), 0.07, 0.9, 5200);
+  for (let i = 0; i < 4; i++) { // glitter over the held chord
+    const f = mtof(ch[i % 3] + 36);
+    if (f < 5200) tone(v, 'sine', tc + 0.05 + i * 0.07, f, 0, 0, 0.07 - 0.01 * i, 0.002, 0.4);
+  }
+  if (has('coin')) smp('coin', SM.coin, Math.min(2.2, (mtof(ch[0] + 24) * 2) / COIN_HZ), P_JINGLE, tc, 0);
+}
+
+/**
+ * Yeti roar, scaled by how close it is (prox01 0..1; closer = louder, longer, deeper). A throat growl (two detuned saws chopped by a fast
+ * LFO through a vowel-ish filter that opens and closes), a breath of noise and a sub swell. Ducks the music. Once per 1.2 s at most.
+ */
+function roar(prox01) {
+  if (!ready() || !throttle('roar', 1.2)) return;
+  const p = clamp01(num(prox01, 0.6));
+  const len = 0.9 + 0.5 * p;
+  const v = begin(P_BIG + 0.2, len + 0.3, MIX.roar * (0.55 + 0.45 * p));
+  if (!v) return;
+  dipMusic(0.25 + 0.15 * p, 0.8 + 0.5 * p);
+  const t = ctx.currentTime + 0.002;
+  const f0 = 92 - 22 * p;
+  const lp = filt('lowpass', 260, 1.6);
+  lp.frequency.setValueAtTime(260, t);
+  lp.frequency.exponentialRampToValueAtTime(900 + 500 * p, t + 0.18);
+  lp.frequency.exponentialRampToValueAtTime(260, t + len);
+  const chop = gain0(0.5); // 0..1 at the LFO rate: the rattle of a growl
+  const lfo = osc(v, 'sine', 24 + 10 * p, t, len + 0.1);
+  const lfoG = gain0(0.5);
+  link(lfo, lfoG, chop.gain);
+  const eg = gain0();
+  eg.gain.setValueAtTime(0.0001, t);
+  eg.gain.linearRampToValueAtTime(0.9, t + 0.12);
+  eg.gain.linearRampToValueAtTime(0.7, t + len * 0.6);
+  eg.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  link(lp, chop, eg, v.out);
+  for (let i = 0; i < 2; i++) {
+    const o = osc(v, 'sawtooth', f0, t, len + 0.1);
+    o.detune.value = i ? 9 : -9;
+    sweep(o.frequency, t, f0, f0 * 0.65, len);
+    o.connect(lp);
+  }
+  swell(v, whiteBuf, t, 'bandpass', 700, 1200, 500, 1.4, 0.3, 0.15, len); // breath
+  tswell(v, 'sine', t, 62, 38, 0.3 + 0.2 * p, 0.15, len); // sub
+}
+
+function silenceYeti() {
+  if (!yeti || !ctx) return;
+  const t = ctx.currentTime;
+  yeti.out.gain.cancelScheduledValues(t);
+  yeti.out.gain.setTargetAtTime(0, t, 0.05);
+  yeti.p = -1;
+}
+
+function createYeti() {
+  const out = gain0(0);
+  out.connect(master);
+  const brown = ctx.createBufferSource(); // rumble
+  brown.buffer = brownBuf;
+  brown.loop = true;
+  const lp = filt('lowpass', 120, 0.9);
+  link(brown, lp, out);
+  brown.start(0, rand(0, brownBuf.duration - 0.1));
+  const glp = filt('lowpass', 150, 1.1); // growl: two detuned low saws
+  const gg = gain0(0);
+  link(glp, gg, out);
+  const a = ctx.createOscillator(), b = ctx.createOscillator();
+  a.type = b.type = 'sawtooth';
+  a.frequency.value = 46;
+  b.frequency.value = 47.4;
+  link(a, glp);
+  link(b, glp);
+  a.start();
+  b.start();
+  return { out, lp, glp, gg, a, b, p: -1, at: -9, next: 0 };
+}
+
+/**
+ * Chase layer, call it every frame with the Yeti's proximity 0..1 (0 = far / gone, 1 = on top of you; e.g. (9 - gap) / 5 clamped, the
+ * same number the chase vignette uses). Below ~0.08 it is silent; above it a rumble + growl bed fades in and heavy footfalls start,
+ * speeding up and getting louder as it closes in. Cheap: the bed is refreshed at most every 0.2 s, and it fades out on its own if the
+ * game stops calling (pause, death, results).
+ */
+function yetiNear(prox01) {
+  if (!ready()) return;
+  const p = clamp01(num(prox01, 0));
+  const t = ctx.currentTime;
+  if (!yeti) {
+    if (p < 0.08) return;
+    yeti = createYeti();
+    yeti.next = t + 0.15;
+  }
+  if (p < 0.08 && yeti.p >= 0 && yeti.p < 0.08) return; // already silent
+  if (Math.abs(p - yeti.p) > 0.04 || t - yeti.at > 0.2) {
+    yeti.p = p;
+    yeti.at = t;
+    const q = p * p;
+    yeti.out.gain.cancelScheduledValues(t);
+    yeti.out.gain.setTargetAtTime(p < 0.08 ? 0 : (0.2 + 0.6 * q) * MIX.yeti, t, 0.15);
+    yeti.out.gain.setTargetAtTime(0, t + 0.6, 0.25); // deadman: no refresh for 0.6 s = fade out
+    yeti.lp.frequency.setTargetAtTime(100 + 260 * p, t, 0.2);
+    yeti.glp.frequency.setTargetAtTime(160 + 330 * p, t, 0.2); // (the saw's harmonics up to ~400 Hz are what a phone speaker can play)
+    yeti.gg.gain.setTargetAtTime(0.25 * q, t, 0.2);
+    yeti.a.frequency.setTargetAtTime(44 + 14 * p, t, 0.3);
+    yeti.b.frequency.setTargetAtTime(45.4 + 14 * p, t, 0.3);
+  }
+  if (p >= 0.15 && t >= yeti.next) { // footfall
+    yeti.next = t + 0.66 - 0.36 * p;
+    const v = begin(P_FX, 0.4, MIX.yeti * (0.5 + 0.5 * p));
+    if (!v) return;
+    const tt = t + 0.003;
+    tone(v, 'sine', tt, 78 - 16 * p, 36, 0.1, 0.5, 0.003, 0.2);
+    tone(v, 'triangle', tt, 150 - 20 * p, 70, 0.08, 0.28, 0.002, 0.12); // mid knock for phone speakers
+    nz(v, brownBuf, tt, 'lowpass', 220, 90, 0.7, 0.12, 0.4, 0.003, 0.14);
   }
 }
 
@@ -1203,9 +1576,28 @@ export const audio = {
   pof: guard(pof),
   /** Buff card chime; chime('end') = the falling pair for an expiring buff. */
   chime: guard(chime),
-  /** Soft puff for near-misses / a clean junction turn. At most 2 per second. */
-  near: guard(near),
+  /** Near miss: whoosh + tuned tick (alias of nearMiss). ~4 per second at most. */
+  near: guard(nearMiss),
+  /** Successful junction turn (alias of turnOk). */
   turn: guard(turn),
+
+  // ---- game-feel set (v3). Every one is a safe no-op without audio; callers may use `audio.x?.()` ----
+  /** Pickup streak (flake / coin / snow): climbs the music's scale, glitter at the top. i = explicit rung 0.., omit to auto-count (resets after 0.9 s). */
+  pickupStreak: guard(pickupStreak),
+  /** Junction turn: bright stab of the music's chord; perfect = true adds the bell shimmer. Safe to call right after turn(). */
+  turnOk: guard(turnOk),
+  /** Near miss: rising/falling whoosh + a tuned tick. closeness 0..1 optional. */
+  nearMiss: guard(nearMiss),
+  /** Combo / flow tier-up (1..8): ascending chord arpeggio, longer and higher with the tier. */
+  comboTier: guard(comboTier),
+  /** New personal best during a run: short brass fanfare + glitter. Call once per run. */
+  newBest: guard(newBest),
+  /** The snowball bursting (pop / death): snap + snow cloud + whump + falling sprinkle. size01 0..1. lose() plays it too. */
+  popBurst: guard(popBurst),
+  /** Yeti roar scaled by proximity 0..1 (louder, longer, deeper when close). */
+  roar: guard(roar),
+  /** Per-frame Yeti chase layer: proximity 0..1 (e.g. clamp((9 - gap) / 5)); rumble + growl bed and footfalls that speed up as it closes. */
+  yetiNear: guard(yetiNear),
   /** Player jump: quick soft air blip + thump. k 0..1 */
   hop: guard(hop),
   bump: guard(bump),

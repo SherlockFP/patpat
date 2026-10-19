@@ -1242,6 +1242,7 @@ function start(id, bpm) {
   baseBpm = b;
   if (voices.length) killVoices();
   resetDuck(); // a new run never starts muffled
+  dipEnd = 0; dipAmt = 0;
   restoreBus(0);
   const ps = perfSec();
   tStart = ps + START_LEAD;
@@ -1341,6 +1342,29 @@ function chordIdxNow() {
   const bi = Math.max(0, ((nextStep > 0 ? nextStep - 1 : 0) >> 4) - styleBar0);
   return bi & 3;
 }
+
+// Key hook for audio.js (it owns a separate AudioContext): one-shots such as the pickup streak ladder and the turn stab are
+// pitched from here so they land in the key and chord the music is playing right now. Reads only; allocation-free.
+const LADDER_LO = 70; // MIDI: rung 0 is the key's root somewhere in 70..81
+const keyHook = {
+  /** MIDI pitch of rung `i` (any integer, 0 = root) of the running style's scale, nudged to the current chord; -1 = no music running. */
+  ladder(i) {
+    if (!running) return -1;
+    const S = style, n = S.scale.length;
+    const d = Math.floor(num(i, 0));
+    const oct = Math.floor(d / n);
+    const midi = LADDER_LO + ((((S.root - LADDER_LO) % 12) + 12) % 12) + S.scale[d - oct * n] + 12 * oct;
+    return S.fit ? fitToChord(S, midi, S.pcs[chordIdxNow()]) : midi;
+  },
+  /** Writes the current chord's pad voicing (ascending MIDI notes) into out[0..2]; returns 3, or 0 when no music runs. */
+  chord(out) {
+    if (!running) return 0;
+    const cv = style.cv[chordIdxNow()];
+    for (let k = 0; k < 3; k++) out[k] = cv[k];
+    return 3;
+  },
+};
+try { globalThis.__cigMusicKey = keyHook; } catch (e) { /* ignore */ }
 
 function note() {
   const ps = perfSec();
@@ -1493,13 +1517,24 @@ function stinger(kind) {
 // Shared flags for the ambient bed in audio.js (it plays only while the runner music does not), plus a short dip hook
 // so big one-shot moments (milestone / win / boss) duck the music slightly.
 function pubState() { try { globalThis.__cigMusicState = { muted, running }; } catch (e) { /* ignore */ } }
+// Sidechain-style duck: fast attack (the hit lands on a clear mix), slower swell back. A shallower dip never cuts a deeper one that is
+// still holding; a deeper one replaces it and keeps the later release.
+let dipAmt = 0, dipEnd = 0;
 function dip(amount, sec) {
   if (!ctx || !bus || muted) return;
   const t = ctx.currentTime;
-  const lvl = BUS_LEVEL * (1 - Math.max(0, Math.min(0.6, amount || 0.25)));
+  let a = clamp(num(amount, 0.25), 0, 0.6);
+  let end = t + Math.max(0.1, num(sec, 0.5));
+  if (t < dipEnd) {
+    if (a <= dipAmt && end <= dipEnd) return;
+    a = Math.max(a, dipAmt);
+    end = Math.max(end, dipEnd);
+  }
+  dipAmt = a;
+  dipEnd = end;
   bus.gain.cancelScheduledValues(t);
-  bus.gain.setTargetAtTime(lvl, t, 0.04);
-  bus.gain.setTargetAtTime(BUS_LEVEL, t + Math.max(0.1, sec || 0.5), 0.35);
+  bus.gain.setTargetAtTime(BUS_LEVEL * (1 - a), t, 0.02);
+  bus.gain.setTargetAtTime(BUS_LEVEL, end, 0.3);
 }
 try { globalThis.__cigMusicDip = (a, s) => { try { dip(a, s); } catch (e) { /* ignore */ } }; } catch (e) { /* ignore */ }
 pubState();
@@ -1544,6 +1579,19 @@ function resume() {
   }
   resumeCtx(true);
 }
+
+// Mobile: a context that is suspended / interrupted (autoplay lock, phone call, app switch) can only be restarted from a user gesture,
+// so every gesture (and coming back to the tab) retries until it runs. This module is prefetched while the menu is up, so the first tap
+// also creates the context (the runner starts asynchronously, after the tap, and iOS would leave a context made then locked).
+// One cheap state check per gesture once it runs.
+try {
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    const wake = () => { if (ctx && !paused && ctx.state !== 'running' && ctx.state !== 'closed') resumeCtx(false); };
+    const unlock = () => { if (!ctx) ensureCtx(); wake(); };
+    for (const ev of ['pointerup', 'touchend', 'click', 'keydown']) window.addEventListener(ev, unlock, { capture: true, passive: true });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+  }
+} catch (e) { /* ignore */ }
 
 // --------------------------------------------------------------- public API
 

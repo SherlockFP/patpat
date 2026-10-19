@@ -15,6 +15,10 @@
 //   biome x blizzard modifier x fogPress, far >= max(70, 2 * ballVs)). Per-biome roadside extras: stump / logs, seal / stalag, fence / bench / lampost,
 //   skullrock, fire, jellycube, robot.
 //
+// Look per biome = sky + fog + key (sun) / fill (hemisphere) lights + colour grade (b.grade: saturation, contrast, vignette, shadow / highlight tint, ball rim
+// colour; applied by the display-space finish in shaders.js cigFinish). The look blends across portals like the fog does; the sky dome, valley floor and glow decor
+// use patchTail, the lit materials get the same finish from the runner's patchScene.
+//
 // Track API used: frame(s, out) [+ optional halfWidth(s) and edgeAt(s): 0 = cliff / gap, > 0 = curb with a snow bank].
 // Only called for s in [max(0, ball.s - 55), ball.s + 315], so it is safe with ensure(ball.s + 320) / trim(ball.s - 60).
 //
@@ -39,6 +43,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { nearFade } from './nearfade.js';
 import { buildPropLibrary } from '../props.js';
 import { makeRng } from '../rng.js';
+import { SU, patchTail, setLookActive } from '../shaders.js';
 
 // ---------------------------------------------------------------------------------------------
 // constants
@@ -116,8 +121,8 @@ export const BIOMES = [
     id: 'snow', name: 'Karlı Zirve', music: 'snow', depth: 56, flank: { U: 120, e: 1.6, top: 0xffffff, mid: 0xa9c6e8, rock: 0x7f8898, rockAmt: 0.9 },
     sky: { top: 0x1f6fe0, mid: 0x6bb6f2, horizon: 0xf2e6d4 },
     fog: { color: 0xcfe2f4, near: 70, far: 330 },
-    hemi: { sky: 0xcfe4ff, ground: 0x8fa9d6, intensity: 1.45 },
-    sun: { color: 0xffe4b8, intensity: 2.1, az: 2.5, el: 0.95 },
+    hemi: { sky: 0xc8e0ff, ground: 0x86a2d6, intensity: 1.51 },
+    sun: { color: 0xffe2b0, intensity: 2.26, az: 2.3, el: 0.88 },
     disc: { color: 0xfff6dc, size: 0.055, az: 0.32, el: 0.62, kind: 'sun' },
     ground: [0xe6f0fb, 0xaec9ea, 0xf8fbff],
     track: { tileA: 0xf4f9ff, tileB: 0x84c0ec, edge: 0x4f9ccc, rail: 0x7cc0e8, glow: 0x8fe1ff, under: 0x5d8fb5 },
@@ -132,8 +137,8 @@ export const BIOMES = [
     id: 'forest', name: 'Çam Ormanı', music: 'forest', depth: 54, flank: { U: 100, e: 1.7, top: 0x7cc95a, mid: 0x3f8a3a, rock: 0x8a7658, rockAmt: 0.6 },
     sky: { top: 0x4a9be0, mid: 0xa2d3ee, horizon: 0xf3efd0 },
     fog: { color: 0xe6efd0, near: 65, far: 320 },
-    hemi: { sky: 0xfff4d6, ground: 0xa9b890, intensity: 1.4 },
-    sun: { color: 0xffe0a8, intensity: 2.0, az: 2.6, el: 0.8 },
+    hemi: { sky: 0xdfeeff, ground: 0x8fae78, intensity: 1.51 },
+    sun: { color: 0xffe0a8, intensity: 2.15, az: 2.4, el: 0.73 },
     disc: { color: 0xfff0c0, size: 0.06, az: 0.28, el: 0.5, kind: 'sun' },
     ground: [0x4d9a3a, 0x5fae45, 0x3e7f33],
     track: { tileA: 0xf0e6c8, tileB: 0x9cc673, edge: 0x5a8f3f, rail: 0x7a5a38, glow: 0xbfff8a, under: 0x3d5a2c },
@@ -149,8 +154,8 @@ export const BIOMES = [
     flank: { U: 62, e: 1.6, top: 0x4fd12e, mid: 0xb5702e, rock: 0x8a5428, rockAmt: 0.35, kind: 'checker', checkerA: 0x8a5428, checkerB: 0xe0983f },
     sky: { top: 0x0f9df5, mid: 0x55cfff, horizon: 0xcdf3ff },
     fog: { color: 0xcdf3ff, near: 75, far: 330 },
-    hemi: { sky: 0xffffff, ground: 0xbfe39a, intensity: 1.5 },
-    sun: { color: 0xfffbe6, intensity: 2.0, az: 2.5, el: 0.95 },
+    hemi: { sky: 0xe2f2ff, ground: 0xbfe39a, intensity: 1.73 },
+    sun: { color: 0xfff2c8, intensity: 2.28, az: 2.3, el: 0.88 },
     disc: { color: 0xfffbd0, size: 0.055, az: 0.3, el: 0.62, kind: 'sun' },
     ground: [0x3fcf2a, 0x58dd34, 0x2eb824],
     // checker: true -> the track draws its bank sides as a checkerboard of checkerA / checkerB (brown / orange)
@@ -167,8 +172,8 @@ export const BIOMES = [
     flank: { U: 72, e: 1.7, top: 0xe8b27a, mid: 0xd99468, rock: 0xb77a58, rockAmt: 0.5 },
     sky: { top: 0x5b86d8, mid: 0xff9fa8, horizon: 0xffd9a8 },
     fog: { color: 0xffcfa4, near: 70, far: 330 },
-    hemi: { sky: 0xffe6c8, ground: 0xd9a07a, intensity: 1.4 },
-    sun: { color: 0xffc890, intensity: 2.0, az: 2.3, el: 0.5 },
+    hemi: { sky: 0xdcdcf0, ground: 0xd9a07a, intensity: 1.58 },
+    sun: { color: 0xffc890, intensity: 2, az: 2.3, el: 0.5 },
     disc: { color: 0xffe4a8, size: 0.1, az: 0.25, el: 0.28, kind: 'sun' },
     ground: [0xe9b98a, 0xd9a070, 0xf2cfa0],
     track: { tileA: 0xc4704a, tileB: 0xa85a3a, edge: 0xffe9c8, rail: 0x7a4030, glow: 0xffb84a, under: 0x5a3020 },
@@ -183,8 +188,8 @@ export const BIOMES = [
     id: 'town', name: 'Kasaba', music: 'town', depth: 48, flank: { U: 46, e: 1.9, top: 0x92d366, mid: 0x6bb04c, rock: 0xa89878, rockAmt: 0.4 },
     sky: { top: 0x4d9fee, mid: 0x98d2f6, horizon: 0xe2f2ff },
     fog: { color: 0xe0f0fb, near: 70, far: 330 },
-    hemi: { sky: 0xffffff, ground: 0xb8c4a0, intensity: 1.5 },
-    sun: { color: 0xfff4e0, intensity: 1.9, az: 2.5, el: 0.95 },
+    hemi: { sky: 0xe8f2ff, ground: 0xb8c4a0, intensity: 1.71 },
+    sun: { color: 0xffeccf, intensity: 2.14, az: 2.3, el: 0.88 },
     disc: { color: 0xfff6e0, size: 0.05, az: 0.3, el: 0.7, kind: 'sun' },
     ground: [0x7fc45a, 0x8fd065, 0x6bb04c],
     track: { tileA: 0x4a4e57, tileB: 0x3d414a, edge: 0x2a2d34, rail: 0xffd23f, glow: 0xffe27a, under: 0x23262c },
@@ -199,7 +204,7 @@ export const BIOMES = [
     id: 'desert', name: 'Çöl Kanyonu', music: 'desert', depth: 58, flank: { U: 80, e: 2.2, top: 0xf3d594, mid: 0xd9a05a, rock: 0xb4552d, rockAmt: 0.5, kind: 'strata' },
     sky: { top: 0xe0742c, mid: 0xf5a653, horizon: 0xffd9a0 },
     fog: { color: 0xf7c98f, near: 60, far: 320 },
-    hemi: { sky: 0xffe2b8, ground: 0xd09a5c, intensity: 1.4 },
+    hemi: { sky: 0xe8dcf0, ground: 0xd09a5c, intensity: 1.48 },
     sun: { color: 0xffcf8a, intensity: 2.1, az: 2.3, el: 0.62 },
     disc: { color: 0xffe3a0, size: 0.1, az: 0.25, el: 0.36, kind: 'sun' },
     ground: [0xf0c985, 0xdcab63, 0xf7dba6],
@@ -232,8 +237,8 @@ export const BIOMES = [
     id: 'candy', name: 'Şeker Diyarı', music: 'candy', depth: 52, flank: { U: 100, e: 1.7, top: 0xfff0f8, mid: 0xff8fc4, rock: 0x8fe8c4, rockAmt: 0.8 },
     sky: { top: 0xb39cf5, mid: 0xf5b8e6, horizon: 0xfff0f7 },
     fog: { color: 0xfde6f2, near: 65, far: 330 },
-    hemi: { sky: 0xfff0fa, ground: 0xf3b6d8, intensity: 1.55 },
-    sun: { color: 0xfff0f5, intensity: 1.7, az: 2.6, el: 0.9 },
+    hemi: { sky: 0xf6e8ff, ground: 0xf3b6d8, intensity: 1.66 },
+    sun: { color: 0xfff2e8, intensity: 1.8, az: 2.4, el: 0.83 },
     disc: { color: 0xfff4fa, size: 0.07, az: 0.3, el: 0.55, kind: 'sun' },
     ground: [0xffadd6, 0xa8ecd0, 0xffcfe8],
     track: { tileA: 0xff70b8, tileB: 0x5fe3b8, edge: 0xffffff, rail: 0xff3f9f, glow: 0xfff27a, under: 0xb85a96 },
@@ -249,8 +254,8 @@ export const BIOMES = [
     flank: { U: 70, e: 1.7, top: 0xf5b8d0, mid: 0xc87a98, rock: 0x9a6a7a, rockAmt: 0.4 },
     sky: { top: 0xe6a6d8, mid: 0xffc6e0, horizon: 0xfff0f4 },
     fog: { color: 0xffe4ee, near: 65, far: 330 },
-    hemi: { sky: 0xfff0f6, ground: 0xe8b0c8, intensity: 1.5 },
-    sun: { color: 0xfff2f0, intensity: 1.8, az: 2.5, el: 0.9 },
+    hemi: { sky: 0xf4eaff, ground: 0xe8b0c8, intensity: 1.59 },
+    sun: { color: 0xffeedd, intensity: 1.99, az: 2.4, el: 0.83 },
     disc: { color: 0xfffaf0, size: 0.06, az: 0.3, el: 0.6, kind: 'sun' },
     ground: [0xa8dc7a, 0xf2c0d6, 0x90cc68],
     track: { tileA: 0x9a5a48, tileB: 0x7a4638, edge: 0xffe0ea, rail: 0xc03a4a, glow: 0xffb0c8, under: 0x4a2a28 },
@@ -266,7 +271,7 @@ export const BIOMES = [
     flank: { U: 64, e: 1.7, top: 0xe0c8a0, mid: 0x9c8a6a, rock: 0x6a6a72, rockAmt: 0.5 },
     sky: { top: 0x3a3a8a, mid: 0xe0608a, horizon: 0xffa860 },
     fog: { color: 0xf09a78, near: 70, far: 330 },
-    hemi: { sky: 0xffc8a8, ground: 0x6a7aa8, intensity: 1.3 },
+    hemi: { sky: 0xd0b4dc, ground: 0x6a7aa8, intensity: 1.66 },
     sun: { color: 0xff9a5a, intensity: 1.8, az: 2.4, el: 0.45 },
     disc: { color: 0xffc070, size: 0.12, az: 0.2, el: 0.18, kind: 'sun' },
     ground: [0x2a78b0, 0x3a90c8, 0x1e6498],
@@ -316,8 +321,8 @@ export const BIOMES = [
     flank: { U: 70, e: 1.7, top: 0xf2dca0, mid: 0xc8a870, rock: 0x7a6a50, rockAmt: 0.5 },
     sky: { top: 0x1aa0e8, mid: 0x70d8f4, horizon: 0xe8fbff },
     fog: { color: 0xcdf2f8, near: 80, far: 330 },
-    hemi: { sky: 0xffffff, ground: 0x8ae0e0, intensity: 1.5 },
-    sun: { color: 0xfff4d0, intensity: 2.0, az: 2.5, el: 1.0 },
+    hemi: { sky: 0xe2f8ff, ground: 0x8ae0e0, intensity: 1.66 },
+    sun: { color: 0xfff4d0, intensity: 2.1, az: 2.3, el: 0.93 },
     disc: { color: 0xfff0b0, size: 0.06, az: 0.3, el: 0.7, kind: 'sun' },
     ground: [0x18c4c0, 0x20d8d0, 0x10a8b8],
     track: { tileA: 0xa8723a, tileB: 0x8a5a2c, edge: 0xf0e0b0, rail: 0x4a2c18, glow: 0xffd24a, under: 0x3a2210 },
@@ -386,8 +391,8 @@ export const BIOMES = [
     flank: { U: 100, e: 1.6, top: 0xe8f8ff, mid: 0x6ab4f0, rock: 0x3a7ac8, rockAmt: 0.7 },
     sky: { top: 0x0a3a8a, mid: 0x4aa8f0, horizon: 0xd0f4ff },
     fog: { color: 0xbfe8ff, near: 55, far: 300 },
-    hemi: { sky: 0xd8f0ff, ground: 0x5a90d0, intensity: 1.45 },
-    sun: { color: 0xe8f6ff, intensity: 1.7, az: 2.5, el: 0.9 },
+    hemi: { sky: 0xc4e4ff, ground: 0x5a90d0, intensity: 1.64 },
+    sun: { color: 0xfff0dc, intensity: 1.84, az: 2.3, el: 0.83 },
     disc: { color: 0xf4fbff, size: 0.05, az: 0.3, el: 0.62, kind: 'sun' },
     ground: [0xa8dcff, 0x8ec8f5, 0xc4e8ff],
     track: { tileA: 0xe8f8ff, tileB: 0x5aa8f0, edge: 0x2a78d8, rail: 0x4ab8ff, glow: 0x9ae8ff, under: 0x2a5a9a },
@@ -432,6 +437,33 @@ for (const b of BIOMES) {
   if (b.id === 'snow') b.modsHard = Object.assign({}, b.mods, { fog: 0.3 }); // blizzard on the second lap and later
   if (b.cloudAmt === undefined) b.cloudAmt = 1;
 }
+
+// Colour grade per biome (the display-space finish in shaders.js cigFinish, blended across portals like the rest of the look):
+//   sat = saturation, con = S-curve contrast (0..0.5), vig = vignette strength, rim = how far the ball's silhouette tints toward rimC,
+//   sh / hi = multipliers for the shadows / highlights (cool shadows + warm highlights by default; complementary pairs for the sunsets).
+// rimC is picked against the biome's background: a deeper blue on the pale biomes, a bright glow on the dark ones.
+const GRADE0 = { sat: 1.12, con: 0.22, vig: 0.26, rim: 0.4, sh: [0.94, 0.97, 1.04], hi: [1.04, 1.01, 0.96], rimC: 0x6f9ad8 };
+const GRADES = {
+  snow: { sat: 1.1, con: 0.2, sh: [0.92, 0.96, 1.06], hi: [1.05, 1.02, 0.95], rim: 0.46 },
+  forest: { sat: 1.16, vig: 0.28, sh: [0.92, 0.97, 1.0], hi: [1.06, 1.02, 0.94], rimC: 0x3f7f8f },
+  greenhill: { sat: 1.2, con: 0.2, vig: 0.22, rimC: 0x2f78c8 },
+  kapadokya: { sat: 1.14, con: 0.24, vig: 0.3, sh: [0.95, 0.93, 1.06], hi: [1.07, 1.0, 0.92], rimC: 0x9a5a9a },
+  town: { rimC: 0x4f82c8 },
+  desert: { sat: 1.15, con: 0.24, vig: 0.3, sh: [0.95, 0.92, 1.05], hi: [1.08, 1.01, 0.9], rimC: 0x4f7fb8 },
+  icecave: { sat: 1.1, con: 0.2, vig: 0.34, sh: [0.9, 0.97, 1.08], hi: [0.98, 1.03, 1.06], rimC: 0x7fe8ff, rim: 0.5 },
+  candy: { con: 0.16, vig: 0.2, sh: [0.97, 0.94, 1.04], hi: [1.03, 1.0, 0.97], rimC: 0xd0509f },
+  sakura: { sat: 1.1, con: 0.18, vig: 0.24, rimC: 0xb85a88 },
+  istanbul: { sat: 1.18, con: 0.26, vig: 0.32, sh: [0.9, 0.93, 1.08], hi: [1.08, 1.0, 0.9], rimC: 0x6a4a9a },
+  neon: { sat: 1.25, con: 0.3, vig: 0.34, sh: [0.9, 0.92, 1.12], hi: [1.04, 0.98, 1.08], rimC: 0x38e6ff, rim: 0.6 },
+  moon: { sat: 1.0, con: 0.28, vig: 0.36, sh: [0.92, 0.95, 1.1], hi: [1.0, 1.0, 1.04], rimC: 0x9ad8ff, rim: 0.5 },
+  pirate: { sat: 1.16, con: 0.2, vig: 0.24, rimC: 0x2a78c0 },
+  volcano: { sat: 1.2, con: 0.28, vig: 0.36, sh: [1.02, 0.94, 0.9], hi: [1.06, 1.0, 0.9], rimC: 0xff8a3a, rim: 0.5 },
+  aurora: { sat: 1.18, con: 0.26, vig: 0.34, sh: [0.9, 0.98, 1.1], hi: [0.98, 1.04, 1.04], rimC: 0x5fffc0, rim: 0.5 },
+  bamboo: { con: 0.18, rimC: 0x3a8a6a },
+  glacier: { sat: 1.14, con: 0.2, rimC: 0x2a78d8 },
+  carnival: { sat: 1.2, con: 0.24, vig: 0.3, sh: [0.96, 0.92, 1.08], hi: [1.06, 0.99, 0.96], rimC: 0xffe03a, rim: 0.5 },
+};
+for (const b of BIOMES) b.grade = Object.assign({}, GRADE0, GRADES[b.id]);
 
 /**
  * Lock the world to ONE biome (campaign levels): biomeAt / trackPalette / musicStyleAt / biomeMods / Environment all use it
@@ -1956,8 +1988,8 @@ const lavaSlope = (s) => (52 / 150) * Math.cos(s / 150 + 2.4) + (16 / 53) * Math
 // ---------------------------------------------------------------------------------------------
 // Environment
 // ---------------------------------------------------------------------------------------------
-const NC = 9;   // colour channels:  skyTop skyMid skyHor fog hemiSky hemiGnd sunCol discCol cloud
-const NN = 18;  // numeric channels: fogNear fogFar hemiI sunI lightAz lightEl discAz discEl discSize stars pSky pGlow pGrid pSpark glowBase pLava cloudAmt
+const NC = 12;  // colour channels:  skyTop skyMid skyHor fog hemiSky hemiGnd sunCol discCol cloud gradeShadow gradeHigh ballRim
+const NN = 22;  // numeric channels: fogNear fogFar hemiI sunI lightAz lightEl discAz discEl discSize stars pSky pGlow pGrid pSpark glowBase pLava cloudAmt aurora gradeSat gradeCon gradeVig ballRimMix
 
 export class Environment {
   /**
@@ -2033,6 +2065,9 @@ export class Environment {
     this._buildFlank();
     this._buildParticles();
     this._buildClouds();
+    // sky, valley floor and glowing decor get the same colour grade + vignette as the lit materials (the runner patches those itself)
+    patchTail(this.skyMat); patchTail(this.groundMat); patchTail(this.matGlow);
+    setLookActive(true);
 
     // path samples (8 m) used by corridor tests + ground height
     this._sx = new Float32Array(NS); this._sy = new Float32Array(NS); this._sz = new Float32Array(NS);
@@ -3212,6 +3247,10 @@ export class Environment {
     this.discMat.color.copy(c[7]);
     this.cloudMat.color.copy(c[8]);
     this.cloudMat.emissive.copy(c[8]).multiplyScalar(0.36);
+    // colour grade + ball rim of this biome (shared shader uniforms, see shaders.js)
+    const nn = this.nCur;
+    SU.uSh.value.copy(c[9]); SU.uHi.value.copy(c[10]); SU.uRim.value.copy(c[11]);
+    SU.uGrade.value.set(nn[18], nn[19], nn[20], nn[21]);
     // sky gradient
     const col = this.sky.geometry.attributes.color, a = col.array, w = this._skyW;
     let t = c[0], m = c[1], h = c[2];
@@ -3655,6 +3694,7 @@ export class Environment {
   dispose() {
     if (this._disposed) return;
     this._disposed = true;
+    setLookActive(false);
     this.scene.remove(this.group);
     const geos = new Set();
     this.group.traverse((o) => {
@@ -3684,7 +3724,9 @@ export class Environment {
 
 // ---------------------------------------------------------------------------------------------
 function makeLook(b) {
+  const g = b.grade;
   const c = [b.sky.top, b.sky.mid, b.sky.horizon, b.fog.color, b.hemi.sky, b.hemi.ground, b.sun.color, b.disc.color, b.clouds].map((h) => new THREE.Color(h));
+  c.push(new THREE.Color().setRGB(g.sh[0], g.sh[1], g.sh[2]), new THREE.Color().setRGB(g.hi[0], g.hi[1], g.hi[2]), new THREE.Color(g.rimC)); // (tints are raw multipliers, not sRGB colours)
   const n = new Float32Array(NN);
   n[0] = b.fog.near; n[1] = b.fog.far;
   n[2] = b.hemi.intensity; n[3] = b.sun.intensity;
@@ -3695,5 +3737,6 @@ function makeLook(b) {
   n[14] = b.glowBase; n[15] = b.pulse.lava;
   n[16] = b.cloudAmt === undefined ? 1 : b.cloudAmt;
   n[17] = b.aurora || 0;
+  n[18] = g.sat; n[19] = g.con; n[20] = g.vig; n[21] = g.rim;
   return { c, n };
 }

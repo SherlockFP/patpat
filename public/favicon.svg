@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#8fc8ff"/>
+  <circle cx="32" cy="34" r="22" fill="#fff" stroke="#17345c" stroke-width="3.5"/>
+  <ellipse cx="25" cy="25" rx="7" ry="4.5" fill="#e6f2ff" transform="rotate(-30 25 25)"/>
+  <circle cx="25.5" cy="31" r="2.6" fill="#17345c"/>
+  <circle cx="38.5" cy="31" r="2.6" fill="#17345c"/>
+  <path d="M32 35 L41 38 L32 41 Z" fill="#ff8a2a" stroke="#17345c" stroke-width="1.6" stroke-linejoin="round"/>
+</svg>
