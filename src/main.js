@@ -14,7 +14,7 @@ import { audio } from './audio.js';
 import { platform, notify } from './platform.js';
 import { save } from './save.js';
 import { dailySeed, dailyNumber } from './rng.js';
-import { PostFX, VISUAL_MODES, SU, patchMaterial } from './shaders.js';
+import { PostFX, VISUAL_MODES, SU, patchMaterial, makeGovernor } from './shaders.js';
 import { makeSkin, disposeSkin, trailStyle, setGoldBall } from './skins.js';
 import { Scenery, themeForLevel } from './scenery.js';
 import { loadModels } from './assets.js';
@@ -47,22 +47,17 @@ const dprMax = Math.min(window.devicePixelRatio || 1, 2);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: dprMax < 2, powerPreference: 'high-performance' });
 let dpr = dprMax;
 renderer.setPixelRatio(dpr);
+// Adaptive quality (makeGovernor, shaders.js): when the mean frame time of a 2 s window is above ADAPT_DOWN_MS the pixel ratio drops one 0.25 step
+// (floor 1), then the optional extras go ("lite": no contact shadow / glitter / streaks); a few calm windows below ADAPT_UP_MS climb back, never above dprMax.
+const ADAPT_DOWN_MS = 21, ADAPT_UP_MS = 17.5;
+const gov = makeGovernor({ dprMax, dprMin: 1, step: 0.25, downMs: ADAPT_DOWN_MS, upMs: ADAPT_UP_MS });
 
 const HORIZON = 0xdcefff;
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(HORIZON, 90, 340);
 scene.background = new THREE.Color(HORIZON);
 
-const sky = makeSky();
-sky.visible = false;
-scene.add(sky);
-const hemi = new THREE.HemisphereLight(0xcfe4ff, 0x8fa9d6, 1.5);
-hemi.visible = false;
-scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffe4b8, 2.1);
-sun.position.set(0.25, 1, 0.6);
-sun.visible = false;
-scene.add(sun);
+// (No sky dome or lights here: the ÇIĞ slope gets its own from scenery.js, the YETİ RUSH world from Environment in runner/biomes.js.)
 
 const camera = new THREE.PerspectiveCamera(60, 1, 0.5, 1800);
 setShareContext({ renderer, scene, camera });
@@ -232,7 +227,7 @@ function buildWorld(seed, themeIdx, daily, plan = null) {
   scenery?.dispose();
   scenery = new Scenery(scene, { world, lib, theme: themeForLevel(themeIdx, daily), onEgg: (id) => meta.egg(id) });
   plus = new CigPlus(scene, world, { seed, lib, ui, hud: typeof ui.buffAdd !== 'function', level: plan });
-  if (!fx) { fx = new Fx(scene, world); applyTrail(save.selected('trail')); }
+  if (!fx) { fx = new Fx(scene, world, camera); applyTrail(save.selected('trail')); }
   fx.world = world;
   fx.reset();
   if (rainbowTrail) { rainbowTrail = false; applyTrail(save.selected('trail')); } // the run ended mid-rainbow: back to the chosen trail
@@ -423,7 +418,7 @@ async function startEndless(level = null, opts = {}) {
   hideLevelHud();
   menus.hideMain();
   setCigVisible(false);
-  if (!fx) { fx = new Fx(scene, groundless); applyTrail(save.selected('trail')); }
+  if (!fx) { fx = new Fx(scene, groundless, camera); applyTrail(save.selected('trail')); }
   fx.world = groundless;
   scene.fog.near = 60;
   scene.fog.far = 330;
@@ -1204,7 +1199,6 @@ function updateCamera(dt, snap = false) {
     camera.rotateZ((Math.random() - 0.5) * a * 0.6);
     G.shake = Math.max(0, G.shake - dt * 3.5);
   }
-  sky.position.copy(camera.position);
   const fs = (scenery?.theme?.fogScale ?? 1) * (G.lv && G.lv.twist === 'fog' ? 0.6 : 1);
   scene.fog.near = (70 + r * 6) * fs;
   scene.fog.far = Math.min(1500, 300 + r * 9) * fs;
@@ -1383,13 +1377,13 @@ let crownEl = null;
 // ---------- loop ----------
 let last = performance.now();
 let frameErrors = 0;
-let frameAvg = 16, perfT = 0, fpsT = 0, frames = 0, fps = 0, upVotes = 0;
+let fpsT = 0, frames = 0, fps = 0;
 
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const rawMs = now - last;
+  const dt = Math.min(0.05, rawMs / 1000);
   last = now;
-  frameAvg += (dt * 1000 - frameAvg) * 0.05;
 
   // A bug in one system must never freeze the picture (the pause / menu buttons still need a live page): log and carry on.
   try {
@@ -1406,7 +1400,7 @@ function frame(now) {
   if (G.mode === 'agar' && agar) {
     SU.uTime.value = now / 1000;
     try { post.render(agar.scene, agar.camera); } catch (e) { if (frameErrors++ < 5) console.error('[agar render]', e); }
-    adaptResolution(dt);
+    adaptResolution(rawMs);
     return;
   }
 
@@ -1422,50 +1416,42 @@ function frame(now) {
   }
   SU.uTime.value = now / 1000;
   skin?.update?.(dt, now / 1000, ball.snow);
+  updateBallUniform();
   post.render(scene, camera);
-  adaptResolution(dt);
+  adaptResolution(rawMs);
 
   if (DEBUG) {
     frames++;
     fpsT += dt;
     if (fpsT > 0.5) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
     const info = renderer.info.render;
-    if (G.mode === 'runner' && runner) ui.debug(`fps ${fps}  dpr ${dpr.toFixed(2)}
+    if (G.mode === 'runner' && runner) ui.debug(`fps ${fps}  dpr ${dpr.toFixed(2)}${gov.lite ? ' lite' : ''}
 calls ${info.calls}  tris ${(info.triangles / 1000).toFixed(0)}k
 s ${runner.b.s.toFixed(0)} u ${runner.b.u.toFixed(2)} h ${runner.b.h.toFixed(2)}
 v ${runner.b.vs.toFixed(1)} gap ${runner.gap.toFixed(0)} r ${runner.b.r.toFixed(2)} ${runner.state}`);
-    else ui.debug(`fps ${fps}  dpr ${dpr.toFixed(2)}\ncalls ${info.calls}  tris ${(info.triangles / 1000).toFixed(0)}k\nr ${ball.r.toFixed(2)}  v ${ball.speed.toFixed(1)}  d ${ball.d.toFixed(0)}\ntier ${G.tier + 1}  stuck ${ball.stuckCount()}  pulls ${world?.pulls.length ?? 0}`);
+    else ui.debug(`fps ${fps}  dpr ${dpr.toFixed(2)}${gov.lite ? ' lite' : ''}\ncalls ${info.calls}  tris ${(info.triangles / 1000).toFixed(0)}k\nr ${ball.r.toFixed(2)}  v ${ball.speed.toFixed(1)}  d ${ball.d.toFixed(0)}\ntier ${G.tier + 1}  stuck ${ball.stuckCount()}  pulls ${world?.pulls.length ?? 0}`);
   }
 }
 
-// Drop resolution when the phone struggles, creep back up when it's comfortable.
-function adaptResolution(dt) {
-  perfT += dt;
-  if (perfT < 2) return;
-  perfT = 0;
-  let next = dpr;
-  if (frameAvg > 24 && dpr > 1) next = Math.max(1, dpr - 0.25);
-  else if (frameAvg < 18.5 && dpr < dprMax && ++upVotes >= 3) { next = Math.min(dprMax, dpr + 0.25); upVotes = 0; }
-  if (next !== dpr) {
-    dpr = next;
+// Drop resolution (then the optional extras) when the phone struggles, creep back up when it's comfortable. The ladder lives in makeGovernor.
+function adaptResolution(rawMs) {
+  if (!gov.tick(rawMs)) return;
+  post.setLite(gov.lite);
+  if (gov.dpr !== dpr) {
+    dpr = gov.dpr;
     renderer.setPixelRatio(dpr);
     resize();
   }
 }
 
-function makeSky() {
-  const geo = new THREE.SphereGeometry(1000, 20, 12);
-  const pos = geo.attributes.position;
-  const col = new Float32Array(pos.count * 3);
-  const top = new THREE.Color(0x5fa8ff), mid = new THREE.Color(0xa9d4ff), hor = new THREE.Color(HORIZON), c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i) / 1000;
-    if (y > 0.25) c.copy(mid).lerp(top, Math.min(1, (y - 0.25) / 0.6));
-    else c.copy(hor).lerp(mid, Math.max(0, y / 0.25));
-    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+// The snowball in view space for the shaders: contact shadow, rim and fresh-snow glitter (see shaders.js SU.uBall). 0 radius = no ball.
+const _bv = new THREE.Vector3();
+function updateBallUniform() {
+  const b = SU.uBall.value, g = ball.group;
+  if (!g.visible || G.mode === 'agar') { b.w = 0; return; }
+  camera.updateMatrixWorld();
+  _bv.copy(g.position).applyMatrix4(camera.matrixWorldInverse);
+  b.set(_bv.x, _bv.y, _bv.z, ball.snow.scale.x * (g.scale.x + g.scale.y) * 0.5);
 }
 
 // Debug hooks: advance the simulation with a fixed step regardless of rAF throttling (muted headless tests use these).
