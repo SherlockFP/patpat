@@ -30,7 +30,7 @@ export const words = {
   'KOPYALANDI': 'COPIED', 'KOŞUYU BİTİR': 'END RUN', 'HAZIR!': 'READY!', 'kaldı': 'to go',
   'YETİ ARKANDA!': 'YETI BEHIND YOU!', 'YETİ ENSENDE': 'YETI ON YOUR TAIL',
   'YENİ REKOR!': 'NEW RECORD!', '★ YENİ REKOR!': '★ NEW RECORD!', '★ YENİ REKOR! ★': '★ NEW RECORD! ★',
-  'YENİ SKOR REKORU!': 'NEW SCORE RECORD!', '★ ÇİFT REKOR! ★': '★ DOUBLE RECORD! ★',
+  '▼ SERİ': '▼ STREAK', 'YENİ SKOR REKORU!': 'NEW SCORE RECORD!', '★ ÇİFT REKOR! ★': '★ DOUBLE RECORD! ★',
   'GÜZEL!': 'NICE!', 'HARİKA!': 'GREAT!', 'SÜPER!': 'SUPER!', 'MUHTEŞEM!': 'AMAZING!', 'EFSANE!': 'LEGENDARY!',
   'YETİ ÖNÜNDE!': 'YETI AHEAD!', 'YETİ ÖFKESİ': 'YETI RAGE', 'AKIŞ': 'FLOW',
   'kasaba yıkıldı': 'town crushed', 'sürükle': 'drag', 'kaydır · yukarı: zıpla': 'swipe · up: jump',

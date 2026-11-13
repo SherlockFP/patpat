@@ -87,6 +87,8 @@ const DISC_F = 0.3;       // sun disc radius as a fraction of the sprite half si
 // ---------------------------------------------------------------------------------------------
 // tiny utils
 // ---------------------------------------------------------------------------------------------
+// chapter sky backdrops -> horizon tint (fog colour while it shows)
+const BACKDROPS = { dawn: 0xa9b6ee, night: 0x3a52c8, canyon: 0xe66e38 };
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 function smooth(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
@@ -2164,6 +2166,66 @@ export class Environment {
     this.sky.frustumCulled = false;
     this.group.add(this.sky);
     this._domeR = 700;
+    this._buildBackdrop();
+  }
+
+  // Chapter sky backdrops (public/sky/<id>.jpg, AI-generated panoramas): ONE extra textured dome mesh (+1 draw call while shown), lazy-loaded on the first
+  // request, dither-faded in / out (opaque, so no sort / overdraw issues); the procedural dome stays underneath and is the fallback. While a backdrop shows,
+  // the fog + horizon colour lean toward its horizon tint so the terrain melts into the picture's mountains.
+  _buildBackdrop() {
+    const ROWS = [-8, 0, 5, 10, 15, 20, 28, 38, 50, 90], SEG = 36, REP = 3, D2R = Math.PI / 180, pos = [], uv = [], idx = [];
+    for (let j = 0; j < ROWS.length; j++) {
+      const e = ROWS[j] * D2R, ce = Math.cos(e), v = 1 - clamp(0.93 - ROWS[j] / 48, 0, 1);    // image row: elevation 0 = the mountains' feet, 48 deg per image height, the picture wraps REP times round the horizon (a phone sees ~36 deg of it)
+      for (let i = 0; i <= SEG; i++) { const a = (i / SEG) * Math.PI * 2; pos.push(Math.sin(a) * ce, Math.sin(e), Math.cos(a) * ce); uv.push((i * REP) / SEG, v); }
+    }
+    for (let j = 0; j < ROWS.length - 1; j++) for (let i = 0; i < SEG; i++) { const a = j * (SEG + 1) + i, b = a + SEG + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    this._bdU = { value: 1 };
+    const m = this.bdMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, depthWrite: false, depthTest: false });
+    m.onBeforeCompile = (sh) => {      // screen-door dissolve: uBd = share of pixels drawn
+      sh.uniforms.uBd = this._bdU;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uBd;')
+        .replace('void main() {', 'void main() {\n  if (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) > uBd) discard;');
+    };
+    m.customProgramCacheKey = () => 'sky-bd';
+    patchTail(m);
+    this.bd = new THREE.Mesh(geo, m);
+    this.bd.renderOrder = -99; this.bd.frustumCulled = false; this.bd.visible = false;
+    this.group.add(this.bd);
+    this._bdTex = {}; this._bdWant = null; this._bdCur = null; this._bdK = 0;
+    this._bdTint = new THREE.Color();
+  }
+
+  /** id: 'dawn' | 'night' | 'canyon' | null (the procedural sky). */
+  setBackdrop(id) {
+    this._bdWant = id && BACKDROPS[id] ? id : null;
+    if (this._bdWant && !this._bdTex[this._bdWant]) {
+      const rec = this._bdTex[this._bdWant] = { tex: null };
+      try {      // (no DOM image loader, e.g. the node sims: the procedural sky simply stays)
+        new THREE.TextureLoader().load(`./sky/${this._bdWant}.jpg`, (tx) => {
+          if (this._disposed) { tx.dispose(); return; }
+          tx.colorSpace = THREE.SRGBColorSpace; tx.wrapS = THREE.RepeatWrapping; tx.wrapT = THREE.ClampToEdgeWrapping; tx.anisotropy = 1;
+          rec.tex = tx;
+        }, undefined, () => { rec.tex = null; rec.failed = true; });
+      } catch (e) { rec.failed = true; }
+    }
+  }
+
+  _updateBackdrop(dt) {
+    const w = this._bdWant, rec = w ? this._bdTex[w] : null;
+    if (this._bdCur !== w && (this._bdK <= 0 || !this._bdCur)) {         // faded out: swap (only to a ready texture; a failed load stays procedural)
+      if (!w) this._bdCur = null;
+      else if (rec && rec.tex) { this._bdCur = w; this.bdMat.map = rec.tex; this.bdMat.needsUpdate = true; this._bdTint.setHex(BACKDROPS[w]); }
+    }
+    const goal = this._bdCur && this._bdCur === w ? 1 : 0, k0 = this._bdK;
+    this._bdK = clamp(k0 + (goal ? dt : -dt) * 2.2, 0, 1);
+    this._bdU.value = this._bdK;
+    this.bd.visible = this._bdK > 0.004 && !!this._bdCur;
+    if (this._bdK !== k0) this._lookDirty = true;     // the fog tint follows the fade
+    if (this.bd.visible) { this.bd.position.copy(this.sky.position); this.bd.scale.setScalar(this._domeR * 0.99); }
   }
 
   _buildCelestial() {
@@ -3301,6 +3363,7 @@ export class Environment {
     SU.uSh.value.copy(c[9]); SU.uHi.value.copy(c[10]); SU.uRim.value.copy(c[11]);
     SU.uGrade.value.set(nn[18], nn[19], nn[20], nn[21]);
     // sky gradient
+    if (this._bdK > 0.004) { this.fog.color.lerp(this._bdTint, 0.75 * this._bdK); this.bg.lerp(this._bdTint, 0.75 * this._bdK); }
     const col = this.sky.geometry.attributes.color, a = col.array, w = this._skyW;
     let t = c[0], m = c[1], h = c[2];
     if (rk > 0.002) {
@@ -3680,6 +3743,7 @@ export class Environment {
     // follow the camera
     this.sky.position.copy(cp);
     this.sky.scale.setScalar(this._domeR);
+    this._updateBackdrop(dt);
 
     this._updateChunks(s);
     this._fixDirty();
@@ -3691,6 +3755,8 @@ export class Environment {
     this._cullDecor();
     this._updateParticles(dt, cp);
     this._updateCelestial(cp);
+    if (this._bdK > 0.5) this.disc.visible = this.stars.visible = this.aurora.visible = false;       // the picture has its own sun / stars / aurora
+    else this.disc.visible = true;
 
     // beat pulses (cheap scalar uniforms only)
     this._pulse(beat);
@@ -3763,7 +3829,8 @@ export class Environment {
       geos.delete(T.geo);
     }
     for (const g of geos) g.dispose();
-    for (const m of [this.matLit, this.matFlank, this.matGlow, this.cloudMat, this.skyMat, this.discMat, this.starMat, this.groundMat, this.gridMat, this.partMat, this.matWall, this.matWater, this.matIce]) m.dispose();
+    for (const m of [this.matLit, this.matFlank, this.matGlow, this.cloudMat, this.skyMat, this.bdMat, this.discMat, this.starMat, this.groundMat, this.gridMat, this.partMat, this.matWall, this.matWater, this.matIce]) m.dispose();
+    for (const r of Object.values(this._bdTex)) r.tex?.dispose();
     for (const t of [this._sunTexA, this._sunTexB, this._sunTexC, this._dotTex, this._gridTex, this._wfTex]) if (t) t.dispose();
     if (this._ownLib && this.lib) for (const k in this.lib) this.lib[k].geometry.dispose();
     this.hemi.dispose && this.hemi.dispose();

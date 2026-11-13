@@ -283,10 +283,10 @@ export class Fx {
       this.mPos[o] += this.mVel[o] * dt; this.mPos[o + 1] += this.mVel[o + 1] * dt; this.mPos[o + 2] += this.mVel[o + 2] * dt;
       this.mSizeAttr[i] = this.mSize[i] * (0.5 + 1.6 * t);
       let al = (this.mBase ? this.mBase[i] : 0.5) * (t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85);
-      if (bp && !this.mKeep[i]) {
-        // storm / powder near the ball: thin it out so the white ball never vanishes into white
+      if (bp) {
+        // storm / powder near the ball: thin it out so the white ball never vanishes into white (the bright hit / pickup flashes are capped too: a ball buried in its own burst cannot be steered)
         const dx = this.mPos[o] - bp.x, dy = this.mPos[o + 1] - bp.y, dz = this.mPos[o + 2] - bp.z, q = (dx * dx + dy * dy + dz * dz) / (nearR * nearR);
-        if (q < 1) { dens += al * (1 - q); al *= 0.3 + 0.7 * q; }
+        if (q < 1) { if (this.mKeep[i]) al *= 0.4 + 0.6 * q; else { dens += al * (1 - q); al *= 0.3 + 0.7 * q; } }
       }
       this.mAlpha[i] = al;
     }

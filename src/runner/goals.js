@@ -104,6 +104,9 @@ export function gustAt(s, lead = 0) {
 /** Round scores a player chases once the record is theirs (a new best has no "points left"). */
 export const SCORE_STEPS = [500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
 
+/** THE score record rule (death screen, menu and live toast read the same stored record): beating a record of >= 100 by distance >= 50 m. A first-ever run has no record to beat. */
+export const isScoreRecord = (score, prev, dist = 50) => dist >= 50 && prev >= 100 && score > prev;
+
 /** The ONE next goal on the death screen: below the record = { k: 'rec', val: points that beat it }, else { k: 'next', val: the next round score }. */
 export function nextGoal(score, best) {
   if (best > 0 && score <= best) return { k: 'rec', val: best - score + 1 };

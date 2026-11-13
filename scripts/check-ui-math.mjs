@@ -95,6 +95,24 @@ assert.equal(recTitle({ dist: false, score: false }), '');
   assert.equal(tt('RİSK +3'), 'RISK +3');
 }
 
+// ---- ONE stored record: death screen, menu (REKOR n) and live toast all read save.runnerBest(); the badge / gap maths can never contradict it ----
+{
+  const { runnerResultLines: L } = UI, { save: sv } = await import('../src/save.js'), { isScoreRecord } = await import('../src/runner/goals.js');
+  assert.equal(isScoreRecord(193, 0, 300), false, 'a first-ever run has no record to beat');
+  assert.equal(isScoreRecord(80, 50, 300), false, 'a record under 100 is not worth a banner (same gate as the live toast)');
+  assert.equal(isScoreRecord(4001, 4000, 49), false, 'under 50 m is never a record');
+  assert.equal(L({ score: 193 }, 0).rec, false); assert.equal(L({ score: 193 }, 0).delta, '', 'first run: no "+N vs old record"');
+  sv.recordRunner(4000, 800);
+  const prev = sv.runnerBest();                       // what the menu shows as the record
+  assert.equal(prev, 4000);
+  const lo = L({ score: 193, isRecord: isScoreRecord(193, prev, 300), deltaBest: 0 }, prev);
+  assert.equal(lo.rec, false, '193 can never beat 4000'); assert.match(lo.delta, /^EN İYİYE .*3[.,]808 PUAN$/); assert.equal(lo.goal, 'EN İYİ ' + (4000).toLocaleString('en-US'));
+  const hi = L({ score: 4203, isRecord: isScoreRecord(4203, prev, 300), deltaBest: 203 }, prev);
+  assert.deepEqual([hi.rec, hi.delta], [true, '+203'], 'the gap is exactly score - stored record');
+  sv.recordRunner(193, 300); assert.equal(sv.runnerBest(), 4000, 'a worse run never lowers the record');
+  sv.recordRunner(4203, 900); assert.equal(sv.runnerBest(), 4203, 'the record the next run / menu reads is the new one');
+}
+
 // ---- English entries for every new visible string ----
 const { t } = await import('../src/i18n.js');
 assert.equal(t('REKOR 4.000 PUAN'), 'RECORD 4.000 PTS'); assert.equal(t('KASABA AVI · 12/40'), 'TOWN HUNT · 12/40');
@@ -105,7 +123,8 @@ for (const [tr, en] of [
   ['SEVİYE 8', 'LEVEL 8'], ['SEVİYE 8 ▲', 'LEVEL 8 ▲'], ['SEZON', 'SEASON'],
   ['ÖNCEKİ REKOR 500 m · +140 m', 'PREVIOUS RECORD 500 m · +140 m'], ['ÖNCEKİ SKOR REKORU 1.000', 'PREVIOUS SCORE RECORD 1.000'],
   ['Rekoru geç: 640 m', 'Beat it: 640 m'], ['Rekora 780 m kaldı!', '780 m to the record!'], ['↻ TEKRAR', '↻ RETRY'],
-  ['Gizlilik Politikası', 'Privacy Policy'], ['BUGÜN', 'TODAY'], ['GÜNLÜK 1/3', 'DAILY 1/3'],
+  ['Gizlilik Politikası', 'Privacy Policy'], ['KOMBO x15!', 'COMBO x15!'], ['▼ SERİ', '▼ STREAK'], ['Kar tanelerini çeker', 'Pulls in snowflakes'],
+  ['Görseller PATPAT için yapay zekâ ile üretildi · Modeller PATPAT için Blender’da yapıldı', 'Art generated with AI image generation for PATPAT · Models made in Blender for PATPAT'], ['BUGÜN', 'TODAY'], ['GÜNLÜK 1/3', 'DAILY 1/3'],
 ]) assert.equal(t(tr), en, `English entry for "${tr}"`);
 
 // ---- share link: hosted builds use their own address, the Capacitor app / dev servers fall back to the public site ----
@@ -151,6 +170,8 @@ assert.equal(ui.el.resBadge.textContent, '', 'no record badge on 244 points agai
 ui._best = 1000; ui._bestD = 500;
 ui.showRunnerResult({ cause: 'yeti', distance: 640, score: 4000, coins: 12, best: 4000, bestDist: 640, isBest: true, isBestDist: true, rank: 1, toRecord: 0, crystals: 0 });
 assert.equal(ui.el.resLabel.textContent, 'SCORE', 'English: no literal SKOR');
+assert.equal(ui.el.resTons.textContent, '', 'record gap + badge wait for the count-up (a half-counted score next to them read as impossible maths)'); assert.ok(ui.el.resBadge.classList.contains('hidden'));
+ui._recReveal(); assert.ok(!ui.el.resBadge.classList.contains('hidden'));
 assert.equal(ui.el.resTons.textContent, '+3,000 vs old record', 'record: signed gap to the old best (deltaBest missing -> computed)');
 assert.ok(ui.el.resExtra.innerHTML.includes('class="rx-pg"') && ui.el.resExtra.innerHTML.includes('SEVİYE') && ui.el.resExtra.innerHTML.includes('rx-qlist hidden'), 'progress rows are in the result, collapsed behind one tap');
 assert.ok(ui.el.resExtra.innerHTML.startsWith('<div class="rx-row">'), 'one compact chip row first');
@@ -186,7 +207,7 @@ assert.equal(UI.fmtTons(1.5), '1.5 ton', 'English: decimal point');
   u._cmb || u._mkCmb();
   u._mu = 3; u._cmN = 12; u._cmRender();
   assert.equal(u._cmKe.textContent, 'x3', 'Rush chip: the multiplier');
-  assert.equal(u._cmKs.textContent + u._cmKu.textContent, '', 'Rush chip: no KOMBO label / SKOR suffix');
+  assert.equal(u._cmKs.textContent, '', 'Rush chip: no KOMBO label'); assert.equal(u._cmKu.textContent, 'SCORE', 'Rush chip: the first multiplier of a run is named (x2 SCORE)'); clearTimeout(u._mFT);
   assert.ok(u._cmb.classList.contains('on'));
   assert.ok(u._cmb.classList.contains('t2'), 'Rush chip: x3 tint');
   u._mu = 5; u._cmRender();
@@ -194,9 +215,9 @@ assert.equal(UI.fmtTons(1.5), '1.5 ton', 'English: decimal point');
   u._mu = 3;
   u._mu = 0; u._cmRender();
   assert.ok(u._cmb.classList.contains('on') && u._cmb.classList.contains('dim') && u._cmKe.textContent === 'x1', 'Rush chip: always drawn, dim x1 without a multiplier');
-  assert.equal(u._cmKs.textContent, '▼', 'Rush chip: a red down arrow on a drop');
+  assert.equal(u._cmKs.textContent, '▼ -4', 'Rush chip: a red down tab with the size of the drop');
   u._mu = 2; u._cmRender();
-  assert.equal(u._cmKs.textContent, '▲', 'Rush chip: a green up arrow on a rise');
+  assert.equal(u._cmKs.textContent, '▲ +1', 'Rush chip: a green up tab with the size of the rise');
   assert.ok(u._cmb.classList.contains('decay'), 'Rush chip: pulses when the multiplier drops');
   clearTimeout(u._mLbT);
 

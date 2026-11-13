@@ -1018,7 +1018,7 @@ const CSS = `
 .fm-main .fm-modes .fm-mode { padding: 3px 8px; border-radius: 15px; box-shadow: 0 4px 0 var(--m3), inset 0 3px 0 rgba(255, 255, 255, 0.4); }
 .fm-main .fm-modes .mic { font-size: 21px; }
 .fm-main .fm-modes .fm-mode b { font-size: 14px; }
-.fm-main .fm-modes .fm-mode small { font-size: 10px; }
+.fm-main .fm-modes .fm-mode small { font-size: 11px; font-weight: 800; letter-spacing: -0.01em; }
 .fm-sum { gap: 8px; border-radius: 12px; cursor: pointer; }
 .fm-sum .sl { font-size: 12px; letter-spacing: 0.08em; color: #cfe2ff; }
 .fm-sum .sp { display: flex; gap: 4px; }
@@ -2062,6 +2062,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
 
     const cr = el('div', 'fm-credits');
     cr.appendChild(el('div', '', '3D modeller: Kenney (kenney.nl) — CC0 · Ses efektleri: Kenney, rubberduck (OpenGameArt) — CC0 · Müzik ve kod: PATPAT ekibi'));
+    cr.appendChild(el('div', '', 'Görseller PATPAT için yapay zekâ ile üretildi · Modeller PATPAT için Blender’da yapıldı'));
     cr.appendChild(el('em', '', `PATPAT v${VERSION}`));
     // privacy policy (also bundled as privacy.html): opens in the system browser, so the game itself is never navigated away
     const pv = el('a', 'fm-priv', 'Gizlilik Politikası');
@@ -2303,7 +2304,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     best.have = coins();
     best.afford = best.have >= best.price;
     const d = GUC.find((x) => x.id === best.id) || UPGRADES.find((x) => x.id === best.id);
-    best.name = d ? d.name : ''; best.icon = d ? d.icon : '⚡';
+    best.name = d ? d.name : ''; best.icon = d ? d.icon : '⚡'; best.desc = d && d.desc ? d.desc : '';
     return best;
   }
   const openUpgrades = openPower; // old name kept for callers

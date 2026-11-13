@@ -370,6 +370,11 @@ html, body {
 .hud-goal.rage { border-color: #ff3a2a; box-shadow: 0 0 10px rgba(255, 58, 42, 0.8); animation: yetiShake 0.15s infinite; }
 .hud-goal.rage .goal-fill { background: linear-gradient(90deg, #ff5a4a, #ff9a3a); }
 .hud-goal.pop { animation: goalPop 0.6s ease-out; }
+body:has(.chap-pill.on) .sec-strip.on { visibility: hidden; }   /* the chapter name owns the strip: the set-piece name waits (they used to overlap) */
+body:has(.rcp) #danger, body:has(.rcp) #toast-soft:not(.res), body:has(.rcp) #floats { visibility: hidden; }   /* the chapter summary strip owns the top: no pill / toast / float behind or over it */
+body:has(.perk-pick:not(.out)) #hint { bottom: calc(var(--sab) + 17%); z-index: 61; }   /* the swipe hint rides above the perk cards instead of under them */
+.hud-goal.nudge:not(.pop):not(.rage):not(.new) { animation: goalNudge 0.9s ease-in-out infinite; border-color: #ffe066; box-shadow: 0 0 10px rgba(255, 224, 102, 0.85); }
+@keyframes goalNudge { 50% { transform: scale(1.07); } }
 @keyframes goalPop { 0% { transform: scale(1); filter: brightness(1); } 25% { transform: scale(1.3); filter: brightness(1.6); } 100% { transform: scale(1); filter: brightness(1); } }
 @keyframes goalBeat { to { transform: scale(1.1); } }
 /* the strip pushes the rest of the centre column down */
@@ -479,6 +484,7 @@ html, body {
   box-shadow: 0 3px 0 rgba(10, 25, 55, 0.7); animation: tsIn 1.45s ease forwards; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 }
 #toast-soft .ts .ti { font-size: 18px; line-height: 1; }
+#toast-soft .ts.long { animation-duration: 3s; background: rgba(10, 25, 55, 0.96); font-size: 16px; }   /* a milestone / why-you-grow line stays 3 s and reads on snow */
 @keyframes tsIn { 0% { opacity: 0; transform: translateY(-10px) scale(0.9); } 12% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
 
 /* ---- first-run tutor card (top edge only) ---- */
@@ -572,9 +578,9 @@ html, body {
 .ag-chips { display: flex; flex-direction: column; gap: 3px; }
 .ag-chips .chip { display: none; width: max-content; padding: 2px 8px; border-radius: 10px; background: rgba(255, 224, 102, 0.9); color: var(--ink); font-size: 13px; border: 2px solid var(--ink); }
 .ag-tr { position: absolute; right: 10px; top: calc(var(--sat) + 8px); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.ag-lb { width: 150px; background: rgba(12, 32, 66, 0.55); border: 2px solid var(--ink); border-radius: 12px; padding: 4px 7px; }
+.ag-lb { width: 124px; background: rgba(12, 32, 66, 0.55); border: 2px solid var(--ink); border-radius: 12px; padding: 3px 6px; }
 .ag-lb .t { font-size: 11px; letter-spacing: 0.12em; text-align: center; color: #ffe066; margin-bottom: 2px; }
-.ag-lb .row { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; line-height: 1.35; }
+.ag-lb .row { display: flex; justify-content: space-between; gap: 6px; font-size: 10px; line-height: 1.35; }
 .ag-lb .row .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-lb .row .v { flex: none; opacity: 0.85; }
 .ag-lb .row.me { color: #ffe066; }
@@ -884,7 +890,7 @@ html, body {
 
 /* ---- FTUE ---- */
 .ftue-splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(#bfe6ff,#f4fbff);color:var(--ink,#17345c);font-family:inherit;transition:opacity .15s}
-.ftue-splash.out{opacity:0;pointer-events:none}
+.ftue-splash.out{opacity:0;pointer-events:none;transition:none}
 .ftue-splash .fs-logo{font-size:clamp(44px,14vw,84px);font-weight:900;letter-spacing:2px;text-shadow:0 4px 0 #fff}
 .ftue-splash .fs-sub{font-size:22px;font-weight:800;color:#ff7a2f}
 .ftue-splash .fs-tap{margin-top:42px;padding:16px 34px;border-radius:40px;background:#ff7a2f;color:#fff;font-size:clamp(22px,7vw,34px);font-weight:900;box-shadow:0 6px 0 #c55414;animation:ftpulse 1s ease-in-out infinite}
@@ -997,7 +1003,7 @@ body:has(#result:not(.hidden)) #rcol { display: none; }   /* the Rush side chips
 .pp-bar i { display: block; height: 100%; width: 100%; background: #ffd34d; transition: width 0.1s linear; }
 .perk-ico { position: absolute; right: 10px; top: calc(var(--sat) + 100px); width: 22px; height: 22px; display: grid; place-items: center; font-size: 12px; border-radius: 50%; background: #17345c; border: 2px solid var(--ink); pointer-events: none; }
 .sec-strip { position: absolute; left: 50%; top: calc(var(--sat) + 128px); transform: translateX(-50%); padding: 2px 12px 3px; border-radius: 11px; background: rgba(8, 22, 48, 0.8); border: 2px solid var(--ink); color: #ffe066; font-weight: 900; font-size: 13px; letter-spacing: 0.08em; white-space: nowrap; opacity: 0; pointer-events: none; }
-.sec-strip.on { animation: fadeOnly 2.4s linear forwards; }
+.sec-strip.on { animation: secOn 1.6s ease-out forwards; }
 .perk-ico .pn { display: none; }
 .perk-ico.say .pn { display: block; position: absolute; top: 100%; right: -2px; margin-top: 4px; padding: 1px 8px 2px; border-radius: 9px; background: #17345c; border: 2px solid var(--ink); font-weight: 900; font-size: 11px; line-height: 1.2; color: #fff; white-space: nowrap; }   /* the name hangs under the icon for 3.5 s */
 .perk-ico.hidden { display: none; }
@@ -1141,7 +1147,7 @@ body:has(#result:not(.hidden)) #rcol { display: none; }   /* the Rush side chips
   .cmb.hit, .cmb.tierup, .cmb.t3 .ch.k em, .cmb.t4 .ch.k em { animation: none; }
   .cmb.tierup::after, .confetti, .coin-fly { display: none; }
   .hud-tons.gold1, .hud-tons.gold2, .hud-tons.gold3, .hud-tons.cig-danger { animation: none; }
-  .hud-goal.new, .hud-goal.rage, .hud-goal.pop, .hud-yeti.close .yetibar, .hud-yeti.surge .yetibar, #danger, .hud-vitals .pip.danger { animation: none; }
+  .hud-goal.new, .hud-goal.rage, .hud-goal.pop, .hud-goal.nudge, .hud-yeti.close .yetibar, .hud-yeti.surge .yetibar, #danger, .hud-vitals .pip.danger { animation: none; }
   #speedlines, #speedlines::after, #hint .finger, #turn-cue .tc-chev { animation: none; }
   #result .btn.retry, .res-badge, #result.rec .res-tons, #btn-card.rec, .res-extra .rx-mult.up, .res-extra .slidein, .res-extra .rx-rec, .res-title { animation: none; }
   #result.rec { animation: none; box-shadow: inset 0 0 70px rgba(255, 207, 58, 0.4); }
@@ -1268,8 +1274,8 @@ body:has(#banner .b, #floats .float.big, #floats .float.bad, .chap-pill.on) #hud
 body:has(.fm-ov) #result { visibility: hidden; }   /* a panel (GÜÇ ...) over the result: its text never ghosts through the header */
 .res-extra .rx-ms { padding-bottom: 13px; }   /* the 4 px mission fill lives in this strip, clear of the text */
 /* Avalanche (endless) HUD: the next tier lives inside the tier bar, the tier row steps aside for the combo badge */
-.cig-hud .cg-bar { position: relative; width: 168px; height: 16px; }
-.cig-hud .cg-bar .cg-nx { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 900 10px/1 system-ui, sans-serif; letter-spacing: 0.03em; color: #fff; white-space: nowrap; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 -1px 0 var(--ink); }
+.cig-hud .cg-bar { position: relative; width: 196px; height: 19px; }
+.cig-hud .cg-bar .cg-nx { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 900 12px/1 system-ui, sans-serif; letter-spacing: 0.02em; color: #fff; white-space: nowrap; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 -1px 0 var(--ink); }
 .cig-hud .cg-nx:not(:empty)::before { content: none; }
 #hud.cig-endless:has(.cmb.on) .cig-hud { padding-left: 76px; box-sizing: border-box; }
 .cig-hud:has(.cg-nx:not(:empty)) #cg-best { display: none; }   /* metres alone on the row; the record waits for the result card */
@@ -1283,3 +1289,20 @@ body:has(.fm-ov) #result { visibility: hidden; }   /* a panel (GÜÇ ...) over t
 .perk-card .bc-s { font-size: 11px; line-height: 1.1; }
 #hud.cig-endless .hud-tons { -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; }   /* the hero number stays readable over a pale sky */
 #hud.cig-lvl .hud-top .hud-level[data-near="1"] { box-shadow: 0 0 12px #ffcf3a; filter: brightness(1.3); }
+
+/* ---- final critic pass: ONE goal element. The mission pill carries the chapter progress as its bottom edge (a moving fill) and a CH tag at its right end ---- */
+#hud.rush.rush.rush .hud-goal { height: 28px; }
+#hud.rush.rush.rush .hud-goal .goal-lbl { line-height: 19px; padding: 0 34px 0 8px; }
+.hud-goal .chap-bar { top: auto; bottom: 0; left: 0; right: 0; width: auto; height: 6px; margin: 0; border-radius: 0; overflow: hidden; background: rgba(255, 255, 255, 0.16); box-shadow: none; }
+.hud-goal .chap-bar i, .hud-goal .chap-bar::after, .hud-goal .chap-bar b { border-radius: 0; }
+.hud-goal .chap-bar::after, .hud-goal .chap-bar b { display: none; }
+.hud-goal .chap-bar.near i { box-shadow: 0 0 8px #fff; }
+.hud-goal[data-ch]::after { content: attr(data-ch); position: absolute; right: 6px; top: 1px; font-size: 10px; line-height: 19px; font-weight: 900; letter-spacing: 0.04em; color: #b8f5c8; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }
+.hud-goal:has(.chap-bar[hidden])::after { display: none; }
+#result.rr { justify-content: flex-start; }   /* Rush result: the score block floats in the free space, the card hugs RETRY (no empty gap between them) */
+#result.rr .res-top { margin: auto 0; }
+#result.rr .res-mid { margin: 0 0 8px; }
+#hud.cig-endless .hud-tons { text-shadow: 0 3px 0 var(--ink), 0 0 10px rgba(8, 22, 48, 0.9), 0 0 24px rgba(8, 22, 48, 0.6); }   /* QA: pale tons readout on a pale sky: a dark halo behind the outline */
+@keyframes secOn { 0% { opacity: 0; } 10% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }   /* set-piece name: solid for ~1.2 s on a change, then gone */
+.sec-strip { background: rgb(8, 22, 48); }
+.rx-up .ru-d { display: block; font-size: 11.5px; font-weight: 800; opacity: 0.85; margin-top: 1px; }   /* what the next upgrade gives */

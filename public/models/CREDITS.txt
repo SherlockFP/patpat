@@ -94,3 +94,5 @@ Models used (game key <- pack/file):
   k_basalt_b         <- nature-kit/stone_largeD
 
 PATPAT original models (yeti.glb, critter_*.glb, prop_*.glb): original, made for PATPAT (Blender, baked vertex colours).
+
+Art generated with AI image generation for PATPAT (sky backdrops public/sky/*.jpg, app icon, store art); models made in Blender for PATPAT.

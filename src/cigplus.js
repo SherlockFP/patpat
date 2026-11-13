@@ -1501,7 +1501,7 @@ export class CigGame {
     }
     if (bi < 0) return;
     const m = q.splice(bi, 1)[0];
-    if (m.str == null) this._h('tier', m.a, m.b); else this._h('toast', m.str);
+    if (m.str == null) this._h('tier', m.a, m.b); else this._h('toast', m.str, m.pri === 2);
     this._mCur = { pri: m.pri, key: m.key, until: G.t + (m.pri === 3 ? 2.2 : m.str == null ? 2.8 : m.pri === 2 ? 2.4 : 1.7) };
   }
 
@@ -1748,7 +1748,7 @@ export class CigGame {
     const label = LABEL[q.type];
     if (label && q.r > b.r * 0.8) { const seen = this._seen || (this._seen = new Set()); if (!seen.has(q.type)) { seen.add(q.type); this._text(`${label}!`, q, ''); } }
     else if (G.combo >= this.fevAt && G.t >= this.fevCd) this._fever(G.combo);
-    else if (G.combo > 0 && G.combo % 15 === 0) this._msg(1, `x${G.combo}!`);
+    else if (G.combo > 0 && G.combo % 15 === 0) this._msg(1, `KOMBO x${G.combo}!`);      // (labelled: a bare "x15!" chip meant nothing)
     this._tierCheck();
   }
 

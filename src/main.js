@@ -318,7 +318,7 @@ const cigHost = {
   burst(x, y, d, n, color, speed, size, up) { fx.burst(x, y, d, n, color, speed, size, up); },
   puff(x, y, z, vx, vy, vz, size, life, color, alpha) { fx.puff(x, y, z, vx, vy, vz, size, life, color, alpha); },
   text(str, at, cls) { popText(str, at, cls); },
-  toast(str) { if (ui.toastSoft) ui.toastSoft(str); },
+  toast(str, long) { if (ui.toastSoft) ui.toastSoft(str, long ? { long: true } : undefined); },
   shake(v) { G.shake += v; },
   debris(x, y, d, n) { fx.debris?.({ x, y, z: -d }, 0xb08a5a, n); },
   dust(x, y, d, r) { fx.dust?.({ x, y, z: -d }, r); },
@@ -398,7 +398,7 @@ function showIntroChip(plan) {
   }
   const parts = [];
   if (plan.boss && !plan.daily) parts.push('<b class="pat' + (plan.bigBoss ? ' big' : '') + '">' + (plan.bigBoss ? '👑 ' : '👹 ') + 'PATRON SEVİYESİ</b>');
-  if (plan.mod && (!plan.daily || plan.mod.special)) parts.push('<b class="mod">' + plan.mod.icon + ' ' + plan.mod.name + '</b>');
+  if (plan.mod && (!plan.daily || plan.mod.special)) parts.push('<b class="mod">' + plan.mod.icon + ' <span>' + plan.mod.name + '</span>' + (plan.mod.coinK > 1 ? ' · ×' + plan.mod.coinK + ' ❄️' : '') + '</b>');   // (says what it does: the coin multiplier)
   if (plan.town) parts.push('<b class="mod town">🏘️ Yuvarlan, yut, büyü!<br>Kasabayı ezmek için ' + fmtD(2 * plan.town.min) + ' m ol</b>');   // the goal and WHY you grow, told up front
   nightEl.style.display = plan.mod && plan.mod.night && !plan.daily ? 'block' : 'none';
   if (!parts.length) { introChip.style.display = 'none'; return; }
@@ -737,14 +737,10 @@ function showSizeReadout(info) {
   const el = ui.el.tons;
   if (!el) return;
   lastHave = info.lv.have;
-  const main = '⚪ ' + fmtD(info.lv.have) + ' m', sub = tonsCompact(info.tons || 0);
+  const main = '⚪ ' + tonsCompact(info.tons || 0);     // tons only: the metres already ride in the left "have → need" pill
   const c = el.firstChild;
-  if (c && c.nodeType === 3 && c.nodeValue === main && el.childElementCount === 1 && el.lastChild.textContent === sub) return;
+  if (c && c.nodeType === 3 && c.nodeValue === main && el.childElementCount === 0) return;
   el.textContent = main;
-  const sm = document.createElement('small');
-  sm.style.cssText = 'display:block;font-size:.45em;opacity:.7;line-height:1.1;font-weight:600';
-  sm.textContent = sub;
-  el.appendChild(sm);
 }
 function updateLevelHud(V) {
   const h = lvHud;
@@ -1283,9 +1279,10 @@ function updateCamera(dt, snap = false) {
   const z = (1 + camZoom) * (1 + 0.4 * clamp((camR - 1) / 8, 0, 1) + 0.045 * clamp(camR - 9, 0, 14));
   // steep enough that <= ~20-25% of the portrait screen is sky and the path stays visible over a big ball
   const near = G.lv && G.lv.n <= 5 ? 0.88 : 1;   // Dağ 1-5: the ball gets more screen presence
-  let back = (6.8 + r * 2.5) * z * near;
-  let up = (8.5 + r * 4.2) * z * near;
-  let ox = b.x * 0.7;
+  const tight = 1 - 0.2 * clamp((2.2 - camR) / 1.4, 0, 1);   // a small ball (the opening seconds) gets a closer camera: it is not a speck in a white field
+  let back = (6.8 + r * 2.5) * z * near * tight;
+  let up = (8.5 + r * 4.2) * z * near * tight;
+  let ox = b.x * 0.88;
   if (plus && plus.bossFx && !plus.bossFx.dead) { back *= 1.1; up *= 1.28; }   // boss fight: higher camera keeps the ball and the traps readable
   const menu = G.state === 'menu';
   if (menu) {
@@ -1311,7 +1308,7 @@ function updateCamera(dt, snap = false) {
   camera.position.lerp(camPos, k);
   // look down the slope: the look-at point follows the slope's drop, so the pitch stays steep over the ball
   const ahead = 8 + r * 2.6;
-  _v.set(b.x * 0.85, b.y - (world.baseY(b.d) - world.baseY(b.d + ahead)), -(b.d + ahead));
+  _v.set(b.x * 0.92, b.y - (world.baseY(b.d) - world.baseY(b.d + ahead)), -(b.d + ahead));
   if (menu) _v.set(b.x, b.y + r * 0.35, -(b.d - 0.2));
   if (ending) _v.set(b.x, b.y, -b.d);
   camLook.lerp(_v, snap ? 1 : 1 - Math.exp(-dt * 8));
@@ -1731,7 +1728,7 @@ async function boot() {
     sp.className = 'ftue-splash';
     sp.innerHTML = '<div class="fs-logo">PATPAT</div><div class="fs-sub">YETİ</div>';
     document.body.appendChild(sp);
-    const done = () => { sp.classList.add('out'); setTimeout(() => sp.remove(), 180); };   // (fade < 0.2 s: no ghost logo over the first frame)
+    const done = () => { sp.classList.add('out'); setTimeout(() => sp.remove(), 60); };   // (no fade: no ghost logo over the first frame)
     startEndless().then(done, done);
   }
   try { (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => { loadEndless().catch(() => {}); }); } catch { /* optional */ }

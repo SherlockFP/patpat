@@ -62,6 +62,7 @@ export const words = {
   'GÖREV SETİ': 'MISSION SETS', 'BÖLÜM': 'LEVEL', 'ÇIĞ DAĞ': 'AVALANCHE PEAKS', 'KOSTÜM': 'COSTUMES', 'KARTPOSTAL': 'POSTCARDS', 'ÇIĞ ⭐': 'AVALANCHE ⭐',
   '3D modeller: Kenney (kenney.nl) — CC0 · Ses efektleri: Kenney, rubberduck (OpenGameArt) — CC0 · Müzik ve kod: PATPAT ekibi':
     '3D models: Kenney (kenney.nl) — CC0 · Sound effects: Kenney, rubberduck (OpenGameArt) — CC0 · Music and code: the PATPAT team',
+  'Görseller PATPAT için yapay zekâ ile üretildi · Modeller PATPAT için Blender’da yapıldı': 'Art generated with AI image generation for PATPAT · Models made in Blender for PATPAT',
   'REKORLAR': 'RECORDS', '❄️ YETİ RUSH': '❄️ YETI RUSH', 'EN UZUN MESAFE': 'LONGEST DISTANCE', 'EN YÜKSEK SKOR': 'HIGH SCORE',
   '⛰️ ÇIĞ DAĞLAR': '⛰️ AVALANCHE PEAKS', 'TAMAMLANAN DAĞ': 'PEAKS CLEARED', 'TOPLAM YILDIZ': 'TOTAL STARS', '∞ ÇIĞ SONSUZ': '∞ ENDLESS AVALANCHE',
   'EN ÇOK KAR': 'MOST SNOW', 'EN YÜKSEK BOYUT': 'BIGGEST SIZE', 'Çığ': 'Avalanche', 'Mega Çığ': 'Mega Avalanche', 'Kıyamet': 'Doomsday',

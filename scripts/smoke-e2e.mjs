@@ -17,7 +17,7 @@
 //   8  english leak scan                                      9  fullscreen                    11  soak (heap after GC)
 //   12 frame pacing (Rush, rAF deltas)                        13 first-run frames first_00..03.png at 0.5/2/5/10 s (fresh save)
 //   14 cig mountain 1 start/mid/town/end (cig_1_*.png)             15 cig mountain 12 start/mid/end (cig_12_*.png)
-//   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   10 is the final blank-frame check (always printed)
+//   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   10 is the final blank-frame check (always printed)
 import { spawn, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -361,6 +361,23 @@ async function gallery(ctx) {
   ctx.pass('gallery frames shot');
 }
 
+// scenario 20: chapter sky backdrops. Real chapter plan (b.s jumps into ORMAN / RAY / DUELLO), shoots sky_<id>.png after the dissolve; asserts the backdrop id + a ready texture.
+async function skies(ctx) {
+  await load('?endless&notut&debug', seed3());
+  await waitFor(`${rushPlay}&&(${hudDist})>=0`, 30000, 'rush playing');
+  await ev('(()=>{const r=cig.runner;r.invulnT=999;r.yetiHoldT=99})()');
+  for (const [id, sky] of [['orman', 'dawn'], ['ray', 'canyon'], ['duello', 'night']]) {
+    await ev(`(()=>{const r=cig.runner,seg=r.chapters.segs.find((g)=>g.id==='${id}')||(()=>{let g;for(let i=0;i<9&&!(g=r.chapters.segs.find((x)=>x.id==='${id}'));i++)r.chapters.at(r.chapters.segs[r.chapters.segs.length-1].s1+1);return g})();r.b.s=seg.s0+60})()`);
+    await waitFor(`cig.runner.chap&&cig.runner.chap.id==='${id}'&&cig.runner.env._bdCur==='${sky}'&&cig.runner.env._bdK>0.95`,6000,'sky '+id).catch(()=>{});
+    const st = await ev(`(()=>{const r=cig.runner,e=r.env;return {cur:e._bdCur,k:e._bdK,vis:e.bd.visible,chap:r.chap&&r.chap.id,s:r.b.s,segs:r.chapters.segs.map((g)=>g.id+':'+g.s0).join(',')}})()`);
+    await shot('sky_' + id, ctx);
+    if (st.cur === sky && st.vis && st.k > 0.9) ctx.pass(`chapter ${id}: sky backdrop ${sky} shown (${JSON.stringify(st)})`); else ctx.fail(`chapter ${id}: expected backdrop ${sky}, got ${JSON.stringify(st)}`);
+  }
+  // yeti.glb (Blender, public/models): skinned + run / roar clips found by runner.js makeYeti (the capsule only stands in when the file is missing)
+  const ym = await ev('!!(cig.runner.yeti.mixer&&cig.runner.yeti.runA&&cig.runner.yeti.roarA)');
+  if (ym) ctx.pass('yeti.glb: skinned model with run + roar clips found'); else ctx.fail('yeti.glb clips missing: capsule fallback in use');
+}
+
 let rushStats = null, rushGl = null;   // rushStats: rAF data of the last Rush run, reused by s12 when s4 ran first
 async function rushPlaytest(ctx) {
   await load('?endless&notut', seed3());
@@ -687,6 +704,7 @@ async function main() {
   await scenario(3, 'returning player + bottom nav', 30000, returning);
   await scenario(4, 'rush 1-minute playtest', 90000, rushPlaytest);
   await scenario(19, 'model gallery (Blender critters + props)', 30000, gallery);
+  await scenario(20, 'chapter sky backdrops', 45000, skies);
   await scenario(18, 'rush HUD states (cannon bar, flag, toast)', 30000, hudStates);
   await scenario(12, 'frame pacing (Rush)', 30000, s12);
   await scenario(13, 'first-run frames 0.5/2/5/10 s', 30000, firstFrames);

@@ -53,7 +53,7 @@ export const words = {
   'REKOR': 'RECORD', 'BOSS': 'BOSS', 'KOMBO': 'COMBO', 'DUVAR': 'WALL', 'DÜŞÜŞ': 'FALL', 'ERİME': 'MELT', 'YETİ': 'YETI', 'ÇARPMA': 'CRASH', 'PATLAMA': 'EXPLOSION',
   'BÖLÜM ÖZETİ': 'CHAPTER SUMMARY',
   // hints / turns / tutorial
-  '↔ ↑ ↓ KAYDIR': '↔ ↑ ↓ SWIPE',
+  '↔ ↑ ↓ KAYDIR': '↔ ↑ ↓ SWIPE', '↑ YUKARI KAYDIR': '↑ SWIPE UP',
   'SAĞA KAYDIR ➜': 'SWIPE RIGHT ➜', '⬅ SOLA KAYDIR': '⬅ SWIPE LEFT',
   'VİRAJ: köşede dönüş yönüne kaydır!': 'TURN: swipe toward the turn at the corner!',
   'RİTİM HATTI: altın pedlere vuruşta bas!': 'RHYTHM LANE: hit the golden pads on the beat!',

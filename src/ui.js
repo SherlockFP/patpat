@@ -9,6 +9,7 @@ import { meta } from './meta.js';
 import { t as tr, getLang } from './i18n.js';
 import { save } from './save.js';
 import { nextGoal } from './shop.js';
+import { isScoreRecord } from './runner/goals.js';
 import { shareCard } from './sharecard.js';
 
 const $ = (id) => document.getElementById(id);
@@ -58,13 +59,13 @@ export const recTitle = (k) => (k.dist && k.score ? '★ ÇİFT REKOR! ★' : k.
 // prevBest = score record at the START of the run. deltaBest / nextGoal / nextGoalText / isRecord may be missing.
 export function runnerResultLines(p, prevBest) {
   const score = Number(p.score) || 0, pb = prevBest > 0 ? prevBest : 0;
-  const rec = p.isRecord !== undefined ? !!p.isRecord : pb > 0 && score > pb;
+  const rec = p.isRecord !== undefined ? !!p.isRecord : isScoreRecord(score, pb);
   const ngt = p.nextGoalText || '', ngk = p.nextGoal && p.nextGoal.k;
   if (rec) {
-    const dB = p.deltaBest > 0 ? p.deltaBest : score - pb;   // (a first record has no old one: the gap is the whole score, the line is never missing)
+    const dB = p.deltaBest > 0 ? p.deltaBest : score - pb;   // (an explicit isRecord without a deltaBest: the gap is the whole score, the line is never missing)
     return { rec, delta: dB > 0 ? '+' + fmtN(dB) : '', goal: ngk === 'next' ? ngt : '' };
   }
-  if (pb > 0) return { rec, delta: ngk === 'rec' && ngt ? ngt : 'EN İYİYE ' + fmtN(Math.max(1, pb - score + 1)) + ' PUAN', goal: 'EN İYİ ' + fmtN(pb) };
+  if (pb > 0 && score <= pb) return { rec, delta: ngk === 'rec' && ngt ? ngt : 'EN İYİYE ' + fmtN(Math.max(1, pb - score + 1)) + ' PUAN', goal: 'EN İYİ ' + fmtN(pb) };
   return { rec, delta: '', goal: ngt };
 }
 const UP = (x) => String(x || '').toLocaleUpperCase(EN ? 'en-US' : 'tr-TR');   // the active language decides the dotted/dotless i
@@ -338,7 +339,7 @@ export class UI {
   _chapBar(i) {
     let e = this.el.chapBar;
     if (!i.chapterId && !i.chapter) { if (e && !e.hidden) e.hidden = true; return; }
-    if (!e) { e = this.el.chapBar = document.createElement('div'); e.className = 'chap-bar'; e.append(document.createElement('i'), document.createElement('b')); this.el.hud.appendChild(e); }
+    if (!e) { e = this.el.chapBar = document.createElement('div'); e.className = 'chap-bar'; e.append(document.createElement('i'), document.createElement('b')); this.el.goal.appendChild(e); }   // the strip is the bottom edge of the goal pill: ONE goal element
     const pct = Math.round(clamp01(i.chapterFrac) * 100), near = i.chapterLeft > 0 && i.chapterLeft <= 100, k = pct * 8 + (i.chapterBonus ? 1 : 0) + (i.chapterClean ? 2 : 0) + (near ? 4 : 0);
     if (k === this._chK && !e.hidden) return;
     this._chK = k; e.hidden = false;
@@ -347,7 +348,7 @@ export class UI {
     e.classList.toggle('bonus', !!i.chapterBonus); e.classList.toggle('dirty', !i.chapterClean); e.classList.toggle('near', near);   // (the flag at the end pulses inside the last 100 m)
     e.firstChild.style.width = `${pct}%`;
     const lb = i.chapterBonus ? 'BONUS' : 'BÖL ' + i.chapter;      // micro-label left of the bar (en: CH n): the bar is the chapter progress
-    if (lb !== this._chL) { this._chL = lb; e.lastChild.textContent = lb; }
+    if (lb !== this._chL) { this._chL = lb; e.lastChild.textContent = lb; this.el.goal.dataset.ch = tr(lb); }
   }
 
   // Every 500 m: a gold pill under the HUD (centre announcement lane, milestone priority), edge glow and chime.
@@ -479,14 +480,14 @@ export class UI {
     let seaTok = 0;
     try { seaTok = Math.floor(Number(p && (p.seasonTokens ?? (p.stats && p.stats.seasonTokens))) || meta.stats().seasonTokens || 0); } catch { seaTok = 0; }
     if (seaTok > 0) chips.push(chip(`+${fmtN(seaTok)} 🧣`));
-    let html = `<div class="rx-row">${chip(`❄️ +${fmtN(coins)}`)}</div>`;      // the flakes only: LEVEL / SEASON bars sit behind Details (one number to sell)
+    let html = coins > 0 ? `<div class="rx-row">${chip(`❄️ +${fmtN(coins)}`)}</div>` : "";      // the flakes only: LEVEL / SEASON bars sit behind Details (one number to sell)
     let nup = null;
     try { nup = this.hooks?.nextPower?.() || null; } catch { nup = null; }
     this._nupAfford = !!(nup && nup.afford);
     this._nupOn = !!(nup && nup.name);   // the Next bar opens GÜÇ itself: no second GÜÇ button then
     if (nup && nup.name) {   // ONE next target, one number: "Next: Magnet · 120 ❄️ left" + a fill bar; amber and pulsing once it is affordable
       const left = Math.max(0, nup.price - nup.have), fr = Math.round(clamp01(nup.have / Math.max(1, nup.price)) * 100);
-      html = `<button type="button" class="rx-up${nup.afford ? ' ok' : ''}"><div>${nup.icon} ${tr('Sıradaki:')} <b>${tr(nup.name)}</b> · ${nup.afford ? tr('ALABİLİRSİN!') + ' ▶' : fmtN(left) + ' ❄️ ' + tr('kaldı')}</div><div class="ru-b"><i style="width:${nup.afford ? 100 : fr}%"></i></div></button>` + html;
+      html = `<button type="button" class="rx-up${nup.afford ? ' ok' : ''}"><div>${nup.icon} ${tr('Sıradaki:')} <b>${tr(nup.name)}</b> · ${nup.afford ? tr('ALABİLİRSİN!') + ' ▶' : fmtN(left) + ' ❄️ ' + tr('kaldı')}</div>${nup.desc ? `<small class="ru-d">${tr(nup.desc)}</small>` : ""}<div class="ru-b"><i style="width:${nup.afford ? 100 : fr}%"></i></div></button>` + html;
     }
     let det = this.progressBlock() + `<div class="rx-row">${chips.join('')}</div>`;
     if (p && p.perk) det += `<div class="rx-line">${p.perk.icon} ${tr(p.perk.name)}</div>`;
@@ -528,11 +529,15 @@ export class UI {
     this.el.result.classList.add('runner', 'rr');   // rr = the Rush layout (score hero, TEKRAR first)
     this.shareCardBtn({ mode: 'YETİ RUSH', big: fmtN(distance), unit: 'metre', isRec, challenge: 'Beni geçebilir misin? 🏔️' });
     this.el.resTitle.textContent = title;
-    this.el.resBadge.classList.toggle('hidden', !anyRec);
+    // the record badge + gap wait until the score has counted up: next to a half-counted number ("193" + "+203 vs old record") they read as impossible maths
+    const hold = anyRec && !reduceMotion();
+    this.el.resBadge.classList.toggle('hidden', !anyRec || hold);
     this.el.resBadge.textContent = badge;
     this.el.resLabel.textContent = tr('SKOR');
     // ONE number (score), the signed gap to the best, ONE next goal
-    this.el.resTons.textContent = tr(rl.delta && rl.delta[0] === '+' ? rl.delta + ' ESKİ REKORDAN' : rl.delta);   // the bare +N had no label
+    const gap = tr(rl.delta && rl.delta[0] === '+' ? rl.delta + ' ESKİ REKORDAN' : rl.delta);   // the bare +N had no label
+    this.el.resTons.textContent = hold ? '' : gap;
+    this._recReveal = hold ? () => { this.el.resBadge.classList.remove('hidden'); this.el.resTons.textContent = gap; } : null;
     this.el.resTons.classList.toggle('dl', !!rl.delta && rl.delta[0] !== '+');
     this.el.resSub.textContent = mChip ? '' : tr(rl.goal);
     this.el.resSub.classList.remove('chip');
@@ -743,6 +748,7 @@ export class UI {
 
   resultScoreDone(rec) {
     const t = this.el.resTons;
+    if (this._recReveal) { this._recReveal(); this._recReveal = null; }
     t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop');
     if (rec) { pop(this.el.resPct, 1.14, 420); snd('chime'); } else snd('ui', 'confirm');
   }
@@ -904,6 +910,9 @@ export class UI {
     this.popT = setTimeout(() => g.classList.remove('pop'), 650); // so the rage / record pulse can take over again
   }
 
+  // the mission pill has not moved for 8 s: it pulses until it does
+  runnerGoalNudge(on) { this.el.goal.classList.toggle('nudge', !!on); }
+
   // Yeti lunge window: the Yeti gauge shakes red.
   runnerSurge(on) {
     if (on === this.surgeOn) return;
@@ -1023,7 +1032,7 @@ export class UI {
 
   comboReset() {
     clearTimeout(this._dT);
-    this._dN = 0; this._cmN = 0; this._mu = 0; this._bestCombo = 0; this._extCombo = false; this._cmT = 0; this._mSh = 0; this._mLb = 0; clearTimeout(this._mLbT);
+    this._dN = 0; this._cmN = 0; this._mu = 0; this._bestCombo = 0; this._extCombo = false; this._cmT = 0; this._mSh = 0; this._mLb = 0; this._mFirst = false; clearTimeout(this._mLbT); clearTimeout(this._mFT);
     if (this._cmb) this._cmb.className = 'cmb';
   }
 
@@ -1051,8 +1060,9 @@ export class UI {
       // a micro-label names it the first time it changes in a run, a drop pulses it (at most every 0.6 s: the multiplier decays continuously)
       const m = mu > 1 ? Math.round(mu * 10) / 10 : 1, pm = this._mSh || 0;
       this._mSh = m;
-      if (pm && m !== pm) { this._mLb = m > pm ? 1 : 2; clearTimeout(this._mLbT); this._mLbT = setTimeout(() => { this._mLb = 0; this._cmRender(); }, 1600); }   // a green up / red down arrow tab for 1.6 s: one chip, no label
-      this._cmKs.textContent = this._mLb === 1 ? '▲' : this._mLb === 2 ? '▼' : ''; this._cmKs.style.color = this._mLb === 1 ? '#6dff8f' : '#ff7a7a'; this._cmKe.textContent = `x${m}`; this._cmKe.dataset.t = `x${m}`; this._cmKu.textContent = '';
+      if (!pm && m > 1) { this._mFirst = true; clearTimeout(this._mFT); this._mFT = setTimeout(() => { this._mFirst = false; this._cmRender(); }, 4000); }   // the first multiplier of a run is named for 4 s (x2 SCORE)
+      if (pm && m !== pm) { /* (a slow decay tick of 0.1 stays a bare arrow) */ this._mLbV = Math.abs(m - pm) >= 0.3 ? (m > pm ? '+' : '') + (Math.round((m - pm) * 10) / 10) : ''; this._mLb = m > pm ? 1 : 2; clearTimeout(this._mLbT); this._mLbT = setTimeout(() => { this._mLb = 0; this._cmRender(); }, 1600); }   // a green up / red down arrow tab for 1.6 s: one chip, no label
+      this._cmKs.textContent = this._mLb === 1 ? '▲ ' + this._mLbV : this._mLb === 2 ? '▼ ' + this._mLbV : ''; this._cmKs.style.color = this._mLb === 1 ? '#6dff8f' : '#ff7a7a'; this._cmKe.textContent = `x${m}`; this._cmKe.dataset.t = `x${m}`; this._cmKu.textContent = this._mFirst ? tr('SKOR') : '';
       this._cmK.style.display = ''; this._cmM.style.display = 'none';
       const ts = `t${Math.min(4, Math.max(1, Math.floor(m) - 1))}`;   // tinted by whole step: x2 yellow, x3 orange, x4 pink, x5+ purple
       if (!c.classList.contains('on') || !c.classList.contains(ts)) { c.classList.remove('t0', 't1', 't2', 't3', 't4'); c.classList.add('on', 'nobar', ts); }
@@ -1141,7 +1151,7 @@ export class UI {
       el.classList.remove('gold1', 'gold2', 'gold3'); void el.offsetWidth; el.classList.add(`gold${ms}`);
       snd('chime');
     }
-    if (!this._recShown && this._best > 0 && sc > this._best) { this._recShown = true; this.recRibbon(); }
+    if (!this._recShown && isScoreRecord(sc, this._best)) { this._recShown = true; this.recRibbon(); }
     if (!this._sraf) this._sraf = requestAnimationFrame(this._scoreTick || (this._scoreTick = () => this.scoreStep()));
   }
 
@@ -1631,20 +1641,20 @@ export class UI {
     const hot = this.el.hud && this._cmN > 3 && this.el.hud.classList.contains('rush');
     if (prio < 2 && hot) return;   // no info toasts while a combo runs
     if (opts && opts.info && this._mOn) return;   // one goal at a time: postcard / chapter tips wait for a moment without a mission pill
-    this._say('t', { text: String(text), prio, ms: 1500, drop: !!(opts && opts.drop), show: () => this._toastNow(text, opts) });
+    this._say('t', { text: String(text), prio, ms: opts && opts.long ? 3000 : 1500, drop: !!(opts && opts.drop), show: () => this._toastNow(text, opts) });
   }
   _toastNow(text, opts) {
     const box = this.el.toastSoft;
     box.querySelectorAll('.ts').forEach((e) => { e.getAnimations?.().forEach((an) => an.cancel()); e.remove(); });
     const d = document.createElement('div');
-    d.className = 'ts';
+    d.className = opts && opts.long ? 'ts long' : 'ts';
     const ico = opts && opts.icon;
     if (ico) { const i = document.createElement('span'); i.className = 'ti'; i.textContent = ico; d.appendChild(i); }
     const t = document.createElement('span');
     t.textContent = text;
     d.appendChild(t);
     d.addEventListener('animationend', () => d.remove());
-    setTimeout(() => d.remove(), 2200);
+    setTimeout(() => d.remove(), opts && opts.long ? 3300 : 2200);
     box.appendChild(d);
     return () => { d.getAnimations?.().forEach((an) => an.cancel()); d.style.opacity = '0'; d.remove(); };
   }

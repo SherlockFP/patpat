@@ -5,7 +5,7 @@ import { Vector4 } from 'three';
 export const nfBall = { value: new Vector4() };
 /** opt (big things that must never hide the ball, e.g. the Yeti): { r, w, a } = dissolve radius / ramp width around the ball in ndc, a = floor alpha of the bottom 30% (1 = none) */
 export function nearFade(mat, near = 2.5, far = 4.5, opt = null) {
-  const R = opt ? opt.r : 0.07, W = opt ? opt.w : 0.1, A = opt ? opt.a : 0.5;
+  const R = opt ? opt.r : 0.07, W = opt ? opt.w : 0.1, A = opt ? opt.a : 1;
   if (!mat || mat.__nearFade) return mat;
   mat.__nearFade = true;
   const prev = mat.onBeforeCompile;

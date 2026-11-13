@@ -128,11 +128,13 @@ let fullRate;
   ok(fx.mKeep.reduce((a, b) => a + b, 0) === 7, 'every flash puff is exempt from the near-ball thinning');
   fx.burst(0, 1, 5, 2, new THREE.Color(1, 0, 0));
   ok(out.n === 7, 'a tiny burst emits no glow');
-  { // the flash stays bright next to the ball (the powder thinning must not touch it)
+  { // the flash stays visible next to the ball but is capped there (a ball buried in its own hit burst cannot be steered); far from it, it keeps full alpha
     const f = rig().fx, b = { group: new THREE.Group(), r: 0.8, x: 0, y: 1, d: 5, airborne: false };
     b.group.position.set(0, 1, -5);
     f.burst(0, 1, 5, 6, 0xffcc33); for (let k = 0; k < 3; k++) f.updateMist(0.02, b);
-    ok(Math.max(...f.mAlpha) > 0.7, 'pickup flash keeps its alpha at the ball, got ' + Math.max(...f.mAlpha).toFixed(2));
+    const aN = Math.max(...f.mAlpha);
+    ok(aN > 0.2 && aN < 0.5, 'pickup / hit flash is capped (0.2..0.5) at the ball, got ' + aN.toFixed(2));
+    { const g2 = rig().fx, far = { group: new THREE.Group(), r: 0.8, x: 0, y: 1, d: 5, airborne: false }; far.group.position.set(0, 1, -60); g2.burst(0, 1, 5, 6, 0xffcc33); for (let k = 0; k < 3; k++) g2.updateMist(0.02, far); ok(Math.max(...g2.mAlpha) > 0.7, 'flash far from the ball keeps its alpha'); }
     f.puff(0, 1, -5, 0, 0, 0, 1, 1, 0xffffff, 0.8); for (let k = 0; k < 3; k++) f.updateMist(0.1, b);
     ok(f.mAlpha[f.mHead - 1] < 0.4, 'ordinary powder at the ball is still thinned, got ' + f.mAlpha[f.mHead - 1].toFixed(2));
   }

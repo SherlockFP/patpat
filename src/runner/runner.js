@@ -13,7 +13,7 @@ import { RhythmLane } from './rhythm.js';
 import { patchMaterial } from '../shaders.js';
 import { nfBall, nearFade } from './nearfade.js';
 import { cloneYeti } from '../glb.js';
-import { gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionLine, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
+import { isScoreRecord, gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionLine, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
 import { starProgress } from '../campaign.js';
 
 // YETİ RUSH — endless Temple-Run-style downhill run (RUNNER.md).
@@ -152,6 +152,7 @@ const _lst = {};   // live campaign stats scratch (starProgress)
 const _bi = { biome: null, index: 0, t: 0, next: null };   // biomeAt() scratch: read it right away, never keep it
 const RAGE_SKIP = new Set(['zipline', 'rail', 'loop', 'corkscrew']); // sections where the Yeti keeps its boulders
 const GLOW_KINDS = new Set(['star', 'x2', 'superjump', 'crystal', 'timewarp', 'ghost', 'risk', 'clone', 'helmet', 'magnet', 'rocket', 'cannon']);
+const CH_SKY = { orman: 'dawn', ray: 'canyon', rampa: 'canyon', duello: 'night', kaydirak: 'night' };      // chapter -> sky backdrop (biomes.js setBackdrop); the rest keep the procedural sky
 const ROUND_KINDS = new Set(['helix', 'halfpipe', 'tube', 'loop', 'corkscrew']);
 // set pieces that get a name strip when the ball enters them ("BUZ TÜNELİ", no number: CHAPTER n is the only counted noun): variety you can read, not only see
 const SECTION_NAME = { helix: 'GİRDAP', waves: 'DALGALAR', skiJump: 'ATLAYIŞ RAMPASI', chasm: 'UÇURUM', zipline: 'HALAT', iceBridge: 'BUZ KÖPRÜ', halfpipe: 'YARIM BORU', tube: 'BUZ TÜNELİ', loop: 'DÖNGÜ', corkscrew: 'BURGU', junction: 'KAVŞAK', stairs: 'BASAMAKLAR', portal: 'PORTAL' };
@@ -564,7 +565,7 @@ export class Runner {
       this.hintOn = true;
       this.after(5, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); });
     }
-    this._pcId = null; this._mrow = null; this._msT = 0; this._mSkip = null; this._mPk = null; this._recV = -1; this._starK = -1;
+    this._pcId = null; this._mStuck = false; this._jnTip = false; this._mT0 = 0; this._mrow = null; this._msT = 0; this._mSkip = null; this._mPk = null; this._recV = -1; this._starK = -1;
     this.chapterInit();
     this.starPips = this.starPips || [1, 1, 1];
     if (!level && !this.hintOn) this.goalIntro();
@@ -2250,7 +2251,10 @@ export class Runner {
     const h = this._hud, m = this._mrow;
     if (m) {
       const k = m.id + ':' + m.value;
-      if (k !== this._mK) { this._mK = k; this._mTxt = (m.icon ? m.icon + ' ' : '') + t(m.text) + ' ' + m.value + '/' + m.goal; }
+      if (k !== this._mK) { this._mK = k; this._mT0 = this.time; this._mTxt = (m.icon ? m.icon + ' ' : '') + t(m.text) + ' ' + m.value + '/' + m.goal; }
+      const stuck = m.value === 0 && this.time - this._mT0 > 8;      // no progress for 8 s: the pill pulses; a jump mission also says how
+      if (stuck !== this._mStuck) { this._mStuck = stuck; ui.runnerGoalNudge?.(stuck); }
+      if (stuck && m.id === 'jump' && !this._jnTip) { this._jnTip = true; ui.hint?.(true, '↑ YUKARI KAYDIR'); }
       h.goalKind = 'mission'; h.goalText = this._mTxt; h.goalFrac = missionFrac(m);
       this.goalStrip('rec', Math.max(1, m.goal - m.value), h.goalFrac, this._mTxt);
       return;
@@ -2323,6 +2327,7 @@ export class Runner {
     if (!seg.bonus && seg.n > this.bestChapter) { this.bestChapter = seg.n; this.saveBestChapter(); }
     const line = seg.bonus ? t('ALTIN DAMAR') : chapterLine(seg.n, def.name, t, getLang() === 'en');
     if (ui.runnerChapter) ui.runnerChapter(line, seg.n, seg.bonus); else this.queueBanner(line, 4, 1.0);      // a 1 s name strip
+    this.env?.setBackdrop?.(seg.bonus ? null : CH_SKY[seg.id] || null);
     this.ctx.audio.milestone?.(2);
     if (!this.chapterSeen(seg.id)) {
       this.markChapterSeen(seg.id);
@@ -3720,6 +3725,7 @@ export class Runner {
     const LB = { rec: 'REKOR', boss: 'BOSS', combo: 'KOMBO', wall: 'DUVAR', fall: 'DÜŞÜŞ', melt: 'ERİME', yeti: 'YETİ', smash: 'ÇARPMA', explode: 'PATLAMA' };
     const IC = { rec: '🏆', boss: '🧌', combo: '🔥', wall: '🧱', fall: '🕳️', melt: '💧', yeti: '👹', smash: '💥', explode: '💣' };
     const el = this._rcpEl = document.createElement('div');
+    el.className = 'rcp';
     el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);width:min(92vw,380px);box-sizing:border-box;top:calc(env(safe-area-inset-top,0px) + 150px);z-index:60;padding:5px 12px 3px;border-radius:14px;background:rgba(15,30,55,.78);color:#fff;font:800 13px system-ui,sans-serif;text-align:center;pointer-events:none;opacity:0;transition:opacity .15s';   // slim banner under the HUD, never over the ball or the lane
     let h = '<div style="letter-spacing:.1em;line-height:16px"><span style="opacity:.85">BÖLÜM ÖZETİ</span> · <span style="font-size:15px">' + NUM(dist) + ' m</span></div><div style="position:relative;height:46px;margin:4px 10px 0"><div style="position:absolute;left:0;right:0;top:19px;height:5px;border-radius:3px;background:rgba(255,255,255,.2)"></div><div class="rf" style="position:absolute;left:0;top:19px;height:5px;width:0;border-radius:3px;background:#7fd0ff;transition:width 1s linear"></div>';
     for (const e of ev) {
@@ -3755,7 +3761,7 @@ export class Runner {
     const ng = nextGoal(score, bestBefore);
     const mrep = meta?.missionsReport?.(), mrows = mrep ? mrep.rows : (meta?.missions?.() ?? []), mrow = pickMission(mrows), dk = deathGoalKind(ng, score, bestBefore, mrow);
     const left = missionsLeft(mrows);
-    if (!canRevive && dist >= 50 && score > bestBefore) music.stinger('record');
+    if (!canRevive && isScoreRecord(score, bestBefore, dist)) music.stinger('record');
     const dt = ui.runnerDeathText ? ui.runnerDeathText(this.cause, this.killKind) : null;
     ui.showRunnerResult({
       cause: this.cause,
@@ -3774,8 +3780,8 @@ export class Runner {
       rank,
       toRecord: Math.max(0, Math.round(bestDistBefore - dist)),   // (old, metres: kept for old readers)
       toRecordScore: Math.max(0, bestBefore - score),
-      isRecord: dist >= 50 && score > bestBefore,
-      deltaBest: bestBefore > 0 ? score - bestBefore : 0,
+      isRecord: isScoreRecord(score, bestBefore, dist),
+      deltaBest: isScoreRecord(score, bestBefore, dist) ? score - bestBefore : 0,
       nextGoal: ng,
       nextGoalKind: dk,
       nextGoalText: dk === 'mission' ? t(mrow.text) + ' (' + mrow.value + '/' + mrow.goal + ')' + (left < 3 ? ' · ' + left + ' ' + t('kaldı') : '') : t(ng.k === 'rec' ? 'EN İYİYE ' + NUM(ng.val) + ' PUAN' : 'SIRADAKİ: ' + NUM(ng.val) + ' PUAN'),
@@ -3792,7 +3798,7 @@ export class Runner {
       best: Math.max(bestBefore, score),
       bestScore: Math.max(bestBefore, score),
       bestDist: Math.max(bestDistBefore, dist),
-      isBest: dist >= 50 && score > bestBefore,
+      isBest: isScoreRecord(score, bestBefore, dist),
       isBestDist,
       canRevive,
       onRevive: () => this.revive(),
@@ -3902,7 +3908,7 @@ export class Runner {
     }
     this.duckK += ((this.duckT > 0 ? 1 : 0) - this.duckK) * Math.min(1, sdt * 25);
     const sq = this.squash, dk = this.duckK;
-    const sy = (1 - 0.3 * sq) * (1 - 0.5 * dk), sxz = (1 + 0.25 * sq) * (1 + 0.35 * dk);
+    const sy = Math.max(0.85, 1 - 0.3 * sq) * (1 - 0.25 * dk), sxz = Math.min(1.12, 1 + 0.25 * sq) * (1 + 0.08 * dk);   // (the ball always stays a ball: squash >= 0.85, stretch <= 1.12, the duck is mostly a shrink)
     // The bottom of the ball stays on the snow while it squashes.
     tr.toWorld(b.s, b.u, b.h + this.rShown * 0.96 * sy, _v);
     const ball = this.ctx.ball;
@@ -3914,14 +3920,14 @@ export class Runner {
     ball.x = _v.x; ball.y = _v.y; ball.d = -_v.z; ball.r = this.rShown;
     const gp = this.glowT > 0 ? 1 + 0.2 * Math.sin(Math.min(1, this.glowT / 0.5) * Math.PI) : 1;
     if (this.glowT > 0) this.glowT -= sdt;
-    ball.group.scale.set(sxz * gp, sy * gp, sxz * gp);
+    const bl = this.state === 'play' && this.invulnT > 0 && Math.floor(this.time * 14) % 4 === 0 ? 0.86 : 1;      // invulnerable: a quick shrink-blink (the ball is NEVER hidden: frame 0 and every screenshot show it)
+    ball.group.scale.set(sxz * gp * bl, sy * gp * bl, sxz * gp * bl);
     this.juiceFrame(_f, _v, dt);
     this.updateClone();
     this.placeShadow();
     ball.airborne = !this.grounded;
     if (this.state === 'play') {
-      // Blink while invulnerable after a crash/revive.
-      ball.group.visible = this.invulnT > 0 ? Math.floor(this.time * 14) % 4 !== 0 : true;   // the blink hides the ball one beat in four: it never reads as gone
+      ball.group.visible = true;
     }
     if (snap) this.updateCamera(1, true);
   }
@@ -4206,11 +4212,13 @@ export class Runner {
     if (!this.boss) {
       const dCam = this.camBackS - gapV;
       const d3 = Math.hypot(dCam, this.camUpH);
-      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, 0.09 + 0.05 * loom);   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
+      const open = clamp((2.8 - this.time) / 1.2, 0, 1);       // the opening ~2 s: the Yeti is bigger and further inside the lane, so the first frames show what chases you
+      const calm = clamp((gapV - 6) / 3, 0, 1) * clamp((this.time - 2.5) / 2.5, 0, 1);      // not close (gap > ~9 m) after the opening 5 s: the claw shrinks and slides off the lane edge instead of cropping the bottom corner
+      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, (0.09 + 0.05 * loom) * (1 - 0.5 * calm) * (1 + 0.35 * open));   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
       const side = b.u > 0.01 ? -1 : 1, hw = (tr.halfWidth(Math.max(0, gs)) || 3.8) - 0.3;
-      uT = clamp(b.u + side * (3.4 - 0.8 * loom) * yetiSide(dCam), -hw, hw);
+      uT = clamp(b.u + side * (3.4 - 0.8 * loom + 1.2 * calm - 0.9 * open) * yetiSide(dCam), -hw - 1.2 * calm, hw + 1.2 * calm);
       if (dCam < 1.5) y.group.visible = false;      // right under / behind the camera: out of the picture anyway (and no draw call)
-      if (dCam < 5) this.avalanche.group.visible = false;   // its powder wall sits 6 m behind the Yeti: behind the camera too (3 draw calls saved while the Yeti is far)
+      if (dCam < 5 || this.state === 'dying' || this.state === 'over') this.avalanche.group.visible = false;   // (the death view sits in front of the powder wall: it used to fill the screen white)   // its powder wall sits 6 m behind the Yeti: behind the camera too (3 draw calls saved while the Yeti is far)
     }
     y.u += (uT - y.u) * (this.time < 0.3 ? 1 : Math.min(1, dt * 2.5));   // (it starts already on its side of the track)
     if (y.mixer) { y.runA.timeScale = 1 + 0.5 * y.spr; y.mixer.update(dt); }
@@ -4341,7 +4349,7 @@ export class Runner {
       _v.lerp(_tp, lk);
       _x.lerp(_f2.up, lk).normalize();
     }
-    if (pc && (lk > 0.001 || ROUND_KINDS.has(kind)) && this.env?.groundAt) {
+    if (pc && (lk > 0.001 || ROUND_KINDS.has(kind) || dying) && this.env?.groundAt) {   // (dying: the death pull-back must not end up inside a slope wall = a white screen)
       // Safety net: never below the terrain under the camera (+2 m), at most 6 m of correction.
       const gy = this.env.groundAt(_v.x, _v.z, b.s);
       if (gy !== null && _v.y < gy + 2) _v.y += Math.min(6, gy + 2 - _v.y);
@@ -4499,7 +4507,7 @@ function makeYeti(scene, lib) {
   const geo = def ? def.geometry : new THREE.CapsuleGeometry(0.8, 1.6, 4, 8);
   // the GLB bakes its cream fur: no tint. The old fallback keeps its dark cool tint (warm vertex colours x navy read as a shadowy snow monster).
   // nearFade: any fragment on the ball's line of sight dissolves (wide radius), so the Yeti never covers the ball.
-  const mat = nearFade(new THREE.MeshLambertMaterial({ vertexColors: !!(gl || def), color: gl ? 0xffffff : 0x30508c, emissive: 0x0a1630, flatShading: true, side: THREE.DoubleSide }), 2.5, 4.5, { r: 0.15, w: 0.2, a: 1 });
+  const mat = nearFade(new THREE.MeshLambertMaterial({ vertexColors: !!(gl || def), color: gl ? 0xffffff : 0x30508c, emissive: 0x0a1630, flatShading: true, side: THREE.DoubleSide }), 0.6, 1.4, { r: 0.12, w: 0.08, a: 1 });   // (near fade only when it is nearly inside the lens: no screen-door ghost on the Yeti)
   let mesh, mixer = null, runA = null, roarA = null, eg = null, em = null, eyes = null;
   if (gl) {
     mesh = gl.model;
