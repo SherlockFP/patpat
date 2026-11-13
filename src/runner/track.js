@@ -22,6 +22,7 @@
 
 import * as THREE from 'three';
 import { makeRng } from '../rng.js';
+import { nearFade } from './nearfade.js';
 
 const PI = Math.PI, TAU = PI * 2, DEG = PI / 180;
 
@@ -188,7 +189,7 @@ export class Track {
     this.group = new THREE.Group();
     this.group.name = 'track';
     if (scene && scene.add) scene.add(this.group);
-    this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
+    this.mat = nearFade(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide }), 0.8, 1.6);   // (a ramp or crest between the camera and the ball dissolves around the ball only)
     this.pieces = [];
     this.onPiece = null;
     this.onReset = null;

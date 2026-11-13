@@ -391,9 +391,11 @@ function junction(f, { secBefore = 0 } = {}) {
   Object.assign(h.ctx.meta, { missions: rows, multiplier: () => 3, track: (e, d) => { if (e === 'biome_seen') { tracked.push(d.id); seenCards.add(d.id); } }, cardSeen: (id) => seenCards.has(id), cards: () => ({ n: seenCards.size, total: 14 }) });
   r.start(61, null, {});
   const hint = h.log.ui.filter((x) => x[0] === 'hint' && x[1] === true).pop();
-  ok('run start: the bottom line is the weekly twist when there is one (the mission is the top pill), else the closest mission (33% beats 20%) and the next multiplier', !!hint && (r._mutLine ? /(HAFTA|WEEK)/.test(hint[2]) : /(GÖREV|MISSION)/.test(hint[2]) && /(yaratık|creature)/.test(hint[2]) && /\(1\/3\)/.test(hint[2]) && /x4/.test(hint[2])) && r.hintOn === true);
+  ok('run start: frame one has ONE goal (the strip shows the closest mission, 33% beats 20%); the bottom line only says why you run (the weekly twist waits for the next 2 s)', !!hint && /(YETİ'DEN KAÇ|RUN FROM THE YETI)/.test(hint[2]) && !/(GÖREV|MISSION)/.test(hint[2]) && !!(lastGoal(h) && /1\/3/.test(lastGoal(h)[4] || '')) && r.hintOn === true);
   goLive(h); step(h, 150);
-  ok('the start line goes away after 2 s', r.hintOn === false && h.log.ui.filter((x) => x[0] === 'hint').pop()[1] === false);
+  ok('after the 2 s mission line the weekly twist (when there is one) gets 2 s', !r._mutLine || (r.hintOn === true && /(HAFTA|WEEK)/.test(h.log.ui.filter((x) => x[0] === 'hint').pop()[2])));
+  step(h, 150);
+  ok('the start line goes away after 2 s (4 s with a twist)', r.hintOn === false && h.log.ui.filter((x) => x[0] === 'hint').pop()[1] === false);
   const g = lastGoal(h);
   ok('strip shows the mission: mode rec, 2 left, text with n/N', !!g && g[1] === 'rec' && g[2] === 2 && /1\/3/.test(g[4] || ''));
   ok('snow postcard was counted silently at the start (no toast in the countdown)', tracked.includes('snow') && !h.log.ui.some((x) => x[0] === 'toastSoft' && /(KARTPOSTAL|POSTCARD)/.test(x[1])));
@@ -417,15 +419,15 @@ function junction(f, { secBefore = 0 } = {}) {
   // a natural biome change fires it (no direct call)
   const h3 = make({ seed: 62 }), t3 = [];
   Object.assign(h3.ctx.meta, { track: (e, d) => { if (e === 'biome_seen') t3.push(d.id); }, cardSeen: () => false, cards: () => ({ n: 1, total: 14 }) });
-  h3.runner.start(62, null, {}); goLive(h3); step(h3, 90); h3.runner._pcId = 'zzz'; step(h3, 2);
+  h3.runner.start(62, null, {}); goLive(h3); step(h3, 200); h3.runner._pcId = 'zzz'; step(h3, 2);
   ok('entering a biome (id change) triggers the postcard', t3.length >= 1 && h3.log.ui.some((x) => x[0] === 'toastSoft' && /(POSTCARD|KARTPOSTAL)/.test(x[1])));
   // first two runs: silent (counted, no toast, no multiplier jargon) but the goal strip still shows the one mission
   const q = make({ seed: 63, runs: 0 }), tq = [];
   Object.assign(q.ctx.meta, { stats: () => ({ runs: 0 }), missions: rows, track: (e, d) => { if (e === 'biome_seen') tq.push(d.id); }, cardSeen: () => false, cards: () => ({ n: 1, total: 14 }) });
   q.runner.start(63, null, {}); goLive(q); q.runner.postcard({ id: 'volcano', name: 'Volkan' }); step(q, 150);
-  ok('run 1: postcard counted but silent; mission line without the multiplier; the strip shows the mission',
+  ok('run 1: postcard counted but silent; the bottom line says why you run; the strip shows the mission',
     q.runner.quietRun && tq.includes('volcano') && !q.log.ui.some((x) => x[0] === 'toastSoft' && /(POSTCARD|KARTPOSTAL)/.test(x[1])) &&
-    !q.log.ui.some((x) => x[0] === 'hint' && /(ÇARPAN|MULTIPLIER)/.test(x[2] || '')) && !!(lastGoal(q) && /1\/3/.test(lastGoal(q)[4] || '')));
+    q.log.ui.some((x) => x[0] === 'hint' && /(KAÇ|RUN FROM)/.test(x[2] || '')) && !!(lastGoal(q) && /1\/3/.test(lastGoal(q)[4] || '')));
   // death screen: the closest open mission (record far away) and how many are left for the set
   const missions3 = [{ id: 'a', text: '3 yaratık ez', value: 2, goal: 3, done: false }, { id: 'b', text: 'x', value: 5, goal: 5, done: true }, { id: 'c', text: 'y', value: 5, goal: 5, done: true }];
   const dead = (seed, ms) => {

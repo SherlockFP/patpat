@@ -100,7 +100,7 @@ export const words = {
   '∞ YETİ RUSH AÇILDI!': '∞ YETI RUSH UNLOCKED!', 'SONRAKİ BÖLÜM ▶': 'NEXT LEVEL ▶', '🗺️ HARİTA': '🗺️ MAP', 'Bölüm başarısız': 'Level failed',
   '↻ TEKRAR DENE': '↻ TRY AGAIN', 'BAŞLA!': 'GO!', 'PATRON!': 'BOSS!', 'SON DAĞ ▶': 'FINAL TOWN ▶', 'SONRAKİ KASABA ▶': 'NEXT TOWN ▶', 'SON KASABA ▶': 'FINAL TOWN ▶', 'KASABALAR': 'TOWNS',
   'KARTOPU · YETİ · ÇIĞ': 'SNOWBALL · YETI · AVALANCHE', 'HAPŞUU!': 'ACHOO!', 'Yeti seni bekliyor!': 'The yeti is waiting for you!',
-  'YETİ RUSH REKORU': 'YETI RUSH RECORD', '✖️ ×1 ÇARPAN': '✖️ ×1 MULTIPLIER', '📅 GÜNLÜK GÖREVLER': '📅 DAILY MISSIONS',
+  'YETİ RUSH REKORU': 'YETI RUSH RECORD', 'EN İYİ ALIM': 'BEST BUY', '✖️ ×1 ÇARPAN': '✖️ ×1 MULTIPLIER', '📅 GÜNLÜK GÖREVLER': '📅 DAILY MISSIONS',
   'Kartopu Arena': 'Snowball Arena', 'KARTOPU ARENA': 'SNOWBALL ARENA', 'Dev harita · botlar · arkadaşlarınla oda kur': 'Giant map · bots · make a room with friends', 'Dev harita · botlar': 'Giant map · bots',
   'İLK KOŞU?': 'FIRST RUN?', "RUSH'I DENE!": 'TRY RUSH!',
   'Büyük düğme: Yeti Rush koşusu. Kaydır, zıpla, kar topla!': 'Big button: a Yeti Rush run. Swipe, jump, collect snow!',
@@ -257,7 +257,7 @@ export const patterns = [
   // ---- menu modes / SIRADAKİ HEDEF (stage B)
   P(/^(\d+)\. koşu$/, 'Run $1'), P(/^KASABA AVI · (.*)$/, 'TOWN HUNT · $1'), P(/^Kasabayı yık · (\d+)\/(\d+)$/, 'Destroy town $1/$2'), P(/^Görev seti → ×(\d+)$/, 'Mission set → ×$1'), P(/^MACERA Act (\d+)$/, 'ADVENTURE Act $1'), P(/^Kasaba (\d+)$/, 'Town $1'), P(/^Kasaba (\d+)\/(\d+)$/, 'Towns $1/$2'),
   // ---- 1.0 sweep (specific patterns first: the first match wins)
-  P(/^REKOR (\S+) PUAN$/, 'RECORD $1 PTS'), P(/^(\S+) puan$/, '$1 pts'), P(/^BUGÜN REKOR! (\S+) puan$/, 'NEW BEST TODAY! $1 pts'), P(/^Bugün (\S+) puan · rekora (\S+)$/, 'Today $1 pts · $2 to your record'), P(/^Rekoru geç: (\S+) puan$/, 'Beat it: $1 pts'),
+  P(/^Sıradaki: (\S+) puan$/, 'Next: $1'), P(/^REKOR (\S+) PUAN$/, 'RECORD $1 PTS'), P(/^(\S+) puan$/, '$1 pts'), P(/^BUGÜN REKOR! (\S+) puan$/, 'NEW BEST TODAY! $1 pts'), P(/^Bugün (\S+) puan · rekora (\S+)$/, 'Today $1 pts · $2 to your record'), P(/^Rekoru geç: (\S+) puan$/, 'Beat it: $1 pts'),
   P(/^BUGÜN REKOR! (\S+) m$/, 'NEW BEST TODAY! $1 m'), P(/^Bugün (\S+) m · rekora (\S+) m$/, 'Today $1 m · $2 m to your record'), P(/^\+(\S+) ❄️ hediye!$/, '+$1 ❄️ gift!'),
   P(/^Pazar (\d+)g$/, 'Market $1d'), P(/^↻ Tekrar oyna: ÇIĞ Sv (\d+)$/, '↻ Play again: AVALANCHE Lv $1'), P(/^↻ Tekrar oyna: MACERA (\d+)$/, '↻ Play again: ADVENTURE $1'),
   P(/^Bölüm (\d+): (.*), (\d+) yıldız$/, 'Level $1: $2, $3 stars'), P(/^Bölüm (\d+): (.*), kilitli$/, 'Level $1: $2, locked'), P(/^(?!Dağ \d)(.*), (\d+) yıldız$/, '$1, $2 stars'),
@@ -272,7 +272,7 @@ export const patterns = [
   P(/^GÜNÜN DAĞI #(\d+)$/, 'MOUNTAIN OF THE DAY #$1'), P(/^Günün Dağı #(\d+)$/, 'Mountain of the Day #$1'),
   P(/^(\d+) ETAP$/, 'STAGE $1'), P(/^ÇIĞ: DAĞ (\d+) · (.*)$/, 'AVALANCHE: PEAK $1 · $2'),
   P(/^ÇIĞ: ([\d.,]+) ton$/, 'AVALANCHE: $1 tons'), P(/^ÇIĞ Sv (\d+)$/, 'AVALANCHE Lv $1'), P(/^MACERA (\d+)$/, 'ADVENTURE $1'),
-  P(/^BÖLÜM (\d+)(.*)$/, 'LEVEL $1$2'), P(/^Bölüm (\d+) · (.*)$/, 'Stage $1 · $2'), P(/^Bölüm (\d+): (.*)$/, 'Level $1: $2'),
+  P(/^BÖLÜM (\d+)(.*)$/, 'LEVEL $1$2'), P(/^Sıradaki: Bölüm (\d+)$/, 'Next: Stage $1'), P(/^Bölüm (\d+) · (.*)$/, 'Stage $1 · $2'), P(/^Bölüm (\d+): (.*)$/, 'Level $1: $2'),
   P(/^✨ GİZLİ ROTA (\d+) · (.*)$/, '✨ SECRET ROUTE $1 · $2'), P(/^Gizli Rota (\d+)$/, 'Secret Route $1'),
   P(/^(\d+)\/(\d+) ★ → Gizli Rota (\d+)$/, '$1/$2 ★ → Secret Route $3'), P(/^✨ Tüm Gizli Rotalar açık \((.*)\)$/, '✨ All Secret Routes unlocked ($1)'),
   P(/^🔒 (\d+) ⭐ topla \((.*)\)$/, '🔒 Collect $1 ⭐ ($2)'), P(/^🔒 Önce (\d+)\. bölümü bitir$/, '🔒 Finish level $1 first'),

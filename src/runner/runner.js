@@ -12,8 +12,9 @@ import { music } from './music.js';
 import { RhythmLane } from './rhythm.js';
 import { patchMaterial } from '../shaders.js';
 import { nfBall, nearFade } from './nearfade.js';
+import { ppView, ppOcc } from './ppview.js';
 import { cloneYeti } from '../glb.js';
-import { isScoreRecord, gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionLine, missionResultText, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
+import { isScoreRecord, gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionResultText, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
 import { starProgress } from '../campaign.js';
 
 // YETİ RUSH — endless Temple-Run-style downhill run (RUNNER.md).
@@ -219,6 +220,7 @@ if (typeof window !== 'undefined') window.patpatDailyRush = () => { window.__pat
 export class Runner {
   constructor(ctx) {
     this.ctx = ctx; // { scene, camera, lib, ball, fx, ui, audio, platform, save, input, meta, menus }
+    window.__ppv = ppView; ppView.occ = () => ppOcc(ctx.scene, ctx.camera, ctx.ball.group);   // readability probe for scripts/smoke-e2e.mjs
     this.events = [];
     this.camPos = new THREE.Vector3();
     this.camLook = new THREE.Vector3();
@@ -408,6 +410,7 @@ export class Runner {
     let nRuns = 0; try { nRuns = this.ctx.meta?.stats?.().runs || 0; } catch (e) { nRuns = 0; }
     this._nRuns = nRuns;
     if (nRuns < 2 && typeof document !== 'undefined') { const h = document.getElementById('hud'); h?.classList.add('goal-intro'); setTimeout(() => h?.classList.remove('goal-intro'), 4500); }   // first runs: the goal pill is big for 4 s
+    if (typeof document !== 'undefined') { const h = document.getElementById('hud'); h?.classList.add('no-chap'); if (nRuns >= 3) setTimeout(() => h?.classList.remove('no-chap'), 10000); }   // chapter bar: not in the first 3 runs, not in the first 10 s of later ones (one goal at a time)
     this.quietRun = nRuns < 2;      // the first two runs: no jargon, no scoring toasts; only what teaches a control (TEACH_MSG)
     this.baseHard = level ? level.hardness : 1;
     this.hardS = -1e9;
@@ -2425,8 +2428,11 @@ export class Runner {
     this._msT = this.time + 0.5;
     const ui = this.ctx.ui;
     this.hintOn = true;
-    ui.hint?.(true, this._mutLine ? t(this._mutLine) : missionLine(m, this.quietRun ? 0 : nextMult(meta?.multiplier?.() ?? 1), t));   // (the mission itself is the top pill from frame one: the bottom line only names this week's twist; no twist = the mission line)
-    this.after(2, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); });
+    ui.hint?.(true, t("YETİ'DEN KAÇ!"));   // (frame one: ONE goal, the top pill; the bottom line only says why you run. This week's twist follows from run 4 on)
+    this.after(2, () => {
+      if (this._mutLine && this._nRuns >= 3 && !this.jnOpen) { ui.hint?.(true, t(this._mutLine)); this.after(2, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); }); return; }
+      this.hintOn = false; if (!this.jnOpen) ui.hint?.(false);
+    });
   }
 
   // First time in a biome (endless): a gold flash and "KARTPOSTAL: Volkan 5/14"; the count lives in meta (biome_seen -> meta.cards()). Silent in the first two runs.
@@ -2437,7 +2443,7 @@ export class Runner {
     if (seen) return;
     meta.track?.('biome_seen', { id: bm.id });
     const c = meta.cards?.();
-    if (seen === null || !c || this.quietRun || this.state !== 'play' || this.time < 1) return;     // (the biome you START in is no arrival)
+    if (seen === null || !c || this.quietRun || this.state !== 'play' || this.time < 3) return;     // (the biome you START in is no arrival; the opening 3 s belong to the quest chip)
     this.ctx.ui.flash?.('gold');
     this.ctx.ui.toastSoft?.(postcardLine(bm.name, c.n, c.total, t), { icon: '📮', prio: 2, info: true });
     this.ctx.platform.haptic('light');
@@ -3557,7 +3563,7 @@ export class Runner {
     this.invulnT = RCFG.invulnAfterCrash;
     this.openStumble();
     this.burst(12, 0xffffff, 5);
-    this.mistBurst(8, 0xffffff, 4, 1.2);
+    this.mistBurst(5, 0xffffff, 3.2, 1.2);   // (a smaller cloud: the ball stays readable through a stumble)
     this.hitStop = Math.max(this.hitStop, 0.06);
     this.trauma = Math.min(1, this.trauma + 0.45);
     this.kick += 1;
@@ -3713,7 +3719,7 @@ export class Runner {
   // Leaving the run (retry, menu, quit): bank the coins, and record it if it had really ended. Idempotent.
   closeOut() {
     if (this.closed) return;
-    this.closed = true;
+    this.closed = true; ppView.on = false;
     this.bankCoins();
     if (this.level || this.recorded) return;
     // a finished run, or one the player walked away from after real progress (quit / restart from the pause menu keeps the record)
@@ -3750,18 +3756,18 @@ export class Runner {
     if (this.rcpN >= 4) ev.push({ s: this.rcpS, k: 'combo', n: this.rcpN });
     ev.push({ s: this.b.s, k: 'death' });
     if (this._skipRecap || ev.length < 2) { done(); return; }       // nothing to recap but the death itself (or the player already tapped past it): straight to the result
-    const LB = { rec: 'REKOR', boss: 'BOSS', combo: 'KOMBO', wall: 'DUVAR', fall: 'DÜŞÜŞ', melt: 'ERİME', yeti: 'YETİ', smash: 'ÇARPMA', explode: 'PATLAMA' };
     const IC = { rec: '🏆', boss: '🧌', combo: '🔥', wall: '🧱', fall: '🕳️', melt: '💧', yeti: '👹', smash: '💥', explode: '💣' };
+    this._rcpKill();      // (a second call must not orphan the first strip: its timer would be gone)
     const el = this._rcpEl = document.createElement('div');
     el.className = 'rcp';
-    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);width:min(92vw,380px);box-sizing:border-box;top:calc(env(safe-area-inset-top,0px) + 150px);z-index:60;padding:5px 12px 3px;border-radius:14px;background:rgba(15,30,55,.78);color:#fff;font:800 13px system-ui,sans-serif;text-align:center;pointer-events:none;opacity:0;transition:opacity .15s';   // slim banner under the HUD, never over the ball or the lane
-    let h = '<div style="letter-spacing:.1em;line-height:16px"><span style="opacity:.85">BÖLÜM ÖZETİ</span> · <span style="font-size:15px">' + NUM(dist) + ' m</span></div><div style="position:relative;height:46px;margin:4px 10px 0"><div style="position:absolute;left:0;right:0;top:19px;height:5px;border-radius:3px;background:rgba(255,255,255,.2)"></div><div class="rf" style="position:absolute;left:0;top:19px;height:5px;width:0;border-radius:3px;background:#7fd0ff;transition:width 1s linear"></div>';
+    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);width:min(92vw,380px);box-sizing:border-box;top:calc(env(safe-area-inset-top,0px) + 106px);z-index:60;padding:2px 10px;display:flex;align-items:center;gap:8px;border-radius:14px;background:rgba(15,30,55,.78);color:#fff;font:800 13px system-ui,sans-serif;text-align:center;pointer-events:none;opacity:0;transition:opacity .15s';   // slim banner under the HUD, never over the ball or the lane
+    let h = '<span style="font-size:15px;white-space:nowrap">' + NUM(dist) + ' m</span><div style="position:relative;height:21px;flex:1"><div style="position:absolute;left:0;right:0;top:8px;height:5px;border-radius:3px;background:rgba(255,255,255,.2)"></div><div class="rf" style="position:absolute;left:0;top:8px;height:5px;width:0;border-radius:3px;background:#7fd0ff;transition:width 1s linear"></div>';
     for (const e of ev) {
       const f = Math.min(1, Math.max(0, e.s / dist));
       const ic = e.k === 'death' ? (IC[this.cause] || '💀') : IC[e.k];
-      h += '<div class="ri" style="position:absolute;left:' + (f * 100).toFixed(1) + '%;top:0;transform:translateX(-50%) scale(0);font-size:20px;line-height:22px;transition:transform .18s cubic-bezier(.3,1.8,.5,1);transition-delay:' + (f * 0.8).toFixed(2) + 's">' + ic + (e.n ? '<span style="font-size:11px">' + e.n + '</span>' : '') + '<div style="font-size:9px;line-height:11px;opacity:.85">' + (LB[e.k === 'death' ? this.cause : e.k] || '') + '</div></div>';
+      h += '<div class="ri" style="position:absolute;left:' + (f * 100).toFixed(1) + '%;top:0;transform:translateX(-50%) scale(0);font-size:15px;line-height:21px;transition:transform .18s cubic-bezier(.3,1.8,.5,1);transition-delay:' + (f * 0.8).toFixed(2) + 's">' + ic + (e.n ? '<span style="font-size:11px">' + e.n + '</span>' : '') + '</div>';
     }
-    el.innerHTML = h + '</div>';
+    el.innerHTML = h + '</div>' + (this.coins > 0 ? '<span style="white-space:nowrap;padding:0 8px;border-radius:10px;background:#ffd23a;color:#14284b">❄ +' + NUM(this.coins) + '</span>' : '');   // (one line: distance · the run bar · what the run paid)
     document.body.appendChild(el);
     let fin = false;
     const end = () => { if (fin) return; fin = true; this._rcpKill(); done(); };
@@ -4245,9 +4251,9 @@ export class Runner {
       const d3 = Math.hypot(dCam, this.camUpH);
       const open = clamp((2.8 - this.time) / 1.2, 0, 1);       // the opening ~2 s: the Yeti is bigger and further inside the lane, so the first frames show what chases you
       const calm = clamp((gapV - 6) / 3, 0, 1) * clamp((this.time - 2.5) / 2.5, 0, 1);      // not close (gap > ~9 m) after the opening 5 s: the claw shrinks and slides off the lane edge instead of cropping the bottom corner
-      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, (0.09 + 0.05 * loom) * (1 - 0.5 * calm) * (1 + 0.35 * open) * 0.75);   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
+      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, (0.09 + 0.05 * loom) * (1 - 0.5 * calm) * (1 + 0.15 * open) * 0.6);   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
       const side = b.u > 0.01 ? -1 : 1, hw = (tr.halfWidth(Math.max(0, gs)) || 3.8) - 0.3;
-      uT = clamp(b.u + side * (3.4 - 0.8 * loom + 1.2 * calm - 0.2 * open) * yetiSide(dCam), -hw - 1.2 * calm, hw + 1.2 * calm);
+      uT = clamp(b.u + side * (3.4 - 0.8 * loom + 1.2 * calm + 0.4 * open) * yetiSide(dCam), -hw - 1.2 - 1.2 * calm, hw + 1.2 + 1.2 * calm);
       if (dCam < 1.5) y.group.visible = false;      // right under / behind the camera: out of the picture anyway (and no draw call)
       if (dCam < 5 || this.state === 'dying' || this.state === 'over') this.avalanche.group.visible = false;   // (the death view sits in front of the powder wall: it used to fill the screen white)   // its powder wall sits 6 m behind the Yeti: behind the camera too (3 draw calls saved while the Yeti is far)
     }
@@ -4331,7 +4337,7 @@ export class Runner {
     if (hk2 > 0.01) { tr.frame(b.s - 4, _f2); _x.copy(_f2.tan); tr.frame(b.s + 8, _f2); _ax.copy(_f2.tan).sub(_x); tr.frame(b.s, _f2); inside = clamp(_ax.dot(_f2.right) * 12, -1, 1); }
     this.camInK += (inside - this.camInK) * kfil(snap, cdt, 3);
     let backT = 7.6 + r * 2.9 - this.closeK * 1.2 + 1.0 * speedK;
-    let upT = 3.85 + r * 1.5 + this.closeK * 3.2 + curvK * 1.4 + pitchK * 1.5 + this.camRoundK * 0.8;
+    let upT = 3.85 + r * 1.5 + this.closeK * 2.7 + curvK * 0.9 + pitchK * 1.5 + this.camRoundK * 0.8;
     const dk = this.state === 'dying' && this.cause !== 'fall' ? clamp(this.deadT / 0.9, 0, 1) : 0;   // death pull-back: ease back and up
     if (dk > 0) { const e = dk * dk * (3 - 2 * dk); backT += 5 * e; upT += 3 * e; }
     let laT = 11 + 5 * speedK + 2 * this.closeK - 4 * this.cornerK;       // through a sharp corner: look a little shorter, swing a little slower
@@ -4397,6 +4403,11 @@ export class Runner {
       const bp = this.ctx.ball.group.position, dx = _v.x - bp.x, dy = _v.y - bp.y, dz = _v.z - bp.z, dl = Math.hypot(dx, dy, dz) || 1e-3, mx = 30 * Math.max(0.3, b.r);
       if (dl > mx) _v.set(bp.x + dx * mx / dl, bp.y + dy * mx / dl, bp.z + dz * mx / dl);
     }
+    if (dying && this.cause !== 'fall') {
+      // pitch cap: the horizon stays in the upper half (never a view straight down at the ground): the camera backs off horizontally instead of tilting away from the ball
+      const bp = this.ctx.ball.group.position, dx = _v.x - bp.x, dz = _v.z - bp.z, dy = _v.y - bp.y, hd = Math.hypot(dx, dz), need = dy / (0.6 * Math.tan(cam.fov * 0.00872665));
+      if (dy > 0 && hd < need) { if (hd > 0.05) { _v.x = bp.x + dx * need / hd; _v.z = bp.z + dz * need / hd; } else { tr.frame(b.s, _f2); _v.x = bp.x - _f2.tan.x * need; _v.z = bp.z - _f2.tan.z * need; } }
+    }
     // Look target: a point on the track ahead (the lead term cancels the filter's lag at speed).
     const laS = b.s + this.camLa + (snap ? 0 : b.vs * 0.1);
     tr.toWorld(laS, this.camLookU, 0, _look);
@@ -4452,7 +4463,8 @@ export class Runner {
     const lean = this.jnLeanT > 0 ? this.jnLean * (this.jnLeanT / 0.45) : 0;
     this.tilt += (clamp(-b.vu * 0.006 - lean * 0.35, -0.052, 0.052) - this.tilt) * Math.min(1, dt * 8);     // <= 3 degrees
     cam.rotateZ(this.tilt);
-    if (!dying && playing) { cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert(); _v2.copy(this.ctx.ball.group.position).applyMatrix4(cam.matrixWorldInverse); const dp = -_v2.z; _v2.applyMatrix4(cam.projectionMatrix); nfBall.value.set(_v2.x, _v2.y, dp, 0); } else nfBall.value.z = 0;   // (the shaders in nearfade.js fade what sits between camera and ball)
+    if (playing || dying) { cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert(); _v2.copy(this.ctx.ball.group.position).applyMatrix4(cam.matrixWorldInverse); const dp = -_v2.z; _v2.applyMatrix4(cam.projectionMatrix); const th = Math.tan(cam.fov * 0.00872665); if (playing) nfBall.value.set(_v2.x, _v2.y, dp, r / (dp * th)); ppView.on = dp > 0.5 && this.ctx.ball.group.visible; ppView.st = this.state + (dying ? ':' + this.cause : ''); ppView.r = r; ppView.x = _v2.x; ppView.y = _v2.y; ppView.d = dp; ppView.th = th; ppView.ry = r / (dp * th); ppView.asp = cam.aspect; ppView.hy = Math.tan(Math.asin(cam.matrixWorld.elements[9])) / th; tr.toWorld(b.s + 150, 0, 0, _v2); _v2.project(cam); ppView.vy = _v2.y; } else ppView.on = false;
+    if (!playing || dying) nfBall.value.z = 0;   // (the shaders in nearfade.js fade what sits between camera and ball)
     // Trauma shake: smooth rotational noise that keeps running through hit-stop (peaks ≈ 3° at trauma 1).
     if (!snap && this.trauma > 0) {
       const a = Math.min(1, this.trauma) ** 2, t = (this.shakeClock += dt);

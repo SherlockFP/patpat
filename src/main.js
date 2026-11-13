@@ -749,7 +749,7 @@ function updateLevelHud(V) {
   const s = V.finalBroken ? 'BİTİŞ' : V.final ? 'FİNAL' : 'ETAP ' + (V.gateI + 1) + '/' + V.S;
   const t0 = V.finalBroken ? '🏁' : V.locked ? '👹 ' + fmtD(V.need) + ' m' : V.need > 0 ? '⛔ ' + fmtD(V.need) + ' m' : m5 + ' m';
   // KASABA mountains: ONE gauge "⚪ have → 🏘️ target" (the stage gates are ticks on the bar), the destroyed % once the town starts
-  const t = V.townNeed > 0 ? (V.finalBroken || V.have >= V.townNeed ? ((V.pct | 0) > 0 || V.finalBroken ? '🏘️ KASABA %' + (V.pct | 0) : '⚪ ' + fmtD(V.have) + ' m ✓ 🏘️ KASABA ' + fmtD(V.townNeed) + ' m') : '⚪ ' + fmtD(V.have) + ' m → 🏘️ KASABA ' + fmtD(V.townNeed) + ' m')
+  const t = V.townNeed > 0 ? (V.finalBroken || V.have >= V.townNeed ? ((V.pct | 0) > 0 || V.finalBroken ? '🏘️ KASABA %' + (V.pct | 0) : '⚪ ' + fmtD(V.have) + ' m ✓ 🏘️ ' + fmtD(V.townNeed) + ' m') : '⚪ ' + fmtD(V.have) + ' m → 🏘️ ' + fmtD(V.townNeed) + ' m')
     : V.final || V.finalBroken ? s + ' · ' + t0 : t0;   // plain target (⛔ 1.6 m); the stage count lives in the bar's gate pips
   const r = V.finalBroken ? 2 : V.ready;
   if (h.s !== '-') { h.s = '-'; h.gs.textContent = ''; h.gs.style.display = 'none'; }
@@ -969,7 +969,7 @@ function finishCigLevel() {
     menus.showLevelComplete({
       level: planAsLevel(plan), stars, goalsMet, rewards: { coins, crystals }, hasNext,
       labels: { banner: townPct >= 0 ? 'KASABA %' + townPct + ' YIKILDI' : 'DAĞ TAMAM!', bossBanner: 'PATRON YENİLDİ!', next: 'SONRAKİ KASABA ▶', map: 'KASABALAR', retry: '↻ TEKRAR' },
-      chips: (townPct >= 0 ? ['🏘️ ' + townPct + '%'] : []).concat(['⚪ ' + fmtD(2 * G.finalR) + ' m', '⚖️ ' + fmtTons(r.tons), '⏱ ' + clock(st.time)]).concat(comboC ? ['🪙 KOMBO +' + comboC] : [], plan.bigBoss && firstClear ? ['👑 PATRON ÖDÜLÜ'] : [], lootChip ? [lootChip] : []),
+      chips: (townPct >= 0 ? ['🏘️ ' + townPct + '%'] : []).concat(['⚪ ' + fmtD(2 * G.finalR) + ' m', '⚖️ ' + fmtTons(r.tons), '⏱ ' + clock(st.time)]).concat(comboC ? ['🔥 +' + comboC] : [], plan.bigBoss && firstClear ? ['👑 PATRON ÖDÜLÜ'] : [], lootChip ? [lootChip] : []),
       special: !daily && firstClear && n === 10 ? '∞ ÇIĞ SONSUZ AÇILDI!' : !daily && firstClear && n === MAX_DAG ? '🏆 TÜM DAĞLAR TAMAM!' : null,
     }, {
       onNext: () => playCigLevel(n + 1),

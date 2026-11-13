@@ -1,13 +1,13 @@
 // nearfade.js — hides geometry that is too close to the camera (dither fade 4.5 m -> gone at 2.5 m), per fragment on the GPU.
 // Works for every InstancedMesh material (decor, obstacles, pickups, critters) with zero per-frame JS cost / allocations.
 import { Vector4 } from 'three';
-/** The ball for the shader: (ndc x, ndc y, view depth, 0). Depth 0 = off. runner.js sets it once per frame, so a prop between the camera and the ball dissolves and never hides it. */
+/** The ball for the shader: (ndc x, ndc y, view depth, ball radius in ndc y: everything in front of the ball's whole circle dissolves). Depth 0 = off. runner.js sets it once per frame, so a prop between the camera and the ball dissolves and never hides it. */
 export const nfBall = { value: new Vector4() };
 /** opt (big things that must never hide the ball, e.g. the Yeti): { r, w, a } = dissolve radius / ramp width around the ball in ndc, a = floor alpha of the bottom 30% (1 = none) */
 export function nearFade(mat, near = 2.5, far = 4.5, opt = null) {
   const R = opt ? opt.r : 0.07, W = opt ? opt.w : 0.1, A = opt ? opt.a : 1;
   if (!mat || mat.__nearFade) return mat;
-  mat.__nearFade = true;
+  mat.__nearFade = true; mat.__nf = { near, far, R, W, A };   // (read by ppview.js)
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     if (prev) prev.call(mat, shader, renderer);
@@ -22,7 +22,7 @@ export function nearFade(mat, near = 2.5, far = 4.5, opt = null) {
   float nfK = 1.0;
   if (vNearD < ${far.toFixed(2)}) nfK = clamp((vNearD - ${near.toFixed(2)}) / ${(far - near).toFixed(2)}, 0.0, 1.0);
   if (uNfBall.z > 0.0 && -vNearP.z < uNfBall.z - 0.4) {
-    nfK = min(nfK, clamp((length((vNearN - uNfBall.xy) * vec2(0.46, 1.0)) - ${R.toFixed(3)}) / ${W.toFixed(3)}, 0.0, 1.0));   // in front of the ball, on its line of sight: dissolves
+    nfK = min(nfK, clamp((length((vNearN - uNfBall.xy) * vec2(0.46, 1.0)) - max(${R.toFixed(3)}, uNfBall.w * 1.05)) / ${W.toFixed(3)}, 0.0, 1.0));   // in front of the ball, on its line of sight: dissolves
     if (vNearN.y < -0.4 && -vNearP.z < 14.0) nfK = min(nfK, ${A.toFixed(2)});     // the bottom 30% of the screen: a foreground mesh there is half see-through
   }
   if (nfK <= nfH) discard;`);

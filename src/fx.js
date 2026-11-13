@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { patchMaterial, SU } from './shaders.js';
+import { nearFade } from './runner/nearfade.js';
+import { ppView } from './runner/ppview.js';
 
 const MAX_PARTS = 700;
 const TRAIL_N = 90;
@@ -102,7 +104,7 @@ export class Fx {
 
     // ---- particles: one instanced low-poly rock/snow chunk mesh ----
     const geo = new THREE.IcosahedronGeometry(1, 0);
-    const mat = patchMaterial(new THREE.MeshLambertMaterial({ flatShading: true }));
+    const mat = nearFade(patchMaterial(new THREE.MeshLambertMaterial({ flatShading: true })));   // (debris between the camera and the ball dissolves)
     this.parts = new THREE.InstancedMesh(geo, mat, MAX_PARTS);
     this.parts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.parts.frustumCulled = false;
@@ -273,6 +275,7 @@ export class Fx {
     const bp = ball && ball.group ? ball.group.position : null, br = ball ? ball.r || 1 : 1;
     const nearR = br * 3 + 6;
     let dens = 0;
+    const pe = ppView.on && this.camera ? this.camera.matrixWorldInverse.elements : null;
     for (let i = 0; i < n; i++) {
       if (this.mLife[i] <= 0) { this.mAlpha[i] = 0; this.mSizeAttr[i] = 0; continue; }
       this.mLife[i] -= dt;
@@ -287,6 +290,13 @@ export class Fx {
         // storm / powder near the ball: thin it out so the white ball never vanishes into white (the bright hit / pickup flashes are capped too: a ball buried in its own burst cannot be steered)
         const dx = this.mPos[o] - bp.x, dy = this.mPos[o + 1] - bp.y, dz = this.mPos[o + 2] - bp.z, q = (dx * dx + dy * dy + dz * dz) / (nearR * nearR);
         if (q < 1) { if (this.mKeep[i]) al *= 0.4 + 0.6 * q; else { dens += al * (1 - q); al *= 0.3 + 0.7 * q; } }
+      }
+      if (pe && al > 0.02) {   // puffs on the camera -> ball line of sight (inside the ball's screen circle, in front of it) thin out: the ball is never buried
+        const X = this.mPos[o], Y = this.mPos[o + 1], Z = this.mPos[o + 2], dp = -(pe[2] * X + pe[6] * Y + pe[10] * Z + pe[14]);
+        if (dp > 0.5 && dp < ppView.d - 0.4) {
+          const f = 1 / (dp * ppView.th), nx = (pe[0] * X + pe[4] * Y + pe[8] * Z + pe[12]) * f / ppView.asp - ppView.x, ny = (pe[1] * X + pe[5] * Y + pe[9] * Z + pe[13]) * f - ppView.y;
+          al *= Math.max(this.mKeep[i] ? 0.1 : 0.05, Math.min(1, ((Math.hypot(nx * ppView.asp, ny) - this.mSizeAttr[i] * 0.45 / dp) / ppView.ry - 0.9) / 0.8));   // (the puff's own radius counts: a big puff beside a small ball still covers it)
+        }
       }
       this.mAlpha[i] = al;
     }

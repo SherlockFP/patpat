@@ -523,7 +523,9 @@ const CSS = `
 .fm-note { text-align: center; color: var(--ink); font-size: 13px; line-height: 1.4; padding: 0 6px; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55); }
 
 /* ---- upgrades ---- */
-.fm-pips { display: flex; gap: 4px; margin-top: 6px; }
+.fm-pips { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.fm-pn { margin-left: 4px; font-size: 12px; color: var(--ink); opacity: 0.7; }
+.fm-bb { margin-left: 6px; padding: 1px 7px 2px; border-radius: 8px; background: #3fcf3a; color: #fff; font-size: 11px; letter-spacing: 0.05em; vertical-align: 2px; }
 .fm-pips i { width: 20px; height: 10px; border-radius: 5px; border: 2px solid var(--ink); background: rgba(23, 52, 92, 0.15); }
 .fm-pips i.on { background: linear-gradient(180deg, #fff3a8, var(--gold)); }
 .fm-up .fm-btn { min-width: 86px; }
@@ -911,7 +913,7 @@ const CSS = `
 .fm-rgoal.miss { opacity: 0.7; }
 .fm-rgoal .ck { margin-left: auto; flex: none; font-size: 18px; }
 .fm-rchips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 340px; }
-.fm-rchip { padding: 4px 10px; border-radius: 14px; border: 3px solid var(--ink); background: linear-gradient(180deg, #fff, #dcecff); color: var(--ink); font-size: 16px; text-shadow: none; opacity: 0; animation: fmPopIn 0.45s cubic-bezier(.2, 1.4, .4, 1) forwards; }
+.fm-rchip { white-space: nowrap; padding: 4px 10px; border-radius: 14px; border: 3px solid var(--ink); background: linear-gradient(180deg, #fff, #dcecff); color: var(--ink); font-size: 16px; text-shadow: none; opacity: 0; animation: fmPopIn 0.45s cubic-bezier(.2, 1.4, .4, 1) forwards; }
 .fm-rchip.gold { background: linear-gradient(180deg, #fff3a8, var(--gold)); }
 .fm-rchip.hero { grid-column: 1 / -1; font-size: 20px; padding: 3px 14px; text-align: center; }
 .fm-up.fm-hl { box-shadow: 0 0 0 3px #ffd23a, 0 0 18px rgba(255, 210, 58, 0.8); }
@@ -2231,6 +2233,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const fmtUp = (u, v) => (u.durations ? `${String(v).replace('.', ',')} sn` : u.id === 'flakes' || u.id === 'xp' ? `×${v}` : u.id === 'topSize' ? `+${v.toFixed(2)} kademe` : u.id === 'topMagnet' ? `+${v.toFixed(2)} m` : u.id === 'topMelt' ? `-${Math.round(v * 100)}%` : `+${Math.round(v * 100)}%`);
     const buzz = (b) => { b.classList.add('fm-shake'); sfx('error'); setTimeout(() => b.classList.remove('fm-shake'), 340); };
 
+    let bestBuy = null;
     function powerRow(u) {
       const lv = meta.upgradeLevel(u.id);
       const cost = meta.upgradeCost(u.id);
@@ -2241,7 +2244,9 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       add(mid, el('div', 'fm-an', u.name), el('div', 'fm-ad', u.desc), el('div', 'fm-ar', lv < 5 ? `${fmtUp(u, vals[lv])} → ${fmtUp(u, vals[lv + 1])}` : `${fmtUp(u, vals[lv])} (en yüksek)`));
       const pips = el('div', 'fm-pips');
       for (let i = 0; i < 5; i++) pips.appendChild(el('i', i < lv ? 'on' : ''));
+      pips.appendChild(el('b', 'fm-pn', `${lv}/5`));   // (how many levels there are: the price alone says nothing)
       mid.appendChild(pips);
+      if (bestBuy && bestBuy.id === u.id) mid.firstChild.appendChild(el('span', 'fm-bb', 'EN İYİ ALIM'));   // (the cheapest upgrade you can pay for now)
       add(r, setIcon(el('div', 'fm-aico'), u.icon), mid);
       if (cost === null) r.appendChild(button('fm-btn sm on', 'MAKS ✓'));
       else {
@@ -2263,6 +2268,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     function render() {
       clear(p.list);
       const br = POWER_BRANCHES[p.tab] || POWER_BRANCHES[0];
+      bestBuy = null; try { const c = cheapestPower(); if (c && c.afford) bestBuy = c; } catch { /* ignore */ }
       for (const id of br.ids) { const u = UPGRADES.find((x) => x.id === id) || GUC.find((x) => x.id === id); if (u) p.list.appendChild(powerRow(u)); }
       if (br.id === 'power') {
         const sr = el('div', 'fm-row fm-up sled');
@@ -3116,12 +3122,14 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const chips = [...new Set((Array.isArray(d.chips) ? d.chips.slice() : []).concat(rewardChips(rw)))];   // (one flake tile, even when the caller also passes one)
     if (chips.length) {
       const rc = el('div', 'fm-rchips');
-      { const n = chips.length, cols = n <= 3 ? n : (n === 6 ? 3 : 2); rc.style.cssText = `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:6px;justify-items:stretch;width:min(calc(100% - 24px),380px);margin-left:auto;margin-right:auto`; }
+      const nh = chips.length - (/^(⚪|🏘️)/.test(chips[0]) ? 1 : 0), cols = nh <= 3 ? Math.max(1, nh) : (nh % 2 === 0 && nh !== 6 ? 2 : 3);
+      rc.style.cssText = `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:6px;justify-items:stretch;width:min(calc(100% - 24px),380px);margin-left:auto;margin-right:auto`;
       chips.forEach((c, i) => {
         const ch = el('div', `fm-rchip${/^(👕|✨)/.test(c) ? ' gold' : ''}${i === 0 && /^(⚪|🏘️)/.test(c) ? ' hero' : ''}`, c);
         ch.style.animationDelay = `${450 + i * 90}ms`;   // (the stat chips fill the gap under the stars within ~1 s)
         rc.appendChild(ch);
       });
+      if (nh > cols && nh % cols) rc.lastChild.style.gridColumn = `span ${cols - (nh - 1) % cols}`;   // (a ragged last row: the last tile takes the free cells)
       ov.appendChild(rc);
     }
     const sp = [];      // ONE banner for the chest / perfect / unlock lines (one box instead of three stacked bars)
@@ -3420,7 +3428,6 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.logo = logo;
     r.logoBall = ball;
     root0.appendChild(add(el('div', 'fm-logorow'), logo));
-    root0.appendChild(el('div', 'fm-tag', 'KARTOPU · YETİ · ÇIĞ'));
 
     // ---- middle: the 3D snowball shows through; tap it ----
     const mid = el('div', 'fm-mid');
@@ -3613,7 +3620,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
 
     try {
       const c = campInfo();
-      r.mapSub.textContent = c.done ? `⭐ ${c.totalStars}/${c.maxStars}` : `Bölüm ${c.current} · ⭐ ${c.totalStars}/${c.maxStars}`;
+      r.mapSub.textContent = c.done ? `⭐ ${c.totalStars}/${c.maxStars}` : `Sıradaki: Bölüm ${c.current}`;
       r.cigSub.textContent = `Kasabayı yık · ${save.cigCleared() | 0}/${DAG_COUNT}`;
     } catch { /* ignore */ }
 
@@ -3630,7 +3637,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     try { cc = save.cigCleared(); cs = save.cigLvTotalStars(); } catch { /* ignore */ }
     let tb = 0; try { tb = save.runnerTodayBestScore ? save.runnerTodayBestScore() | 0 : 0; } catch { /* ignore */ }
     // score chase: today's best vs the record, and what is left to beat it
-    r.bestS.textContent = bd > 0 ? (tb >= bd ? `BUGÜN REKOR! ${fmt(tb)} puan` : tb > 0 ? `Bugün ${fmt(tb)} puan · rekora ${fmt(bd - tb)}` : `Rekoru geç: ${fmt(bd + 1)} puan`)
+    r.bestS.textContent = bd > 0 ? (tb >= bd ? `BUGÜN REKOR! ${fmt(tb)} puan` : tb > 0 ? `Bugün ${fmt(tb)} puan · rekora ${fmt(bd - tb)}` : `Sıradaki: ${fmt(bd + 1)} puan`)
       : cc > 0 ? `ÇIĞ: DAĞ ${cc} · ⭐ ${cs}` : (cig.tons > 0 ? `ÇIĞ: ${fmtTons(cig.tons)}` : 'Yeti seni kovalıyor!');
 
     // missions (3 compact rows)

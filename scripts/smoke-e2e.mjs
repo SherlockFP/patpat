@@ -145,11 +145,46 @@ function pngStats(buf) {
 // Rush top HUD: no two of these boxes may touch (score, x-multiplier, flakes + metres, mission / rage pill, chapter name, soft toast, buff icon, pause)
 const HUD_CLASH = `(()=>{const S=['#btn-pause','.hud-tons','.cmb.on','.hud-coins','.hud-goal:not(.hidden)','.chap-pill.on','#toast-soft .ts','.buffs .buff:first-child','.perk-ico'],R=[];for(const q of S)for(const e of document.querySelectorAll(q)){const b=e.getBoundingClientRect(),cs=getComputedStyle(e);if(b.width<2||b.height<2||cs.visibility==='hidden'||cs.display==='none'||+cs.opacity<0.3)continue;R.push([q,b.left,b.top,b.right,b.bottom])}
 const bad=[];for(let i=0;i<R.length;i++)for(let j=i+1;j<R.length;j++){const a=R[i],b=R[j];if(a[0]===b[0])continue;if(Math.min(a[3],b[3])-Math.max(a[1],b[1])>1&&Math.min(a[4],b[4])-Math.max(a[2],b[2])>1)bad.push(a[0]+' x '+b[0]+' @'+Math.round(a[2])+'/'+Math.round(b[2]))}return bad})()`;
+// Readability contract (every Rush / chapter / mech frame): the ball's screen circle (window.__ppv, written by runner.js each frame) must stay >= 75% visible.
+// DOM paint rects (backgrounds, images, text lines of every visible element, scaled by effective opacity) + the 3D estimate (ppv.occ(): CPU rays that mirror nearfade.js, mist puffs) are merged per sample point (25 points over the circle).
+// Horizon (camera pitch) must sit in the upper 15-55% of the screen; no more than one centre toast / banner; none of them over the top HUD.
+const BALL_READ = `(()=>{const P=window.__ppv;if(!P||!P.on||!document.getElementById('result').classList.contains('hidden'))return null;const W=innerWidth,H=innerHeight,m=P.occ(),cx=(P.x+1)/2*W,cy=(1-P.y)/2*H,rad=P.ry*H/2,N=25,px=[],py=[];
+for(let i=0;i<N;i++){px.push((P.sx[i]+1)/2*W);py.push((1-P.sy[i])/2*H)}
+const R=[],eo=new Map(),op=(e)=>{if(!e||e===document.documentElement)return 1;let v=eo.get(e);if(v!==undefined)return v;const c=getComputedStyle(e);v=(c.display==='none'||c.visibility==='hidden'&&false)?0:+c.opacity*op(e.parentElement);eo.set(e,v);return v};
+const add=(r,o,n)=>{if(r.width>1&&r.height>1&&r.width*r.height<0.6*W*H)R.push([r.left,r.top,r.right,r.bottom,o,n])};
+for(const e of document.body.querySelectorAll('*')){if(/^(CANVAS|SCRIPT|STYLE)$/.test(e.tagName))continue;const c=getComputedStyle(e);if(c.display==='none'||c.visibility==='hidden')continue;const o=op(e);if(o<0.2)continue;const n=(e.id?'#'+e.id:'')+(typeof e.className==='string'&&e.className?'.'+e.className.split(' ')[0]:'')||e.tagName;
+const bg=c.backgroundColor.match(/[\d.]+/g)||[],a=bg.length>3?+bg[3]:(/^rgb/.test(c.backgroundColor)?1:0);
+if(a>0.25||c.backgroundImage!=='none'||/^(IMG|SVG|VIDEO)$/i.test(e.tagName))add(e.getBoundingClientRect(),o*(a>0.25?Math.min(1,a):1),n);
+for(const t of e.childNodes)if(t.nodeType===3&&t.textContent.trim()){const g=document.createRange();g.selectNodeContents(t);for(const r of g.getClientRects())add(r,o,n+'(text)')}}
+let sum=0,dsum=0,wn='',ww=0;for(let i=0;i<N;i++){let d=0,nm='';for(const r of R)if(px[i]>=r[0]&&px[i]<=r[2]&&py[i]>=r[1]&&py[i]<=r[3]&&r[4]>d){d=r[4];nm=r[5]}
+const k=1-(1-Math.min(1,d))*(1-m[i]);dsum+=d;sum+=k;if(d>ww){ww=d;wn=nm}}
+const hf=(1-P.hy)/2,vf=(1-P.vy)/2;
+const sel='#banner .b,#toast-soft .ts,#toast:not(.hidden),#subtitle,#tutor:not(.hidden),.rcp,.chap-pill.on,.rx-sum,#danger.on';const cen=[...document.querySelectorAll(sel)].filter(e=>{const b=e.getBoundingClientRect(),c=getComputedStyle(e);return b.width>8&&b.height>8&&c.visibility!=='hidden'&&+c.opacity>0.3&&b.top>0.1*H&&b.top<0.6*H}).map(e=>(e.id||e.className||e.tagName).toString().slice(0,18));
+const top=document.querySelector('.hud-tons')?.getBoundingClientRect(),slab=[...document.querySelectorAll('.rcp,#banner .b')].map(e=>e.getBoundingClientRect()).filter(b=>b.width>8&&top&&b.top<top.bottom+2&&b.bottom>top.top);
+return{pct:Math.round(sum/N*100),dom:Math.round(dsum/N*100),mesh:Math.round(m.reduce((a,b)=>a+b,0)/N*100),by:ww>0?wn:P.what,st:P.st,cx:Math.round(cx),cy:Math.round(cy),rad:Math.round(rad),off:cx<0||cx>W||cy<0||cy>H,hf:+hf.toFixed(2),vf:+vf.toFixed(2),cen,slab:slab.length}})()`;
+const READ_LOG = [];
+const badOf = (r) => [r.pct > 25 && `ball ${r.pct}% covered (dom ${r.dom}%, 3D ${r.mesh}%, by ${r.by}; ball at ${r.cx},${r.cy} r${r.rad})`, (r.hf < 0.15 || r.hf > 0.55) && `horizon at ${Math.round(r.hf * 100)}%`, r.off && `ball off screen at ${r.cx},${r.cy}`, r.cen.length > 1 && `${r.cen.length} centre toasts/banners: ${r.cen.join(', ')}`, r.slab && 'banner/summary slab over the top HUD'].filter(Boolean).map((x) => `[${r.st}] ${x}`).join('; ');
+// live sampling while a scenario plays (no screenshot per sample): L = {n, bad, max, list}; up to 4 offending moments are shot as <tag>_bad_N.png
+async function liveRead(L, tag, ctx) {
+  let r = null; try { await ev('window.__raf&&(window.__raf.skip=true)'); r = await ev(BALL_READ); await ev('window.__raf&&(window.__raf.skip=false,window.__raf.ign=3)'); } catch (e) { return; }   // (the probe itself costs a few ms: its frames stay out of the pacing numbers)
+  if (!r) return; L.n++; L.max = Math.max(L.max, r.pct); const b = badOf(r); if (!b) return; L.bad++;
+  if (L.list.length < 4) { L.list.push(b); await ev(`(()=>{const d=document.createElement('div');d.id='ppdbg';d.style.cssText='position:fixed;z-index:99;pointer-events:none;border:2px solid red;border-radius:50%;left:${r.cx - r.rad}px;top:${r.cy - r.rad}px;width:${r.rad * 2}px;height:${r.rad * 2}px';document.body.appendChild(d)})()`); await shot(tag + '_bad_' + L.list.length, ctx, { noBlank: true, noRead: true }); await ev(`document.getElementById('ppdbg')?.remove()`); }
+}
+async function ballRead(name, ctx) {
+  let r = null; try { r = await ev(BALL_READ); } catch (e) { return; }
+  if (!r) return; READ_LOG.push({ name, ...r });
+  if (r.pct > 25) ctx.fail(`ball ${r.pct}% covered in ${name}.png (dom ${r.dom}%, 3D ${r.mesh}%, by ${r.by}; ball at ${r.cx},${r.cy} r${r.rad})`);
+  if (r.off) ctx.fail(`ball off screen (${r.cx},${r.cy}) in ${name}.png`);
+  if (r.hf < 0.15 || r.hf > 0.55) ctx.fail(`[${r.st}] horizon at ${Math.round(r.hf * 100)}% of the screen height in ${name}.png (must be 15-55%)`);
+  if (r.cen.length > 1) ctx.fail(`${r.cen.length} centre toasts / banners at once in ${name}.png: ${r.cen.join(', ')}`);
+  if (r.slab) ctx.fail(`banner / summary slab covers the top HUD in ${name}.png`);
+}
 const HUD_FRAME = /^(rush_(?!result)|mech_)/;
 const frames = [];                                // every frame this run wrote: _manifest.json lists them next to the result lines, so frames and logs travel together
 async function shot(name, ctx, opts = {}) {
   let clash = []; if (ctx && HUD_FRAME.test(name)) { try { clash = await ev(HUD_CLASH); } catch { /* page busy */ } }
   if (clash.length) ctx.fail(`top HUD boxes touch in ${name}.png: ${clash.join(', ')}`);
+  if (ctx && HUD_FRAME.test(name) && !opts.noRead && !/^rush_power/.test(name)) await ballRead(name, ctx);
   const r = await cdp.send('Page.captureScreenshot', { format: 'png' }); frames.push(name + '.png');
   const buf = Buffer.from(r.data, 'base64'); writeFileSync(join(SHOTS, name + '.png'), buf);
   const s = pngStats(buf); s.bytes = buf.length; s.name = name;
@@ -349,7 +384,8 @@ async function returning(ctx) {
 async function hudStates(ctx) {
   await load('?endless&notut', seed3());
   await waitFor(`${rushPlay}&&(${hudDist})>=0`, 30000, 'rush playing');
-  await ev(`(()=>{const g=document.getElementById('hud-goal');g.classList.remove('hidden','cp','rec','rage','new','fury');g.classList.add('cannon');document.getElementById('hud-goal-lbl').textContent='SNOW CANNON ×5';document.getElementById('hud-goal-fill').style.width='60%';let b=document.querySelector('.chap-bar');if(!b){b=document.createElement('div');b.className='chap-bar';b.innerHTML='<i></i><b>CH 1</b>';document.getElementById('hud').appendChild(b)}b.hidden=false;b.classList.add('near');b.firstChild.style.width='92%'})()`);
+  await sleep(3600); await ev(`document.getElementById('toast-soft').innerHTML=''`);   // (the first postcard toast arrives ~3 s into a run: let it pass, it would own the strip)
+  await ev(`(()=>{document.getElementById('hud').classList.remove('no-chap');const g=document.getElementById('hud-goal');g.classList.remove('hidden','cp','rec','rage','new','fury');g.classList.add('cannon');document.getElementById('hud-goal-lbl').textContent='SNOW CANNON ×5';document.getElementById('hud-goal-fill').style.width='60%';let b=document.querySelector('.chap-bar');if(!b){b=document.createElement('div');b.className='chap-bar';b.innerHTML='<i></i><b>CH 1</b>';document.getElementById('hud').appendChild(b)}b.hidden=false;b.classList.add('near');b.firstChild.style.width='92%'})()`);
   await sleep(500); await shot('rush_cannon', ctx);
   const a = await ev(`(()=>{const g=getComputedStyle(document.getElementById('hud-goal'));const b=document.querySelector('.chap-bar');return{pill:g.visibility,cannon:document.querySelector('#hud-goal').classList.contains('cannon'),bar:b?getComputedStyle(b).visibility:'none',flag:b?getComputedStyle(b,'::after').animationName:'none',reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,cls:b?b.className:''}})()`);
   if (a.cannon && a.pill === 'visible' && a.bar === 'visible' && (a.flag !== 'none' || a.reduced)) ctx.pass(`cannon pill + near flag (pulses unless reduced motion, which this headless shell emulates): ${JSON.stringify(a)}`); else ctx.fail(`cannon pill / flag state wrong: ${JSON.stringify(a)}`);
@@ -395,6 +431,8 @@ async function skies(ctx) {
 }
 
 let rushStats = null, rushGl = null;   // rushStats: rAF data of the last Rush run, reused by s12 when s4 ran first
+const LIVE = { n: 0, bad: 0, max: 0, list: [] };
+const liveRun = () => { LIVE.n = LIVE.bad = LIVE.max = 0; LIVE.list.length = 0; };
 async function rushPlaytest(ctx) {
   await load('?endless&notut', seed3());
   const tNav = Date.now();
@@ -432,6 +470,7 @@ async function rushPlaytest(ctx) {
     if (st.rv) { await tapSel('#btn-revive-end', null, 3000).catch(() => {}); continue; }
     if (st.res) { deaths++; ch2At = 0; await afterResult(Date.now()); continue; }
     if (st.play) { if (tick++ % 2 === 0) await key(KS[(Math.random() * KS.length) | 0]); }
+    if (st.play && tick % 2 === 1) await liveRead(LIVE, 'rush', ctx);
     if (st.play && tick % 3 === 0) {
       const o = await ev(`(()=>{const q=(c)=>{const e=document.querySelector(c);return e?e.textContent.trim():''};return{sec:q('.sec-strip.on'),ch:q('.chap-pill.on')}})()`);
       if (o.sec) sections.add(o.sec);
@@ -455,6 +494,7 @@ async function rushPlaytest(ctx) {
   await glTake(); rushGl = glLine(GLACC);
   if (frame < 12 || played < 60000) ctx.fail(`only ${frame}/12 frames, played ${(played / 1000).toFixed(0)} s in ${(100000 / 1000)} s wall cap`);
   console.log('  ' + rows.join('\n  '));
+  if (LIVE.bad) ctx.fail(`readability: ${LIVE.bad}/${LIVE.n} live samples broke the contract (worst ball cover ${LIVE.max}%): ${LIVE.list.join(' | ')}`); else ctx.pass(`readability: ${LIVE.n} live samples, worst ball cover ${LIVE.max}%, none broke the contract`);
   if (sections.size) ctx.pass(`set-piece strips seen: ${[...sections].join(' | ')}`); else ctx.warn('no set-piece strip seen in 60 s (set pieces are random)');
   if (ch2Shot) ctx.pass(`chapters seen: ${[...chaps].join(' | ')}; rush_ch2.png shot after the chapter change`); else ctx.warn(`CHAPTER 2 never reached in one life (chapters seen: ${[...chaps].join(' | ') || 'none'}); no rush_ch2.png`);
   ctx.pass(`60 s Rush playtest, ${rows.length} frames, deaths ${deaths}, played ${(played / 1000).toFixed(0)} s, bot=random keys, save with 3 previous runs`);
@@ -699,6 +739,10 @@ async function newChapters(ctx) {
         if(K==='boulder'){if(o.dyn.length){ds=1;break}}else if(K){for(const ob of o.obs){const s=ob.cs!==undefined?ob.cs:ob.s;if(ob.kind===K&&ob.alive!==false&&s-r.b.s>14&&s-r.b.s<46){ds=Math.round(s-r.b.s);break}}if(ds!==null)break}else if(i>60*14)break}
       const h={};for(const ob of o.obs)h[ob.kind]=(h[ob.kind]||0)+1;return{ds,cause:r.cause,s:Math.round(r.b.s),chap:r.chap&&r.chap.id,lowG:r.lowG,spd:r.chapSpd,t:+r.time.toFixed(1),st:r.state,h:JSON.stringify(h)}})()`);
     await ev("document.getElementById('perks').style.display='none'"); await ev('window.__raf&&(window.__raf.skip=true)'); await shot('mech_' + id, ctx); await ev('window.__raf&&(window.__raf.skip=false)');
+    if (id === 'lazer') {      // death past 300 m: the chapter summary strip over the dying frame must sit slim under the HUD, clear of the ball and the vanishing point (rush_recap.png, asserted like every Rush frame)
+      await ev(`(()=>{const r=cig.runner;r.invulnT=0;r.die('wall')})()`); await sleep(120); await ev(`(()=>{const r=cig.runner;r._skipRecap=false;r.rcp=[{s:r.b.s*0.4,k:'combo',n:5}];r.showRecap(()=>{})})()`); await sleep(350); await ev('window.__raf&&(window.__raf.skip=true)'); await shot('rush_recap', ctx); await ev('window.__raf&&(window.__raf.skip=false)');
+      if (!(await ev(`!!document.querySelector('.rcp')`))) ctx.warn('rush_recap.png: no chapter summary strip on screen (death did not reach the recap)');
+    }
     if (id === 'ekspres' && hunt.ds !== null) {      // close-up: the train judged in motion, 3-9 m in front of the ball (train_close.png)
       const near = await ev(`(()=>{const r=cig.runner,o=r.obstacles;r.invulnT=1e9;r.yetiHoldT=99;for(let i=0;i<60*8&&r.state!=='over';i++){r.invulnT=1e9;cig.simEndless(1/60);for(const ob of o.obs){const s=ob.cs!==undefined?ob.cs:ob.s;if(ob.kind==='oncoming'&&ob.alive!==false&&s-r.b.s>3&&s-r.b.s<9)return Math.round(s-r.b.s)}}return null})()`);
       await ev('window.__raf&&(window.__raf.skip=true)'); await shot('train_close', ctx); await ev('window.__raf&&(window.__raf.skip=false)');
@@ -875,6 +919,7 @@ async function finish(code) {
   const fails = lines.filter((l) => l.startsWith('FAIL')).length, warns = lines.filter((l) => l.startsWith('WARN')).length, passes = lines.filter((l) => l.startsWith('PASS')).length;
   console.log('\n==== SUMMARY ====');
   console.log(`PASS ${passes}  WARN ${warns}  FAIL ${fails}`);
+  if (READ_LOG.length) { const g = {}; for (const r of READ_LOG) { const k = r.name.replace(/_?d+$/, ''); if (!g[k] || r.pct > g[k].pct) g[k] = r; } console.log(`ball cover (worst per frame group, ${READ_LOG.length} frames): ` + Object.entries(g).map(([k, r]) => `${k} ${r.pct}% (${r.name}, dom ${r.dom} 3D ${r.mesh}${r.by ? ' ' + r.by : ''}, horizon ${Math.round(r.hf * 100)}%)`).join('; ')); }
   console.log(`renderer: ${renderer}`);
   console.log(`peak browser memory (sum of process working sets): ${peakMem} MB; peak JS heap ${peakHeap.toFixed(0)} MB`);
   console.log(`wall time: ${((Date.now() - T0) / 1000).toFixed(0)} s`);

@@ -1607,7 +1607,7 @@ export class CigGame {
       if (Math.abs(p.x - b.x) > b.r + p.r * CFG.contactK + 4) continue;
       if (dd < bestD) { bestD = dd; best = p; }
     }
-    if (best) { this.labelsShown++; w.tagObstacle(best, `⛔ ${fmtD(best.r / CFG.eatRatio * 2)} m`); }
+    if (best) { this.labelsShown++; w.tagObstacle(best, `⛔ ${fmtD(best.r / CFG.eatRatio * 2)} m gerekli`); }
   }
 
   // ---- one physics substep
@@ -1964,7 +1964,7 @@ export class CigGame {
     G.shake += 0.25;
     b.squash(0.1);
     this._h('burst', b.x + (p.x - b.x) * 0.5, b.y, b.d, 6, 0xffffff, 5, 0.18 + b.r * 0.06, 4);
-    if (this.labelsShown < 6 && !p.tag && !p.crate && !this._bossNear()) { this.labelsShown++; w.tagObstacle(p, '⛔ ' + fmtD(p.r / CFG.eatRatio * 2) + ' m'); }
+    if (this.labelsShown < 6 && !p.tag && !p.crate && !this._bossNear()) { this.labelsShown++; w.tagObstacle(p, '⛔ ' + fmtD(p.r / CFG.eatRatio * 2) + ' m gerekli'); }
     this._h('track', 'crash', {});
   }
 
@@ -2954,10 +2954,10 @@ export class CigGame {
     if (!b.airborne && b.speed > 3) {
       G.sprayT -= dt;
       if (G.sprayT <= 0) {
-        G.sprayT = 0.05;
+        G.sprayT = 0.05 + 0.012 * Math.min(b.r, 6);   // (a big ball: fewer, fainter puffs, the ball and the bar stay readable)
         const side = Math.random() < 0.5 ? -1 : 1;
         if (b.r < 2) this._h('burst', b.x + side * b.r * 0.7, b.y - b.r * 0.75, b.d - b.r * 0.4, 1, 0xffffff, 1.5 + b.speed * 0.08, 0.05 + b.r * 0.02, 2.5 + b.r * 0.3);
-        else this._h('puff', b.x + side * b.r * 0.9, b.y - b.r * 0.6, -(b.d - b.r * 0.6), side * 2, 1.5, b.speed * 0.15, 0.6 + b.r * 0.35, 0.9, 0xf4f8ff, 0.4);
+        else this._h('puff', b.x + side * b.r * 0.9, b.y - b.r * 0.6, -(b.d - b.r * 0.6), side * 2, 1.5, b.speed * 0.15, 0.6 + b.r * 0.35, 0.9, 0xf4f8ff, 0.4 / (1 + 0.2 * b.r));
       }
     }
   }

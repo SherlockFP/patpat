@@ -521,7 +521,7 @@ export class UI {
     if (det) html += `<div class="rx-qtoggle">▸ Detaylar</div><div class="rx-qlist hidden">${det}</div>`;
     // the mission line lives IN the stats card (one box, one progress fill) instead of a separate chip under the score
     const mChip = !!nq && !!rl.goal && rl.goal === p.nextGoalText && p.nextGoalKind === 'mission';
-    if (mChip && !this._nupAfford) html = `<div class="rx-ms" style="--f:${Math.round(clamp01(nf) * 100)}%">${tr(rl.goal)}</div>` + html;
+    if (mChip && !this._nupAfford) html = `<div class="rx-ms" style="--f:${Math.round(clamp01(nf) * 100)}%">${tr(rl.goal)}<span class="rx-pips">${qRows.map((m) => (m.done ? '●' : '○')).join('')}</span></div>` + html;
     ex.innerHTML = html;
     const qt = ex.querySelector('.rx-qtoggle');
     const upEl = ex.querySelector('.rx-up');

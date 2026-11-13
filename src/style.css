@@ -478,7 +478,7 @@ body:has(.perk-pick:not(.out)) #hint, body:has(.perk-pick:not(.out)) .rtag, body
 @keyframes cigBan { 0% { opacity: 0; transform: scale(0.4); } 16% { opacity: 1; transform: scale(1.12); } 28% { transform: scale(1); } 78% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
 
 #toast-soft { position: absolute; left: 0; right: 0; top: calc(var(--sat) + 188px); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 60; }
-#toast-soft.res { top: calc(var(--sat) + 278px); }   /* in the gap between the goal chip and the card, never over the chip */
+#toast-soft.res { top: calc(var(--sat) + 292px); }   /* in the gap between the goal chip and the card, never over the chip */
 #toast-soft.res .ts { font-size: 13px; padding: 4px 12px 5px 9px; }
 #toast-soft.res .ts.long { font-size: 15px; animation-name: tsInRes; animation-duration: 6s; background: linear-gradient(180deg, #ffe27a, var(--gold)); color: var(--ink); text-shadow: none; }   /* quest chip: bright gold, 6 s, readable on the blurred card */
 #toast-soft .ts {
@@ -488,7 +488,7 @@ body:has(.perk-pick:not(.out)) #hint, body:has(.perk-pick:not(.out)) .rtag, body
 #toast-soft .ts .ti { font-size: 18px; line-height: 1; }
 #toast-soft .ts.long { animation-duration: 3s; background: rgba(10, 25, 55, 0.96); font-size: 16px; }   /* a milestone / why-you-grow line stays 3 s and reads on snow */
 @keyframes tsInRes { 0% { opacity: 0; transform: translateY(-8px) scale(0.92); } 4% { opacity: 1; transform: none; } 88% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes tsIn { 0% { opacity: 0; transform: translateY(-10px) scale(0.9); } 12% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
+@keyframes tsIn { 0% { opacity: 0; transform: translateY(-10px) scale(0.9); } 8% { opacity: 1; transform: none; } 90% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
 
 /* ---- first-run tutor card (top edge only) ---- */
 #tutor {
@@ -1201,7 +1201,8 @@ body:has(.chap-pill.on) #rcol { visibility: hidden; }   /* the side chips (seaso
 #hint > div:last-child { display: inline-block; max-width: 92%; padding: 5px 14px 6px; border-radius: 14px; background: rgba(8, 22, 48, 0.78); color: #fff; font-size: 15px; line-height: 1.25; }
 .float.big, .float.bad, #banner .b { background: rgba(8, 22, 48, 0.84); padding: 3px 16px 4px; border-radius: 14px; }
 .ftue-splash { transition-duration: 0.18s; }
-.res-extra .rx-ms { padding: 5px 10px 6px; border-radius: 10px; font-weight: 800; font-size: 12.5px; text-align: center; color: #fff; text-shadow: 0 1px 0 var(--ink); background: linear-gradient(90deg, #ffd23a var(--f, 0%), rgba(255, 255, 255, 0.18) var(--f, 0%)) left bottom / 100% 4px no-repeat, rgb(8, 22, 48); padding-bottom: 9px; }
+.res-extra .rx-ms { padding: 5px 10px 6px; border-radius: 10px; font-weight: 900; font-size: 13.5px; text-align: center; color: var(--ink); text-shadow: none; background: linear-gradient(90deg, #ff8a1f var(--f, 0%), rgba(8, 22, 48, 0.35) var(--f, 0%)) left bottom / 100% 4px no-repeat, linear-gradient(180deg, #ffe27a, #ffc933); padding-bottom: 9px; }   /* quest chip: bright gold + ink text (the dark chip read poorly on the blurred card); the set pips follow the text */
+.res-extra .rx-ms .rx-pips { margin-left: 8px; letter-spacing: 2px; }
 .res-sub.chip { display: inline-block; padding: 4px 14px 5px; border-radius: 12px; color: #fff; border: 2px solid rgba(255, 255, 255, 0.28); background: linear-gradient(90deg, rgba(255, 210, 58, 0.6) var(--f, 0%), rgba(8, 22, 48, 0.62) var(--f, 0%)); text-shadow: 0 1px 0 var(--ink); }
 #btn-power { color: #3a1c00; background: linear-gradient(180deg, #ffd45a, #ff9a1a); box-shadow: 0 4px 0 #a85a00; }
 #btn-power.pulse { animation: pwPulse 1s ease-in-out infinite; }
@@ -1309,7 +1310,7 @@ body:has(.fm-ov) #result { visibility: hidden; }   /* a panel (GÜÇ ...) over t
 .hud-goal .chap-bar i, .hud-goal .chap-bar::after, .hud-goal .chap-bar b { border-radius: 0; }
 .hud-goal .chap-bar::after, .hud-goal .chap-bar b { display: none; }
 .hud-goal .chap-bar.near i { box-shadow: 0 0 8px #fff; }
-.hud-goal[data-ch]::after { content: attr(data-ch); position: absolute; right: 6px; top: 1px; font-size: 10px; line-height: 19px; font-weight: 900; letter-spacing: 0.04em; color: #b8f5c8; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }
+.hud-goal[data-ch]::after { content: attr(data-ch); position: absolute; right: 4px; top: 3px; padding: 0 5px; border-radius: 8px; background: #08162f; font-size: 10px; line-height: 14px; z-index: 2; font-weight: 900; letter-spacing: 0.04em; color: #b8f5c8; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }
 .hud-goal:has(.chap-bar[hidden])::after { display: none; }
 #result.rr { justify-content: flex-start; }   /* Rush result: the score block floats in the free space, the card hugs RETRY (no empty gap between them) */
 #result.rr .res-top { margin: auto 0; }
@@ -1341,3 +1342,13 @@ body:has(.fm-ov) #result { visibility: hidden; }   /* a panel (GÜÇ ...) over t
 #hud.rush.rush.rush .chap-pill { top: calc(var(--sat) + 108px); max-width: calc(100vw - 20px); font-size: 13px; letter-spacing: 0.03em; }
 #hud.rush.rush.rush ~ #toast-soft:not(.res) { top: calc(var(--sat) + 108px); }
 #hud.rush.rush.rush ~ #danger, #hud.rush.rush.rush.has-goal ~ #danger { top: calc(var(--sat) + 102px); font-size: 12px; padding: 1px 9px 2px; white-space: nowrap; letter-spacing: 0.04em; opacity: 0.92; animation: none; }   /* a one-line chip under the mission pill, never a slab over the lane */
+
+/* readability round: chapter bar waits (first 3 runs / first 10 s); endless bar fill is dark enough for its white labels; "combo broke" stays inside the screen */
+#hud.no-chap .chap-bar { display: none; }
+.cig-hud .cg-bar i { background: linear-gradient(90deg, #2f78d6, #6fb4f2); }
+#hud.cig-endless .cmb.broke { width: auto; white-space: nowrap; }
+#hud.cig-endless .cmb.broke .ch.k em { font-size: 14px; }
+.ag-goal { animation: agGoalOut 0.4s ease 3s forwards; }   /* arena: "be the biggest" is told for 3 s, then the screen is the game */
+@keyframes agGoalOut { to { opacity: 0; visibility: hidden; } }
+.fm-main .fm-wm { filter: drop-shadow(0 3px 8px rgba(8, 18, 52, 0.7)); }   /* the wordmark keeps its contrast on the dusk fog */
+#cig-introchip b.mod:not(.town) { padding: 2px 10px; font-size: 12px; }   /* beside the town goal: a small tag, not a second pill */
