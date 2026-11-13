@@ -725,7 +725,7 @@ function classicGeometry() {
   return geo;
 }
 
-// The default ball: a soft, round packed-snow ball (smooth shading over a lumpy silhouette) with icy-blue crevices and a few embedded pebbles.
+// The default ball: a soft, round packed-snow ball (smooth shading over a round silhouette) with icy-blue crevices and a few embedded pebbles.
 // The pebbles are what makes the rolling readable on a white ball. Still non-indexed, 1280 triangles.
 const PEBBLE_DIRS = [[0.62, 0.55, 0.56], [0.1, -0.8, 0.59], [-0.35, 0.86, -0.36], [0.85, -0.2, -0.48], [-0.2, -0.35, -0.91], [-0.93, -0.3, -0.2]]; // (6 small ones: more read as a football from behind)
 function classicSoftGeometry() {
@@ -739,11 +739,11 @@ function classicSoftGeometry() {
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i).normalize();
     const n = classicN(v.x, v.y, v.z);
-    let k = 1 + n * 0.06;
+    let k = 1 + n * 0.008;   // near-perfect sphere: the lumps live in the colour, not the silhouette
     let pebble = 0;
     for (let j = 0; j < pd.length; j++) {
       const d = v.x * pd[j][0] + v.y * pd[j][1] + v.z * pd[j][2];
-      if (d > 0.975) { pebble = Math.max(pebble, smooth(0.975, 0.99, d)); k -= 0.03 * smooth(0.975, 0.99, d); } // a little dent around each pebble
+      if (d > 0.975) { pebble = Math.max(pebble, smooth(0.975, 0.99, d)); k -= 0.006 * smooth(0.975, 0.99, d); } // a little dent around each pebble
     }
     pos.setXYZ(i, v.x * k, v.y * k, v.z * k);
     c.copy(snow).lerp(n < 0 ? ice : lilac, Math.min(1, Math.abs(n) * (n < 0 ? 0.9 : 0.5)));
