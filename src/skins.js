@@ -81,6 +81,9 @@ export const SKINS = [
   { id: 'lahmacun', name: 'Lahmacun', rarity: 'common', price: 350, preview: { a: '#e9b26a', b: '#b5501f', c: '#6fb23c', pattern: 'dots' } },
   { id: 'kiraz', name: 'Kiraz', rarity: 'common', price: 420, preview: { a: '#ff3b5c', b: '#8a0820', c: '#ffe0e6', pattern: 'dots' } },
   { id: 'kavun', name: 'Kavun', rarity: 'common', price: 480, preview: { a: '#f7e27a', b: '#6aa84f', pattern: 'stripes' } },
+  { id: 'inek', name: 'İnek Top', rarity: 'common', price: 320, preview: { a: '#ffffff', b: '#20232b', c: '#ffb7c8', pattern: 'dots' } },
+  { id: 'mantar', name: 'Mantar', rarity: 'common', price: 450, preview: { a: '#e8262f', b: '#ffffff', c: '#fff1d0', pattern: 'dots' } },
+  { id: 'leopar', name: 'Leopar', rarity: 'rare', price: 900, preview: { a: '#f4b53f', b: '#3b2412', c: '#ffd877', pattern: 'dots' } },
   { id: 'konfeti', name: 'Konfeti Topu', rarity: 'common', price: 600, preview: { a: '#ffffff', b: '#ff5ca8', c: '#3ad0ff', pattern: 'dots' } },
   { id: 'zumrut', name: 'Zümrüt', rarity: 'rare', price: 750, preview: { a: '#3ee08a', b: '#0a7a4a', pattern: 'facets' } },
   { id: 'lokum', name: 'Lokum', rarity: 'rare', price: 1250, preview: { a: '#fff5f7', b: '#f2a6c0', pattern: 'fluff' } },
@@ -90,6 +93,11 @@ export const SKINS = [
   { id: 'altinkral', name: 'Altın Kral', rarity: 'legendary', price: 4000, preview: { a: '#fff3b0', b: '#d8940c', c: '#7a4a00', pattern: 'tiles', glow: true } },
   { id: 'kristal', name: 'Kristal Ejder', rarity: 'legendary', price: 7500, preview: { a: '#ffffff', b: '#00b8e6', c: '#e8fcff', pattern: 'scales', glow: true } },
   { id: 'gunestaci', name: 'Güneş Tacı', rarity: 'legendary', price: 9000, preview: { a: '#ffd23a', b: '#ff3a10', c: '#ffb000', pattern: 'flame', glow: true } },
+  // ---- ACT ÖDÜLÜ (PLAN_V3 §4): fiyatsız, satılmaz; unlock.act = o act'in sonundaki patron yenilince açılır (act 2, 4, 5, 6; diğer act'lerde zaten tematik skin var)
+  { id: 'cam_top', name: 'Çam Topu', rarity: 'rare', price: 0, unlock: { act: 2 }, preview: { a: '#1f6b3a', b: '#0f4a28', c: '#e8f6ff', pattern: 'facets' } },
+  { id: 'balon_top', name: 'Balon Topu', rarity: 'epic', price: 0, unlock: { act: 4 }, preview: { a: '#ff5a3a', b: '#ffd23a', c: '#3a8cff', pattern: 'swirl' } },
+  { id: 'kiremit', name: 'Kiremit', rarity: 'rare', price: 0, unlock: { act: 5 }, preview: { a: '#d2562a', b: '#9a3418', c: '#f2c9a0', pattern: 'stripes' } },
+  { id: 'kaktus', name: 'Kaktüs', rarity: 'epic', price: 0, unlock: { act: 6 }, preview: { a: '#4fae4a', b: '#ff5ca8', c: '#ffe45a', pattern: 'dots' } },
   // ---- GÖREVLER ödülü (özel): fiyatsız, satılmaz ve kutudan çıkmaz; yalnızca ilgili görevi bitirip ödülünü alınca açılır
   { id: 'kombo_top', name: 'Kombo Topu', rarity: 'epic', price: 0, unlock: { challenge: 'ch_kombo8' }, preview: { a: '#ff9a1a', b: '#fff3a0', c: '#7a2a00', pattern: 'swirl', glow: true } },
   { id: 'gunluk_kar', name: 'Günlük Kar', rarity: 'rare', price: 0, unlock: { challenge: 'ch_daily10' }, preview: { a: '#ffffff', b: '#9fd8ff', c: '#c6f0ff', pattern: 'dots' } },
@@ -717,8 +725,47 @@ function classicGeometry() {
   return geo;
 }
 
+// The default ball: a soft, round packed-snow ball (smooth shading over a lumpy silhouette) with icy-blue crevices and a few embedded pebbles.
+// The pebbles are what makes the rolling readable on a white ball. Still non-indexed, 1280 triangles.
+const PEBBLE_DIRS = [[0.62, 0.55, 0.56], [0.1, -0.8, 0.59], [-0.35, 0.86, -0.36], [0.85, -0.2, -0.48], [-0.2, -0.35, -0.91], [-0.93, -0.3, -0.2]]; // (6 small ones: more read as a football from behind)
+function classicSoftGeometry() {
+  const geo = new THREE.IcosahedronGeometry(1, 7);
+  geo.deleteAttribute('uv');
+  const pos = geo.attributes.position, nrm = geo.attributes.normal;
+  const col = new Float32Array(pos.count * 3);
+  const snow = new THREE.Color(0xffffff), ice = new THREE.Color(0xa9c9f5), lilac = new THREE.Color(0xd9d2f7), stone = new THREE.Color(0x93a6c8), stone2 = new THREE.Color(0xb4c2da), c = new THREE.Color();
+  const pd = PEBBLE_DIRS.map((d) => { const l = Math.hypot(d[0], d[1], d[2]); return [d[0] / l, d[1] / l, d[2] / l]; });
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i).normalize();
+    const n = classicN(v.x, v.y, v.z);
+    let k = 1 + n * 0.06;
+    let pebble = 0;
+    for (let j = 0; j < pd.length; j++) {
+      const d = v.x * pd[j][0] + v.y * pd[j][1] + v.z * pd[j][2];
+      if (d > 0.975) { pebble = Math.max(pebble, smooth(0.975, 0.99, d)); k -= 0.03 * smooth(0.975, 0.99, d); } // a little dent around each pebble
+    }
+    pos.setXYZ(i, v.x * k, v.y * k, v.z * k);
+    c.copy(snow).lerp(n < 0 ? ice : lilac, Math.min(1, Math.abs(n) * (n < 0 ? 0.9 : 0.5)));
+    if (pebble > 0) c.lerp(noise3(v.x * 9, v.y * 9, v.z * 9) > 0.5 ? stone : stone2, pebble);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  // normals: mostly radial (soft ball) plus a share of the face normal so the lumps still catch light
+  geo.computeVertexNormals();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const l = v.length() || 1;
+    const rx = pos.getX(i) / l, ry = pos.getY(i) / l, rz = pos.getZ(i) / l;
+    const fx = nrm.getX(i), fy = nrm.getY(i), fz = nrm.getZ(i);
+    const nx = rx * 0.7 + fx * 0.3, ny = ry * 0.7 + fy * 0.3, nz = rz * 0.7 + fz * 0.3, nl = Math.hypot(nx, ny, nz) || 1;
+    nrm.setXYZ(i, nx / nl, ny / nl, nz / nl);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
+
 function skinClassic() {
-  return { geometry: classicGeometry(), material: lambert(), puff: 0xffffff };
+  return { geometry: classicSoftGeometry(), material: lambert({ flatShading: false }), puff: 0xffffff };
 }
 
 // -- ice: sharp 80-facet gem, glassy highlights ------------------------------------------------
@@ -2350,9 +2397,19 @@ function skinGen(kind, a, b, c, puff) {
       const h = hash3(Math.floor(x * 4) + 8, Math.floor(y * 4) + 8, Math.floor(z * 4) + 8);
       o.copy(h < 0.4 ? A : h < 0.8 ? B : C);
     },
+    // cow / leopard style blotches: B patches on A, a C rim around the big ones
+    blotch: (x, y, z, o) => {
+      const n = fbm3(x * 2.1 + 3, y * 2.1 + 1, z * 2.1 + 7, 2);
+      o.copy(n > 0.58 ? B : n > 0.54 ? C : A);
+    },
   }[kind] || ((x, y, z, o) => o.copy(A));
-  const geometry = buildSphere({ detail: 5, shape: () => 0, paint: (x, y, z, col) => paint(x, y, z, col) });
-  return { geometry, material: lambert(), puff };
+  // glossy hand-painted look: soft per-face value noise + a specular sheen (the old version was a flat, matte icosphere)
+  const geometry = buildSphere({
+    detail: 6,
+    shape: (x, y, z) => (noise3(x * 2.4 + 5, y * 2.4, z * 2.4 + 2) - 0.5) * 0.05,
+    paint: (x, y, z, col) => { paint(x, y, z, col); col.multiplyScalar(0.92 + 0.12 * noise3(x * 5 + 1, y * 5 + 4, z * 5 + 9)); },
+  });
+  return { geometry, material: phong({ shininess: 46, specular: 0x555555 }), puff };
 }
 
 const BUILDERS = {
@@ -2373,6 +2430,13 @@ const BUILDERS = {
   gece_topu: () => skinGen('stripes', 0x0b1640, 0x3a4fa0, 0xc8d8ff, 0x5a6ec0),
   arena_kral: () => skinGen('facets', 0x9fd8ff, 0x2a6fb8, 0xffffff, 0xcfeaff),
   tac_top: () => skinGen('bands', 0xffe681, 0xd8940c, 0x7a4a00, 0xffef9a),
+  cam_top: () => skinGen('facets', 0x1f6b3a, 0x0f4a28, 0xe8f6ff, 0xcfe8d6),
+  balon_top: () => skinGen('swirl', 0xff5a3a, 0xffd23a, 0x3a8cff, 0xffc08a),
+  kiremit: () => skinGen('stripes', 0xd2562a, 0x9a3418, 0xf2c9a0, 0xe09a70),
+  kaktus: () => skinGen('dots', 0x4fae4a, 0xff5ca8, 0xffe45a, 0xa8e090),
+  inek: () => skinGen('blotch', 0xffffff, 0x20232b, 0xffb7c8, 0xffffff),
+  mantar: () => skinGen('dots', 0xe8262f, 0xffffff, 0xfff1d0, 0xff8a8a),
+  leopar: () => skinGen('blotch', 0xf4b53f, 0x3b2412, 0xffd877, 0xffd070),
   mavikar: skinMaviKar,
   nane: skinNane,
   cilek: skinCilek,
@@ -2433,10 +2497,15 @@ export function setGoldBall(on) {
   return tintGold(activeSkin, !!on);
 }
 
-export function makeSkin(id) {
+/** level (1-5, KARAKTER skins only) lights the level ring on the ball (ball.js reads material.userData.level); 0 / omitted = no ring. */
+export function makeSkin(id, level = 0) {
   const key = BUILDERS[id] ? id : 'classic';
   const skin = BUILDERS[key]();
   skin.id = key;
+  if (skin.material && !Array.isArray(skin.material)) {
+    skin.material.userData.skinId = key; // (shaders / ball.js may key on it)
+    if (ABILITIES[key] && level > 0) skin.material.userData.level = Math.min(5, level | 0);
+  }
   activeSkin = skin;
   liveSkins.push(skin);
   let gold = false;

@@ -35,7 +35,7 @@ const DEFAULT_PAL = { tileA: 0xe8f1fb, tileB: 0xc9d9ee, edge: 0x7fb4e8, rail: 0x
 export { LANES, LANE_W };
 
 export const COL = {
-  wood: 0xb07a42, wood2: 0x8f5f32, ice: 0x3fb4f5, melt: 0xff7a1a, flake: 0x3fb8ff, snow: 0xffffff, pile: 0x6cc8ff,
+  wood: 0xb07a42, wood2: 0x8f5f32, ice: 0x3fb4f5, melt: 0xff7a1a, flake: 0xffffff, snow: 0xffffff, pile: 0x6cc8ff,
   rock: 0x8a93a0, pine: 0x2f7d4a, dark: 0x2a2f3d, red: 0xd9482f, orange: 0xe8742a, cabin: 0xa5693a,
 };
 
@@ -43,7 +43,7 @@ export const COL = {
 // Event pool (reused plain objects)
 // ---------------------------------------------------------------------------
 const EVN = 192, EVP = [];
-for (let i = 0; i < EVN; i++) EVP.push({ type: '', ds: 0, du: 0, dh: 0, strength: 0, kind: '', value: 0, s: 0, u: 0, h: 0, onBeat: false, power: 0, color: 0, size: 0, ok: false, rate: 0, biome: 0, toughness: 0, headOn: false, id: 0, letter: '', active: false, s0: 0, s1: 0, minSpeed: 0, scale: 0, depth: 0, R: 0, done: false, lane: 0, t: 0, density: 0, ok: false, side: 0, ball: 'main', stomp: false, x: 0, halfW: 0, ride: false, ht: 0, nonLethal: false, gc: 0, gapHalf: 0 });
+for (let i = 0; i < EVN; i++) EVP.push({ type: '', ds: 0, du: 0, dh: 0, strength: 0, kind: '', value: 0, s: 0, u: 0, h: 0, onBeat: false, power: 0, color: 0, size: 0, ok: false, rate: 0, biome: 0, toughness: 0, headOn: false, id: 0, letter: '', active: false, s0: 0, s1: 0, minSpeed: 0, scale: 0, depth: 0, R: 0, done: false, lane: 0, t: 0, density: 0, ok: false, side: 0, ball: 'main', stomp: false, x: 0, halfW: 0, ride: false, ht: 0, nonLethal: false, gc: 0, gapHalf: 0, boulder: false });
 let evi = 0;
 let CUR_ID = 'main';       // id of the ball currently being collided (events carry it as e.ball)
 export function ev(events, type) {
@@ -51,7 +51,7 @@ export function ev(events, type) {
   e.type = type; e.ds = 0; e.du = 0; e.dh = 0; e.strength = 0; e.kind = ''; e.value = 0; e.s = 0; e.u = 0; e.h = 0;
   e.onBeat = false; e.power = 0; e.color = 0; e.size = 0; e.ok = false; e.rate = 0; e.biome = 0; e.toughness = 0; e.headOn = false; e.id = 0; e.letter = '';
   e.active = false; e.s0 = 0; e.s1 = 0; e.minSpeed = 0; e.scale = 0; e.depth = 0; e.R = 0; e.done = false; e.lane = 0; e.t = 0; e.density = 0; e.ok = false; e.side = 0; e.ball = CUR_ID;
-  e.stomp = false; e.x = 0; e.halfW = 0; e.ride = false; e.ht = 0; e.nonLethal = false; e.gc = 0; e.gapHalf = 0;
+  e.stomp = false; e.x = 0; e.halfW = 0; e.ride = false; e.ht = 0; e.nonLethal = false; e.gc = 0; e.gapHalf = 0; e.boulder = false;
   events.push(e);
   return e;
 }
@@ -187,9 +187,13 @@ function makeGeometries() {
   G.ball = merge([[new THREE.IcosahedronGeometry(0.5, 1), null]], true);
   G.torus = merge([[new THREE.TorusGeometry(1, 0.1, 8, 32), null]], false);
   G.hex = merge([[new THREE.CylinderGeometry(0.5, 0.5, 0.1, 6), null]], false);
-  const bar = B(1, 0.1, 0.1);
-  G.flake = merge([[bar, null], [bar, null, 0, 0, 0, 0, 0, PI / 3], [bar, null, 0, 0, 0, 0, 0, 2 * PI / 3],
-    [B(0.12, 0.12, 0.55), null], [new THREE.CylinderGeometry(0.17, 0.17, 0.14, 6), null, 0, 0, 0, PI / 2, 0, 0]], false);
+  // snowflake pickup: an upright coin (spins about its up axis, face towards the camera) = amber rim, warm gold face, thick white
+  // six-arm star on both faces. Baked colours (the instance colour is white): the old thin pale-blue flat cross vanished on the blue lane.
+  const arm = B(0.82, 0.14, 0.12), faceZ = [0.1, -0.1];
+  G.flake = merge([
+    [new THREE.TorusGeometry(0.4, 0.07, 6, 14), 0xf08a14],
+    [new THREE.CylinderGeometry(0.4, 0.4, 0.16, 14), 0xffd24a, 0, 0, 0, PI / 2, 0, 0],
+  ].concat(...faceZ.map((z) => [0, 1, 2].map((i) => [arm, 0xffffff, 0, 0, z, 0, 0, i * PI / 3]).concat([[new THREE.CylinderGeometry(0.15, 0.15, 0.08, 6), 0xffffff, 0, 0, z, PI / 2, 0, 0]]))), false);
   // pine: trunk + 3 cones + snow tip
   G.pine = merge([
     [new THREE.CylinderGeometry(0.16, 0.22, 1.0, 6), 0x6b4a2b, 0, 0.5, 0],
@@ -349,6 +353,7 @@ export class Obstacles {
     this._nextCrit = 160;                       // s of the next critter group
     this._teach = 0;                            // next scripted teaching row
     this._breath = null;                        // { a, b } the breather of the tension cycle
+    this._gateS = -1;                           // start of the last chapter that got its gate (goals.js chapters)
     this.tierBias = 0;
     this.critters = new Critters(this.group, track, { seed: this.seed, ev });
     this._tmpHit = { ds: 0, du: 0 };
@@ -543,6 +548,7 @@ export class Obstacles {
     const pulse = pulseOf(beat.phase);
     this.pulse = pulse;
     this.mats.pulse.color.setScalar(0.68 + 0.6 * pulse);
+    this.mats.glow.color.setScalar(0.9 + 0.3 * pulse);       // pickups glow on the beat (flakes, gems, power-ups share this unlit material)
     for (let i = this.pending.length - 1; i >= 0; i--) { const ob = this.pending[i]; if (this.time >= ob.autoAt) this._resolve(ob, ob.hitSize >= ob.tough + 2); }   // same rule as the runner: size >= toughness + 2 smashes
     const sMin = ball.s - 30, sMax = ball.s + 175, obs = this.obs, M = this.maxExt;
     for (let i = this._lb(obs, sMin - M); i < obs.length; i++) {
@@ -558,7 +564,7 @@ export class Obstacles {
       if (!k.alive) continue;
       if (k.kind === 'snow') { const q = 1 + 0.1 * pulse; this._set('ball', k.idx, k.f, k.u, 0.55 + 0.08 * Math.sin(t * 2.4 + k.ph), t * 0.8 + k.ph, 0, 1.05 * q, 1.0 * q, 1.05 * q); continue; }
       const bob = k.h + 0.1 * Math.sin(t * 2.4 + k.ph);
-      if (k.kind === 'flake') this._set('flake', k.idx, k.f, k.u, bob, t * 2.2 + k.ph, 0, 0.78, 0.78, 0.78);
+      if (k.kind === 'flake') this._set('flake', k.idx, k.f, k.u, bob, t * 2.2 + k.ph, 0, 0.95, 0.95, 0.95);
       else this._set(k.pool, k.idx, k.f, k.u, bob + 0.1, t * 2.4 + k.ph, k.kind === 'rocket' ? 0.5 : 0, k.sc, k.sc, k.sc);
     }
     this._updateDyn(dt, ball);
@@ -1502,7 +1508,8 @@ const lethalK = (d) => (d < 0.18 ? 0 : 0.3 + 1.0 * smooth((d - 0.18) / 0.62));  
 const HARD_PAT = { double: 1, train: 1, mover: 1, rolling: 1, beat: 1, swing: 1, oncoming: 1, slide: 1, combo: 1, laser: 1, missile: 1, phrase: 1, turret: 1, pensled: 1 };
 const LETHAL_KIND = { oncoming: 1, slidewall: 1, missile: 1 };
 const SINGLE_VERB = { single: 1, low: 1, duck: 1, rest: 1 };            // round sections (loop, corkscrew, helix, half-pipe, tube): one verb per row
-const TEACH = [{ s: 80, pat: 'single' }, { s: 124, pat: 'critter' }, { s: 160, pat: 'low' }, { s: 205, pat: 'pad' }, { s: 262, pat: 'parade' }, { s: 305, pat: 'duck' }];   // first minute: gentle intro, a pad jump over a flake arc (~14 s), a critter parade to stomp (~19 s)
+// first 20 s: something every ~2.5 s (was every ~3.5 s from the 5 s mark): a block at 3.5 s, a critter, a hurdle, a pad jump over a flake arc (~11 s), a parade to stomp, a BOOST strip (the first speed-rush, ~16 s), a duck bar
+const TEACH = [{ s: 56, pat: 'single' }, { s: 96, pat: 'critter' }, { s: 132, pat: 'low' }, { s: 172, pat: 'pad' }, { s: 220, pat: 'parade' }, { s: 262, pat: 'boost' }, { s: 306, pat: 'duck' }];
 const TEACH_END = 320;
 // patterns that can never leave a free lane out of reach when the previous row is < 0.5 s behind (see _rows: tightRow)
 const TIGHT_OK = ['single', 'low', 'duck', 'slide', 'swing', 'ice', 'conveyor', 'rail', 'rest', 'laser', 'critter', 'icegate'];
@@ -1550,6 +1557,24 @@ const PHRASES = [
     if (c.diff > 0.55) st.push({ t: 'wall', free: NL >> 1, g: 0.6 });
     return st;
   } },
+  // hurdle train: 3-4 low logs one jump apart (0.75 s = flight + landing) — a Subway-style hop rhythm, the coin arcs over each log keep the beat
+  { name: 'hopscotch', min: 0.1, w: () => 2.4, ok: (c) => c.open3 && !c.vq && c.fit(c.diff > 0.5 ? 4 : 3), build: (c) => {
+    const st = [];
+    for (let i = 0, n = c.diff > 0.5 ? 4 : 3; i < n; i++) st.push({ t: 'low', g: 0.75 });
+    return st;
+  } },
+  // dodge, hop, dodge: a block in your lane, a log across all lanes, another block in the lane you landed in
+  { name: 'dodgeHop', min: 0.2, w: () => 1.8, ok: (c) => c.open3 && !c.vq && c.fit(3), build: () => [{ t: 'blk', lane: -1, g: 0.7 }, { t: 'low', g: 0.8 }, { t: 'blk', lane: -1, g: 0.65 }] },
+  // duck, weave, duck: two overhead bars with a lane swap between them
+  { name: 'duckWeave', min: 0.25, w: () => 1.6, ok: (c) => c.open3 && c.T.allows('duck') && !c.vq && c.fit(3), build: () => [{ t: 'duck', g: 0.75 }, { t: 'blk', lane: -1, g: 0.65 }, { t: 'duck', g: 0.8 }] },
+  // round 2 (hyper-casual variety, ids 10-13: duckTrain, hopSwitch, duckHurdle, zigStep): three overhead bars in a row, a duck beat to settle into (no lane swap at all)
+  { name: 'duckTrain', min: 0.2, w: () => 2.4, ok: (c) => c.open3 && c.T.allows('duck') && !c.vq && c.fit(3), build: () => [{ t: 'duck', g: 0.78 }, { t: 'duck', g: 0.78 }, { t: 'duck', g: 0.78 }] },
+  // two hurdle-walls whose gap is on opposite outer lanes: jump, swap two lanes in the air, jump again
+  { name: 'hopSwitch', min: 0.3, w: () => 2.0, ok: (c) => c.open3 && !c.vq && c.fit(2), build: (c) => { const a = outerLane(c); return [{ t: 'hurdle', lane: a, g: 0.8 }, { t: 'hurdle', lane: NL - 1 - a, g: 0.9 }]; } },
+  // duck, then a wall whose only gap holds a log: bar, swap, hop
+  { name: 'duckHurdle', min: 0.15, w: () => 2.2, ok: (c) => c.open3 && c.T.allows('duck') && !c.vq && c.fit(2), build: (c) => [{ t: 'duck', g: 0.78 }, { t: 'hurdle', lane: outerLane(c), g: 0.85 }] },
+  // easy early rhythm: block, an open wall with the gap in the middle (stay centred), block
+  { name: 'zigStep', min: 0.1, w: (d) => Math.max(1.2, 3.2 - 3 * d), ok: (c) => c.open3 && c.fit(3), build: () => [{ t: 'blk', lane: -1, g: 0.62 }, { t: 'wall', free: NL >> 1, g: 0.62 }, { t: 'blk', lane: -1, g: 0.62 }] },
 ];
 
 Object.assign(Obstacles.prototype, {
@@ -1639,7 +1664,7 @@ Object.assign(Obstacles.prototype, {
    */
   _rows(plan, sA, sB, o = {}) {
     const { rng, piece } = plan, T = this.track, hk = this.hk();
-    const dens = o.dens || 1, allowed = o.allowed || ALLL.slice(), only = o.only || null, okAt = o.okAt || null, clear = o.clear || null, dense = !!o.dense;
+    const dens = (o.dens || 1) * (plan.chap && plan.chap.def.dens || 1), allowed = o.allowed || ALLL.slice(), only = o.only || null, okAt = o.okAt || null, clear = o.clear || null, dense = !!o.dense;
     // hardEnd: nothing may outlive sB (the junction approach; the piece before a junction): no trains / critter parades / volleys run on into the corner window
     const hardEnd = !!o.hardEnd || (!!T._juncDue && piece.kind !== 'junction' && T._juncDue(piece.s1));
     const rows = plan.rows, persist = [], carry = this._carry, F = T.features || {};
@@ -1717,7 +1742,7 @@ Object.assign(Obstacles.prototype, {
       const rockNear = !!(lastR && (lastR.rock || RK_BAN[lastR.pat]) && (s - lastR.s) / vs < 2.0);
       plan.rockOk = s >= 800 && !!plan.piece && plan.piece.kind === 'straight' && s - plan.piece.s0 > Math.max(30, vs * 2) && !hardEnd && !forcedNext && !o.firstOnly && !o.noLethal && !plan.zone && free0.length >= 2 && !tightRow && !rockNear && !(lastR && lastR.hard && (s - lastR.s) / vs < 2.0)
         && (s - (this._lastRockS === undefined ? -1e9 : this._lastRockS)) / vs >= 8 && !this._forcedStretch(s - vs * 2, s + vs * 2);
-      const zone = plan.zone, zmap = zone ? ZONE_M[zone] : null, zown = zone ? ZONE_OWN[zone] : null;
+      const zone = plan.zone, cdf = plan.chap ? plan.chap.def : null, zmap = zone ? ZONE_M[zone] : cdf && cdf.pat || null, zown = zone ? ZONE_OWN[zone] : cdf && cdf.own || null;
       const split2 = (tm & bit(NL >> 1)) !== 0;            // a persistent blocker in the middle lane splits the track: only jump / duck / floor patterns then
       const wantCrit = s >= this._nextCrit && !only && F.critters !== false && T.allows('critters') && this.critters && room > 30 && free0.length >= 2 && !tightRow && !zone;
       const onlyNow = !rows.length && o.firstOnly ? o.firstOnly : only;      // (the first row after a junction corner: single verb)
@@ -1754,7 +1779,7 @@ Object.assign(Obstacles.prototype, {
           // a volley is launched 2 s before contact (reticle + warning), anywhere in a piece as long as its contact is clear of a lane-forcing
           // run-in and no other blocker persists (a missile that already hit does not count); rare in normal play (late), the missiles zone's main course
           case 'missile': return !!T.level && plan.lethalOk && T.allows('missiles') && dz >= (zone === 'missiles' ? 0.18 : 0.55) && room > 4 && tmHard === 0 && s + vs * 2.9 + 12 <= limM ? (zone === 'missiles' ? 1.0 + 1.2 * dz : 0.4 + 0.5 * dz) : 0;
-          case 'phrase': return phOn && tm === 0 && hardN <= 1 && room > 8 && dz >= 0.05 ? (0.3 + 9.0 * dz) * (tn < 1 ? 1.7 : tn > 1 ? 0.6 : 1) : 0;
+          case 'phrase': return phOn && tm === 0 && hardN <= 1 && room > 8 && dz >= 0.05 ? (2.5 + 9.0 * dz) * (tn < 1 ? 1.7 : tn > 1 ? 0.6 : 1) : 0;
           case 'critter': return wantCrit ? 90 : 0;
           // variety (from ~1.2 km, modest weights)
           // first sightings are guaranteed (turret ~1.3 km, gate ~1.6 km, sled ~2.0 km; the boost applies from the target on, wherever the rules allow, +-150 m),
@@ -2041,7 +2066,7 @@ Object.assign(Obstacles.prototype, {
         const lethal = !!plan.rowLethal, hard = !!HARD_PAT[rowPat] || lethal, vert = jump || rowPat === 'duck' || (rowPat === 'laser' && free === FULL);
         const row = { s, ext: rext >= 0 ? rext : ext, free, jump, route: best, pat: rowPat, tm, ph: phK, pi: phI, lethal, hard, rock: !!plan.rowRock, hardN: pat === 'rest' ? 0 : hard ? hardN + 1 : 0, vert };
         rows.push(row);
-        this.rowsLog.push({ s, ext: Math.max(ext, 2), free, jump, lethal, hard, pat: rowPat, vert, route: best, rock: !!plan.rowRock });
+        this.rowsLog.push({ s, ext: Math.max(ext, 2), free, jump, lethal, hard, pat: rowPat, vert, route: best, rock: !!plan.rowRock, ph: phK });
         if (plan.rowRock) this._lastRockS = s;
         if (ph) {
           // next phrase row: its planned gap, raised to the lane-swap time (0.25 s per lane + the obstacle depth) of the swap it asks for
@@ -2084,6 +2109,14 @@ Object.assign(Obstacles.prototype, {
         free = FULL; ext = fl / 2 + 7; route = lane; pat = 'rest';
         plan.rows.push({ s: s + fl / 2, ext, free, jump: false, route, pat, tm: 0, ph: 0, pi: 0, lethal: false, hard: false, hardN: 0, vert: false });
         this._carry = { s: s + fl / 2, ext, route, free, jump: false, pat, lethal: false, hardN: 0, persist: [], ph: null };
+        continue;
+      } else if (pat === 'boost') {
+        // lane-wide chevron strip in the middle lane + a flake line after it; the speed surge (+7 m/s, FOV punch) fades before the duck bar
+        this._mk(plan, { kind: 'strip', s, u: LANES[NL >> 1], len: 14, ext: 8, glow: this._pal(s).glow, power: 1 });
+        for (let x = s + 10; x < s + 24; x += 2) this._pickup('flake', x, LANES[NL >> 1], 1.35);
+        free = FULL; ext = 12; route = NL >> 1; pat = 'rest';
+        plan.rows.push({ s: s + 6, ext, free, jump: false, route, pat, tm: 0, ph: 0, pi: 0, lethal: false, hard: false, hardN: 0, vert: false });
+        this._carry = { s: s + 6, ext, route, free, jump: false, pat, lethal: false, hardN: 0, persist: [], ph: null };
         continue;
       } else if (pat === 'parade') {
         const g = this._critterGroup(plan, { rng, diff: 0 }, s, ALLL, FULL, NL >> 1, { parade: true });
@@ -2319,7 +2352,10 @@ Object.assign(Obstacles.prototype, {
     AIR_G = T.gravity ? T.gravity(piece.s0 + 10) : 28;
     const bid = biomeId || BIOME_IDS[((biomeIndex ?? piece.biome ?? 0) % BIOME_IDS.length + BIOME_IDS.length) % BIOME_IDS.length];
     const plan = { rng, piece, diff: clamp(difficulty ?? piece.diff ?? 0, 0, 1), d: 0, biome: biomeIndex ?? piece.biome, biomeId: bid, skin: FAMILY[bid] || 'snow',
-      rows: [], batch: [], zone: T.zoneAt ? T.zoneAt(piece.s0 + piece.len / 2) : null, lethalOk: true, rowLethal: false, rowRock: false, rockOk: false };
+      rows: [], batch: [], zone: T.zoneAt ? T.zoneAt(piece.s0 + piece.len / 2) : null, lethalOk: true, rowLethal: false, rowRock: false, rockOk: false,
+      chap: !T.level && T.chapterAt ? T.chapterAt(piece.s0 + piece.len / 2) : null };      // Rush chapter (goals.js): its rule fields steer rows, fog / wind, pads, ice, coin rain
+    if (plan.chap && plan.chap.def.bonus) plan.zone = 'coinRain';      // ALTIN DAMAR: the coin-rain relief zone, with no rows at all
+    const cd = plan.chap ? plan.chap.def : null;
     const n0 = this.picks.length;
     const kind = piece.kind, s0 = piece.s0, s1 = piece.s1, F = T.features || {};
     if (kind === 'finish') {
@@ -2333,6 +2369,7 @@ Object.assign(Obstacles.prototype, {
     } else if (kind === 'portal') {
       const pal = this._pal(s0 + 15);
       this._mk(plan, { kind: 'portal', s: s0 + 15, u: 0, ext: 3, glow: pal.glow, biome: piece.biome });
+      if (plan.chap && plan.chap.s0 > this._gateS && s0 - plan.chap.s0 < 100) this._gateS = plan.chap.s0;      // a biome portal right at a chapter start is its gate
     } else {
       let route = null, arcs = [], apex = null, trailed = false;
       const early = s0 < 40;
@@ -2350,7 +2387,7 @@ Object.assign(Obstacles.prototype, {
             || prev.kind === 'gapRamp' || prev.kind === 'gapJump' || prev.kind === 'skiJump' || prev.kind === 'chasm' || prev.kind === 'zipline' || prev.kind === 'iceBridge');
           let rowStart = s0 + (calm ? Math.max(14, 1.1 * vdP) : after ? Math.max(6, 0.4 * vdP + 3) : 3), padFlight = 0;
           // spring pad / jump pad (+ coin arc): rows resume after the landing
-          if (!early && !dense && kind === 'straight' && s0 >= TEACH_END && rng.chance(0.14 + 0.1 * plan.diff)) {
+          if (!early && !dense && kind === 'straight' && s0 >= TEACH_END && rng.chance(cd && cd.pads ? cd.pads : 0.14 + 0.1 * plan.diff)) {
             const vs = T.speedAt(s0 + 10), spring = F.spring !== false && rng.chance(0.65);
             const fl = vs * ((2 * this.jumpPadV * (spring ? 1.55 : 1)) / AIR_G);
             if (s0 + 7 + fl + 12 < rowEnd) {
@@ -2361,8 +2398,8 @@ Object.assign(Obstacles.prototype, {
               this._clock = Math.max(this._clock, rowStart);
             }
           }
-          const gates = kind === 'slalom' && !early && F.gates !== false && rng.chance(0.55 * Math.max(0, 1 - (T.budget ? T.budget(s0) : plan.diff) / 0.4));
-          if (plan.zone === 'coinRain') { if (!early && rng.chance(0.3)) this._rows(plan, rowStart, rowEnd, { dense: false }); }
+          const gates = kind === 'slalom' && !early && F.gates !== false && rng.chance(cd && cd.gates ? cd.gates : 0.55 * Math.max(0, 1 - (T.budget ? T.budget(s0) : plan.diff) / 0.4));
+          if (plan.zone === 'coinRain') { if (!early && !(cd && cd.bonus) && rng.chance(0.3)) this._rows(plan, rowStart, rowEnd, { dense: false }); }
           else if (gates) { this._gates(plan, s0 + 9, s1 - 6); this._clock = Math.max(this._clock, s1 - 6); }
           else if (!early) this._rows(plan, rowStart, rowEnd, { dense, dens: kind === 'curve' ? 0.7 : 1 });
           route = plan.gates ? this._gateRoute(plan, 1) : this._routeFn(plan, 1);
@@ -2490,11 +2527,12 @@ Object.assign(Obstacles.prototype, {
     if (!piece.noObs && kind !== 'finish' && (kind === 'straight' || kind === 'curve' || kind === 'slalom' || kind === 'waves')) {
       const hk = this.hk(), len = piece.len;
       const storm = plan.zone === 'storm';
-      if (T.allows('wind') && piece.curb && (storm || plan.diff >= 0.25) && len >= 36 && rng.chance(storm ? 0.85 : 0.1 + 0.2 * plan.diff)) {
+      const cw = cd && cd.wind, cf = cd && cd.fog;      // TERS RÜZGÂR / SİS VADİSİ: the chapter's own gust / fog, on most plain pieces
+      if (T.allows('wind') && piece.curb && (storm || cw || plan.diff >= 0.25) && len >= 36 && rng.chance(storm ? 0.85 : cw ? cw : 0.1 + 0.2 * plan.diff)) {
         const l = Math.min(len - 6, rng.range(28, 44));
-        this._mk(plan, { kind: 'wind', s: s0 + len / 2, u: 0, len: l, ext: l / 2 + 1, dir: rng.sign(), strength: Math.min(5, rng.range(2.4, 3.8) * (0.8 + 0.25 * hk)), ph: rng.range(0, 6.28) });
+        this._mk(plan, { kind: 'wind', s: s0 + len / 2, u: 0, len: l, ext: l / 2 + 1, dir: rng.sign(), strength: Math.min(5, rng.range(2.4, 3.8) * (0.8 + 0.25 * hk) * (cw ? 1.2 : 1)), ph: rng.range(0, 6.28) });
       }
-      if (T.allows('fog') && (storm || plan.diff >= 0.3) && len >= 40 && rng.chance(storm ? 0.7 : 0.07 + 0.15 * plan.diff)) {
+      if (T.allows('fog') && !(cd && cd.bonus) && (storm || cf || plan.diff >= 0.3) && len >= 40 && rng.chance(storm ? 0.7 : cf ? cf : 0.07 + 0.15 * plan.diff)) {
         const l = Math.min(len - 4, rng.range(40, 70));
         this._mk(plan, { kind: 'fog', s: s0 + len / 2, u: 0, len: l, ext: l / 2 + 8, maxD: rng.range(0.55, 0.9) });
       }
@@ -2502,22 +2540,32 @@ Object.assign(Obstacles.prototype, {
     // BUZ KAYDIRAĞI strips and TÜNEL sections on plain pieces (never in zones, junction windows or next to hazards)
     if (!piece.noObs && !plan.zone && (kind === 'straight' || kind === 'curve') && piece.len >= 56) {
       let tun = false;
-      if (s0 >= 700 && s0 >= this.next.tunnel && T.allows('fog') && piece.len >= 64 && !plan.rows.some((r) => r.rock) && !(this._lastRockS > s0 - 40)) {
+      if (s0 >= 700 && s0 >= this.next.tunnel && !(cd && cd.slide) && T.allows('fog') && piece.len >= 64 && !plan.rows.some((r) => r.rock) && !(this._lastRockS > s0 - 40)) {
         const l = Math.min(piece.len - 10, rng.range(60, 84)), sc = s0 + piece.len / 2;
         this._mk(plan, { kind: 'tunnel', s: sc, u: 0, len: l, ext: l / 2 + 10, n: NL, maxD: rng.range(0.55, 0.7), rowL: plan.rows.filter((r) => r.s > sc - l / 2 + 4 && r.s < sc + l / 2 - 2).map((r) => ({ s: r.s, free: r.free })) });
         this.next.tunnel = s0 + piece.len + rng.range(750, 1100); tun = true;
       }
-      if (!tun && s0 >= 320 && s0 >= this.next.slide && T.allows('ice')) {
+      if (!tun && s0 >= 320 && s0 >= (cd && cd.slide ? 0 : this.next.slide) && T.allows('ice')) {
         const len = rng.range(26, 34);
         for (let a = s0 + 8; a + len < s1 - 6; a += 3) {
           if (plan.rows.some((r) => a - 8 < r.s + r.ext && a + len + 18 > r.s - r.ext)) continue;
           const l = rng.int(0, NL - 1), sc = a + len / 2;
           this._mk(plan, { kind: 'slide', s: sc, u: LANES[l], len, ext: len / 2 + 1 });
           for (let x = a + 3; x < a + len - 1; x += 2.4) this._pickup('flake', x, LANES[l], 0.9);
-          this.next.slide = s0 + piece.len + rng.range(380, 650);
+          this.next.slide = cd && cd.slide ? s0 + piece.len + 20 : s0 + piece.len + rng.range(380, 650);
           break;
         }
       }
+    }
+    // SİS VADİSİ edge lights: a line of glowing flakes along both kerbs (they show where the track ends in the fog)
+    if (cd && cd.lights && !piece.noObs && (kind === 'straight' || kind === 'curve' || kind === 'slalom')) {
+      const sp = 7, hw = (piece.hw || hwFor(NL)) - 0.7;
+      for (let s = s0 + 4; s < s1 - 3; s += sp) for (const sg of [-1, 1]) if (!this._rowConflict(plan, s, sg * hw)) this._pickup('flake', s, sg * hw, 0.7, { sc: 0.6, rad: 0.35 });
+    }
+    // chapter gate: a portal arch where a chapter starts (the first plain piece that reaches it; biome: -1 = no biome change)
+    if (plan.chap && !piece.noObs && !piece.narrow && !piece.bonus && (kind === 'straight' || kind === 'curve' || kind === 'slalom') && s1 - s0 > 24) {
+      const seg = plan.chap, g = seg.s0 > 100 && seg.s0 > this._gateS && seg.s0 < s1 - 8 ? Math.max(seg.s0, s0 + 8) : -1;
+      if (g > 0 && !plan.rows.some((r) => Math.abs(r.s - g) < r.ext + 3)) { this._gateS = seg.s0; this._mk(plan, { kind: 'portal', s: g, u: 0, ext: 3, glow: this._pal(g).glow, biome: -1 }); }
     }
     // register: obstacles and pickups sorted by s (pieces are generated in order)
     plan.batch.sort((a, b) => a.s - b.s);
@@ -3194,7 +3242,7 @@ Object.assign(Obstacles.prototype, {
     for (const b of this.dyn.slice()) this._freeDyn(b);
     for (const d of this.deb) if (d.on) { d.on = false; this._release('box', d.idx); d.idx = -1; }
     this.pending.length = 0; this.platforms.length = 0; this.rowsLog.length = 0; this._lastRockS = undefined; this._vt = null; this.warnQ.length = 0; this.byId.clear();
-    this.maxExt = 4.6; this.gateChain = 0; this.nextBoulder = 1e9; this._bArmed = false;
+    this.maxExt = 4.6; this.gateChain = 0; this.nextBoulder = 1e9; this._bArmed = false; this._gateS = -1;
     this.next = { power: 260, gem: 520, box: 340, letter: 300, chain: 420, yeti: 330, plow: 1000, tunnel: 900, slide: 380 };
     this._carry = null; this._clock = 0; this._nextCrit = this.track.level ? 130 : 160; this._teach = 0; this._breath = null; this._snowOwed = 0; this.tierBias = 0;
     if (this.critters) this.critters.reset();
@@ -3361,6 +3409,11 @@ Object.assign(Obstacles.prototype, {
     for (let i = 0; i < this.dyn.length; i++) {
       const b = this.dyn[i];
       if (b.idx < 0 || b.hits[this._cid]) continue;
+      if (this._cid === 'main' && b.phase === 1 && !b.nearDone) {      // a boulder passed without a hit: KIL PAYI (the Yeti duel counts these)
+        const ds0 = cb.s - b.s, lat = Math.abs(cb.u - b.u) - 0.92 - cb.r;
+        if (ds0 > -2.5 && ds0 < 2.5 && lat < (b.minLat === undefined ? 9 : b.minLat)) b.minLat = lat;
+        if (ds0 >= 2.5) { b.nearDone = true; if (b.minLat < 0.5 && cb.h - cb.r < 1.8) { const e = ev(events, 'near'); e.toughness = 3; e.side = cb.u >= b.u ? 1 : -1; e.s = b.s; e.u = b.u; e.boulder = true; } }
+      }
       const ds = cb.s - b.s, du = cb.u - b.u, dh = cb.h - b.h, rad = cb.r + 0.92, d2 = ds * ds + du * du + dh * dh;
       if (d2 >= rad * rad) continue;
       b.hits[this._cid] = true;

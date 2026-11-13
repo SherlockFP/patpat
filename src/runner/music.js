@@ -35,6 +35,8 @@ const MAX_BPM = 200;
 const DEFAULT_BPM = 96;
 const RAMP_BEATS = 8; // setBpm() ramps over 2 bars
 const PHRASE_GAP = 2.2; // s without a pickup -> the next pickup restarts the motif
+const BOOST_SEC = 5; // s: a combo boost (audio.comboTier -> __cigMusicBoost) fades out over this long
+const SW_OPEN = 18000; // Hz: the transition sweep filter, wide open
 
 // Voice caps per priority tier (hats/arp < layers < core drums+bass < sfx).
 const PR_HAT = 0, PR_LAYER = 1, PR_CORE = 2, PR_SFX = 3;
@@ -60,12 +62,13 @@ function saveMuted(m) {
 // ------------------------------------------------------------------- state
 
 /** @type {AudioContext|null} */ let ctx = null;
-let bus = null, lpF = null, stingG = null, duckG = null, muteG = null, comp = null;
+let bus = null, lpF = null, swF = null, hpF = null, lim = null, stingG = null, duckG = null, muteG = null, comp = null;
 let delayIn = null, delayN = null, distIn = null, whiteBuf = null;
 let pulse25 = null, pulse12 = null;
 let caps = CAPS_NORMAL;
 let muted = loadMuted();
 let ducked = false;
+let boostAmt = 0, boostT0 = 0; // transient intensity lift from combo tiers
 let paused = false; // suspend() in effect: clock frozen
 let pausedAt = 0;
 let graceUntil = 0; // ms: a resume() is in flight right after a gesture
@@ -232,6 +235,18 @@ function normalizeRms(d, target) {
   for (let i = 0; i < d.length; i++) d[i] *= k;
 }
 
+let limCurve = null;
+function limiterCurve() {
+  if (limCurve) return limCurve;
+  const n = 2048, a = new Float32Array(n), knee = 0.7, room = 1 - knee;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1, ax = Math.abs(x);
+    const y = ax <= knee ? ax : knee + room * Math.tanh((ax - knee) / room);
+    a[i] = x < 0 ? -y : y;
+  }
+  return (limCurve = a);
+}
+
 function build(c) {
   ctx = c;
   try {
@@ -243,13 +258,17 @@ function build(c) {
   stingG = gainN(1);
   duckG = gainN(ducked ? DUCK_VOL : 1);
   muteG = gainN(muted ? 0 : 1);
+  swF = filtN('lowpass', Math.min(SW_OPEN, c.sampleRate * 0.45), 0.5); // bar-before-a-switch filter build (see playStep)
+  hpF = filtN('highpass', 40, 0.7); // phone speakers cannot play < 60 Hz: do not spend headroom on it
   comp = c.createDynamicsCompressor();
   comp.threshold.value = -14;
   comp.knee.value = 18;
   comp.ratio.value = 5;
   comp.attack.value = 0.006;
   comp.release.value = 0.18;
-  link(bus, lpF, stingG, duckG, muteG, comp, c.destination);
+  lim = c.createWaveShaper(); // soft limiter after the compressor: folds stacked-layer peaks instead of hard clipping at the output
+  lim.curve = limiterCurve();
+  link(bus, lpF, swF, stingG, duckG, muteG, hpF, comp, lim, c.destination);
   if (ducked) lpF.frequency.value = DUCK_FREQ;
   // old iOS: a started silent buffer inside the gesture unlocks output
   try {
@@ -257,6 +276,7 @@ function build(c) {
     const ss = c.createBufferSource();
     ss.buffer = sb;
     ss.connect(c.destination);
+    ss.onended = () => { try { ss.disconnect(); } catch (e) { /* ignore */ } };
     ss.start(0);
   } catch (e) { /* ignore */ }
   const b = c.createBuffer(1, Math.floor(c.sampleRate * 2), c.sampleRate);
@@ -338,7 +358,11 @@ function ready() {
   if (!ctx || !muteG || muted) return false;
   const st = ctx.state;
   if (st === 'running') return true;
-  if (st === 'closed') return false;
+  if (st === 'closed') { // the OS killed the context: drop everything so the next gesture builds a fresh one
+    voices.length = 0;
+    teardown(null);
+    return false;
+  }
   if (nowMs() < graceUntil) return true; // resume() in flight right after a gesture
   const t = nowMs();
   if (!paused && t - lastResumeTry > 600) { // interrupted / autoplay-blocked: retry quietly
@@ -835,6 +859,8 @@ const STYLES = {
     lead0: 72, lead: ['2...3...5...3.2.', '4...5...4...2.3.', '4...5...6...5.4.', '3...6...8...6.3.'], leadF: leadBell,
     note0: 84, motif: [0, 2, 4, 7, 9, 7, 4, 2, 4, 7, 9, 12, 14, 12, 9, 7], noteF: noteBell,
     fillF: snareSoft,
+    ghostF: shaker,
+    leadB: ['5.5.3.5.7...5.3.', '4.4.3.4.5...3.2.', '5.5.4.5.7.5.4.3.', '6.6.5.3.5.6.8...'],
   },
 
   // Warm marimba/kalimba, woody percussion. (G)
@@ -853,6 +879,8 @@ const STYLES = {
     lead0: 67, lead: ['0...2...3...2.0.', '4...5...4...3.2.', '4...5...7...5.4.', '3...6...5...3.1.'], leadF: leadMallet,
     note0: 79, motif: [0, 4, 7, 4, 9, 7, 4, 2, 0, 4, 7, 9, 12, 9, 7, 4], noteF: noteMallet,
     fillF: woodLo,
+    ghostF: shaker,
+    leadB: ['3.2.3.5...3.2.0.', '4.3.4.5.4...3.2.', '5.4.5.7.5.4.3...', '6.5.3.5.6.5.3.1.'],
   },
 
   // Upbeat pop: punchy kick/clap, plucky synth bass, offbeat chord stabs. (A)
@@ -871,6 +899,8 @@ const STYLES = {
     lead0: 69, lead: ['3..3..4.3..2.0..', '4..4..3.4..3.1..', '4..4..5.4..2.4..', '4..4..5.3..4.0..'], leadF: leadPop,
     note0: 81, motif: [4, 4, 7, 9, 12, 9, 7, 4, 2, 4, 7, 9, 14, 12, 9, 7], noteF: notePop,
     fillF: clap,
+    ghostF: hatClosed,
+    leadB: ['5..5..7.5..4.3..', '4..4..5.7..5.4..', '5..5..7.8..7.5..', '6..5..3.4.5.6.8.'],
   },
 
   // TURKISH: Hicaz makami on D (D Eb F# G A Bb C), darbuka maqsum (dum-tek) with ka rolls,
@@ -889,6 +919,8 @@ const STYLES = {
     lead0: 62, lead: ['4.4.5.4.2.1.0.1.', '2.2.3.2.1.0.1.2.', '5.5.6.5.3.1.3.5.', '4.5.4.2.1.0-----'], leadF: leadSaz,
     note0: 74, motif: [0, 1, 4, 5, 7, 8, 7, 5, 4, 5, 4, 1, 0, 1, 4, 7], noteF: noteSaz,
     fillF: tek,
+    ghostF: ka,
+    leadB: ['7.7.8.7.5.4.3.4.', '5.5.6.5.4.2.1.2.', '8.7.6.5.7.5.4.3.', '4.5.4.2.1.0-----'],
   },
 
   // Chiptune: pulse leads, noise hats, bouncy (swung) octave bass. (E)
@@ -903,6 +935,8 @@ const STYLES = {
     lead0: 64, lead: ['2.4.7.4.2.4.7.9.', '4.6.8.6.4.6.8.6.', '5.7.9.7.5.7.9.7.', '3.5.7.5.3.5.7.8.'], leadF: leadChip,
     note0: 76, motif: [0, 4, 7, 12, 7, 4, 7, 9, 12, 16, 19, 16, 12, 9, 7, 4], noteF: noteChip,
     fillF: snareChip,
+    ghostF: hatChip,
+    leadB: ['4.7.9.7.4.7.9.b.', '5.8.a.8.5.8.a.8.', '6.8.a.8.6.8.a.c.', '5.7.9.7.3.5.7.9.'],
   },
 
   // Synthwave: four on the floor, offbeat open hats, gated saw chords, octave bass. (A minor)
@@ -921,6 +955,8 @@ const STYLES = {
     lead0: 69, lead: ['4-----2.0-----4.', '5-----3.2-----5.', '4-----2.4-----6.', '6-----3.1-----3.'], leadF: leadNeon,
     note0: 81, motif: [7, 12, 10, 7, 8, 7, 3, 0, 3, 7, 10, 12, 15, 14, 12, 10], noteF: noteNeon,
     fillF: snareGate,
+    ghostF: hatClosed,
+    leadB: ['7--.5.4.2.4.5.7.', '8--.7.5.4.5.7.8.', '7--.5.4.2.4.5.9.', 'a--.8.7.5.7.8.a.'],
   },
 
   // E phrygian, heavy toms, distorted gallop bass, power chords. (E)
@@ -939,7 +975,24 @@ const STYLES = {
     lead0: 64, lead: ['4--.4.5.4--.3.1.', '5--.5.6.5--.3.1.', '4--.4.5.7--.5.4.', '3--.3.5.3--.2.0.'], leadF: leadDist,
     note0: 76, motif: [0, 1, 0, 3, 5, 3, 1, 0, 7, 8, 7, 5, 3, 5, 7, 12], noteF: noteMetal,
     fillF: snareHeavy,
+    ghostF: hatClosed,
+    leadB: ['7--.7.8.7--.5.4.', '8--.8.9.8--.7.5.', '7--.7.8.a--.8.7.', '5--.5.7.5--.4.3.'],
   },
+};
+
+// Menu / lobby theme: A minor pentatonic, soft sparse groove, bell hook over a pad. Start it with music.start('menu', 88) + setIntensity(0.85).
+STYLES.menu = {
+  root: 45, scale: [0, 3, 5, 7, 10], fit: true, swing: 0.08,
+  chords: [{ r: 0, t: m }, { r: -4, t: M }, { r: 3, t: M }, { r: -2, t: M }],
+  kick: ['X.......x.......', 'x.......x.......', 'X.......x.......', 'x.......x.....x.'], kickF: kickSoft,
+  bass: ['1.......5.......', '1.......5.......', '1.......5.......', '1.......5.....8.'], bassF: bassSoft,
+  perc: [{ f: shaker, p: ['.o.o.o.o.o.o.o.o'] }, { f: snareSoft, p: ['............x...'] }],
+  cLo: 57, chordP: ['x.......x.......'], chordF: chordPad, chordDur: 7,
+  aLo: 64, arpP: ['0.1.2.1.0.1.2.1.', '0.1.2.1.2.1.0.1.'], arpF: arpBell, arpDur: 2,
+  lead0: 69, lead: ['3...1.3.5...3.1.', '2...1.2.3...1.0.', '3...4.3.1...3.4.', '4...3.2.3...2.0.'], leadF: leadBell,
+  leadB: ['5...3.5.6...5.3.', '4...3.4.5...3.1.', '6...5.3.4.5.6.5.', '4...3.2.3.2.0...'],
+  note0: 81, motif: [0, 3, 5, 7, 10, 7, 5, 3, 0, 3, 7, 10, 12, 10, 7, 5], noteF: noteBell,
+  fillF: snareSoft, ghostF: shaker,
 };
 
 // Four more biomes: variations of existing styles (other key / mode / pulse), same instrument bindings.
@@ -1015,27 +1068,50 @@ function stepState(n) {
   }
 }
 
+/** Smooth layer level: 0 below `thr`, 1 from thr+w up (layers fade in with the intensity instead of switching on). */
+const lv = (x, thr, w) => (x <= thr ? 0 : x >= thr + w ? 1 : (x - thr) / w);
+
+/** Intensity as the sequencer hears it: the runner's value plus the fading combo boost. */
+function effIntensity() {
+  if (boostAmt <= 0) return intensity;
+  const k = 1 - (perfSec() - boostT0) / BOOST_SEC;
+  return k > 0 ? clamp(intensity + boostAmt * k, 0, 1) : intensity;
+}
+
 /** Schedule everything that sounds on step n. P = model time, t = audio-clock time. */
-function playStep(n, P, t) {
+function playStep(n, P, t, Iover) {
   const S = style;
   const s = n & 15;
   const bi = Math.max(0, (n >> 4) - styleBar0);
   const ci = bi & 3;
+  const sec = (bi >> 2) & 1; // 8-bar phrase: bars 0-3 = A, 4-7 = B (new hook, ghost hats, bigger fill at the end)
+  const last8 = (bi & 7) === 7;
   const ch = S.chords[ci];
   const stepSec = 15 / bpmAtT(P);
   if ((n & 1) && S.swing) t += S.swing * stepSec;
-  const I = intensity;
+  const I = Iover === undefined ? effIntensity() : Iover;
   let c;
 
-  // build-up in the bar before a style switch: noise riser + snare roll
+  // build-up in the bar before a style switch: filter closes, noise riser + snare roll
   if (pendId) {
     const d = pendBar - n;
     if (d >= 1 && d <= 8) {
-      if (riserBar !== pendBar) { riserBar = pendBar; riser(t, d * stepSec); }
+      if (riserBar !== pendBar) {
+        riserBar = pendBar;
+        riser(t, d * stepSec);
+        if (swF) { // low-pass build: closes towards the bar line, then springs open on the new style's first beat
+          const f = swF.frequency;
+          f.cancelScheduledValues(t);
+          f.setValueAtTime(Math.min(SW_OPEN, ctx.sampleRate * 0.45), t);
+          f.exponentialRampToValueAtTime(1400, t + d * stepSec * 0.98);
+          f.setTargetAtTime(Math.min(SW_OPEN, ctx.sampleRate * 0.45), t + d * stepSec, 0.07);
+        }
+      }
       if (d === 8 || d === 6 || d <= 4) S.fillF(t, 0.35 + 0.65 * (1 - d / 8));
     }
   }
   if (accent) crash(t, 0.8);
+  else if (s === 0 && bi > 0 && (bi & 3) === 0 && I >= 0.4) crash(t, last8 || (bi & 7) === 0 ? 0.55 : 0.4); // section lines
 
   // layer 0: kick + bass
   c = barPat(S.kick, bi)[s];
@@ -1051,26 +1127,37 @@ function playStep(n, P, t) {
     }
   }
 
-  // layer 1 (>= 0.4): hats / percussion
-  if (I >= 0.4) {
+  // layer 1 (>= 0.25, full at 0.45): hats / percussion
+  const l1 = lv(I, 0.25, 0.2);
+  if (l1 > 0) {
     for (let i = 0; i < S.perc.length; i++) {
       const L = S.perc[i];
       c = barPat(L.p, bi)[s];
       if (c === '.') continue;
       if (L.map) {
         const fn = L.map[c];
-        if (fn) fn(t, 0.9 * jitter());
+        if (fn) fn(t, 0.9 * jitter() * l1);
       } else {
-        L.f(t, velOf(c) * jitter());
+        L.f(t, velOf(c) * jitter() * l1);
+      }
+    }
+    // fills: a two-hit pickup at the end of every 4 bars, a rolling build at the end of every 8 (not under a style-switch riser)
+    if (!pendId && (bi & 3) === 3) {
+      if (last8) {
+        const k = s === 8 ? 0 : s === 10 ? 1 : s === 12 ? 2 : s === 13 ? 3 : s === 14 ? 4 : s === 15 ? 5 : -1;
+        if (k >= 0) S.fillF(t, (0.4 + 0.12 * k) * l1);
+      } else if (s === 14 || s === 15) {
+        S.fillF(t, (s === 14 ? 0.55 : 0.8) * l1);
       }
     }
   }
 
-  // layer 2 (>= 0.7): chords + arp
-  if (I >= 0.7) {
+  // layer 2 (>= 0.45, full at 0.6): chords + arp
+  const l2 = lv(I, 0.45, 0.15);
+  if (l2 > 0) {
     if (S.chordP) {
       c = barPat(S.chordP, bi)[s];
-      if (c !== '.') S.chordF(t, S.cv[ci], velOf(c) * jitter(), S.chordDur * stepSec);
+      if (c !== '.') S.chordF(t, S.cv[ci], velOf(c) * jitter() * (0.5 + 0.5 * l2), S.chordDur * stepSec);
     }
     if (S.arpP) {
       const k = HEX.indexOf(barPat(S.arpP, bi)[s]);
@@ -1078,20 +1165,26 @@ function playStep(n, P, t) {
         const midi = S.arpMode === 'scale'
           ? S.arp0 + degSemi(S, k)
           : S.av[ci][k % 3] + 12 * ((k / 3) | 0);
-        S.arpF(t, midi, 0.66 * jitter(), S.arpDur * stepSec);
+        S.arpF(t, midi, 0.66 * jitter() * (0.5 + 0.5 * l2), S.arpDur * stepSec);
       }
     }
   }
 
-  // layer 3 (>= 0.9): counter-melody
-  if (I >= 0.9) {
-    const lp = barPat(S.lead, bi);
+  // layer 3 (>= 0.6, full at 0.8): the hook. B bars play a second line (call / answer)
+  const l3 = lv(I, 0.6, 0.2);
+  if (l3 > 0) {
+    const lp = barPat(sec && S.leadB ? S.leadB : S.lead, bi);
     const k = HEX.indexOf(lp[s]);
     if (k >= 0) {
       let len = 1;
       while (s + len < 16 && lp[s + len] === '-') len++;
-      S.leadF(t, S.lead0 + degSemi(S, k), 0.72 * jitter(), len * stepSec * 0.95);
+      S.leadF(t, S.lead0 + degSemi(S, k), 0.72 * jitter() * (0.6 + 0.4 * l3), len * stepSec * 0.95);
     }
+  }
+
+  // layer 4 (>= 0.85, or any B section from 0.7): ghost 16ths in the hats drive the groove
+  if ((n & 1) && S.ghostF && (lv(I, 0.85, 0.1) > 0 || (sec && I >= 0.7))) {
+    S.ghostF(t, 0.34 * jitter() * Math.max(lv(I, 0.85, 0.1), 0.7));
   }
 }
 
@@ -1149,8 +1242,9 @@ let lastPerfT = -1;
 let lastPortalT = -1e9;
 
 function teardown(c) {
+  lastNoteT = lastPerfT = -1; lastPortalT = lastStingT = -1e9; dipAmt = dipEnd = 0; offOk = false; // their clocks belonged to the old context
   ctx = null;
-  bus = lpF = stingG = duckG = muteG = comp = null;
+  bus = lpF = swF = hpF = lim = stingG = duckG = muteG = comp = null;
   delayIn = delayN = distIn = whiteBuf = null;
   pulse25 = pulse12 = null;
   try { if (c) c.close(); } catch (e) { /* ignore */ }
@@ -1163,7 +1257,7 @@ function ensureCtx() {
   try {
     const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
     if (!AC) return false;
-    try { c = new AC({ latencyHint: 'interactive' }); } catch (e) { c = new AC(); }
+    try { c = new AC({ latencyHint: 'balanced' }); } catch (e) { c = new AC(); } // music is scheduled ahead and the beat clock compensates output latency: bigger buffers = fewer underruns on budget phones
     build(c);
     return true;
   } catch (e) {
@@ -1192,6 +1286,15 @@ function resetDuck() {
     duckG.gain.setValueAtTime(1, t);
     lpF.frequency.cancelScheduledValues(t);
     lpF.frequency.setValueAtTime(Math.min(OPEN_FREQ, ctx.sampleRate * 0.45), t);
+  } catch (e) { /* ignore */ }
+}
+
+function openSweep() {
+  if (!ctx || !swF) return;
+  const t = ctx.currentTime;
+  try {
+    swF.frequency.cancelScheduledValues(t);
+    swF.frequency.setValueAtTime(Math.min(SW_OPEN, ctx.sampleRate * 0.45), t);
   } catch (e) { /* ignore */ }
 }
 
@@ -1242,6 +1345,8 @@ function start(id, bpm) {
   baseBpm = b;
   if (voices.length) killVoices();
   resetDuck(); // a new run never starts muffled
+  openSweep();
+  boostAmt = 0;
   dipEnd = 0; dipAmt = 0;
   restoreBus(0);
   const ps = perfSec();
@@ -1324,6 +1429,16 @@ function setBpm(x) {
 function setIntensity(x) {
   intensity = clamp(num(x, intensity), 0, 1);
 }
+
+/** Transient intensity lift (0..0.5) that fades out over BOOST_SEC: combo tier-ups make the hook / ghost hats come in. */
+function boost(a) {
+  const ps = perfSec();
+  const k = 1 - (ps - boostT0) / BOOST_SEC;
+  const cur = k > 0 ? boostAmt * k : 0;
+  boostAmt = Math.max(cur, clamp(num(a, 0.2), 0, 0.5));
+  boostT0 = ps;
+}
+try { globalThis.__cigMusicBoost = (a) => { try { boost(a); } catch (e) { /* ignore */ } }; } catch (e) { /* ignore */ }
 
 // ----------------------------------------------------------- pickup sounds
 
@@ -1506,8 +1621,59 @@ function stRevive() {
   restoreBus(0.45); // music fades back in, filter opening
 }
 
+/** Chord tones of the running style folded under ~96 (bells above that alias and sting). */
+const lo96 = (m) => (m > 96 ? m - 12 : m);
+
+let lastStingT = -1e9;
+function stingOk(gap) {
+  const t = ctx.currentTime;
+  if (t - lastStingT < gap) return false;
+  lastStingT = t;
+  return true;
+}
+
+/** New record: riser, a fast bell run up the style's chord, a held chord + crash. Works after stop() too. */
+function stRecord() {
+  if (!ready() || !stingOk(2)) return;
+  const t0 = ctx.currentTime + 0.01;
+  const cv = style.cv[0];
+  dip(0.3, 1.8);
+  riser(t0, 0.3);
+  const tn = t0 + 0.3;
+  const up = [cv[0] + 12, cv[1] + 12, cv[2] + 12, cv[0] + 24, cv[1] + 24, cv[2] + 24];
+  for (let i = 0; i < up.length; i++) bell(tn + i * 0.065, mtof(lo96(up[i])), 0.55 + 0.07 * i, BELL.chime);
+  const th = tn + 0.46;
+  for (let i = 0; i < 3; i++) bell(th, mtof(lo96(cv[i] + 24)), 0.7, BELL.chime);
+  crash(th, 0.7);
+  synth(th, cv.map((x) => mtof(x + 12)), 1.4, OPT.padPortal, 1);
+}
+
+/** Run over: four soft bells falling down the chord, then a low pad. No tape-stop (that is 'death'). */
+function stGameover() {
+  if (!ready() || !stingOk(2)) return;
+  const t = ctx.currentTime + 0.01;
+  const cv = style.cv[0];
+  const fall = [cv[2] + 12, cv[1] + 12, cv[0] + 12, cv[0]];
+  for (let i = 0; i < fall.length; i++) bell(t + i * 0.26, mtof(fall[i]), 0.7 - 0.08 * i, BELL.note);
+  synth(t + 0.5, cv.map((x) => mtof(x)), 2, OPT.padSoft, 1.2);
+}
+
+/** Level / stage up: a quick bell arpeggio and a short chord. */
+function stLevelUp() {
+  if (!ready() || !stingOk(1)) return;
+  const t = ctx.currentTime + 0.01;
+  const cv = style.cv[0];
+  dip(0.2, 0.9);
+  const up = [cv[0] + 12, cv[1] + 12, cv[2] + 12, cv[0] + 24];
+  for (let i = 0; i < up.length; i++) bell(t + i * 0.06, mtof(lo96(up[i])), 0.6 + 0.1 * i, BELL.chime);
+  crash(t + 0.2, 0.4);
+}
+
 function stinger(kind) {
-  if (kind === 'portal') stPortal();
+  if (kind === 'record') stRecord();
+  else if (kind === 'gameover') stGameover();
+  else if (kind === 'levelup') stLevelUp();
+  else if (kind === 'portal') stPortal();
   else if (kind === 'death') stDeath();
   else if (kind === 'revive') stRevive();
 }
@@ -1593,6 +1759,24 @@ try {
   }
 } catch (e) { /* ignore */ }
 
+/** Test hook: render `bars` bars of style `id` at intensity `I` through the real playStep, calling onStep(n, t) before every step. */
+function debugRender(id, bars, I, onStep) {
+  const ba = boostAmt, bt = boostT0;
+  start(id, 120);
+  boostAmt = ba; boostT0 = bt;
+  stop();
+  if (!ready()) return 0;
+  const stepSec = 15 / 120;
+  let t = ctx.currentTime + 0.02;
+  for (let n = 0; n < bars * 16; n++) {
+    if (onStep) onStep(n, t);
+    stepState(n);
+    playStep(n, perfSec(), t, I);
+    t += stepSec;
+  }
+  return bars * 16;
+}
+
 // --------------------------------------------------------------- public API
 
 // Every method goes through guard(): whatever happens inside, callers never see a throw.
@@ -1622,6 +1806,8 @@ export const music = {
   setBpm: guard(setBpm),
   /** 0..1: 0 kick+bass, 0.4 +hats/perc, 0.7 +arp/chords, 0.9+ +lead counter-melody. */
   setIntensity: guard(setIntensity),
+  /** Optional: transient intensity lift 0..0.5 fading over 5 s (audio.comboTier already calls it through __cigMusicBoost). */
+  boost: guard(boost),
   /** Beat the player is hearing now: { beat, phase, bpm, time }. Works with no audio. */
   get beat() { return readBeatSafe({ beat: 0, phase: 0, bpm: baseBpm, time: 0 }); },
   /** Zero-allocation variant of `beat` for per-frame use. */
@@ -1630,7 +1816,7 @@ export const music = {
   note: guard(note),
   /** On-beat bonus chime. */
   perfect: guard(perfect),
-  /** 'portal' | 'death' | 'revive' */
+  /** 'portal' | 'death' | 'revive' | 'record' (new best) | 'gameover' | 'levelup' */
   stinger: guard(stinger),
   /** true: lowpass + volume down (pause/death screen); false: back. */
   duck: guard(duck),
@@ -1640,6 +1826,8 @@ export const music = {
   isMuted: guard(() => muted, false),
   suspend: guard(suspend),
   resume: guard(resume),
+  /** Test only: render bars through the sequencer without the timer. */
+  _debugRender: guard(debugRender, 0),
   /** Extras (not in the contract): restart the pickup motif now; introspection. */
   resetPhrase: guard(() => { phraseIdx = 0; }),
   get styles() { return STYLE_IDS.slice(); },

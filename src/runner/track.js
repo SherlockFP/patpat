@@ -178,6 +178,7 @@ export class Track {
     this.biomeIndexAt = biomeIndexAt || ((s) => Math.floor(s / 600));
     this.gravityAt = opts.gravityAt || (() => T.G);      // optional: biome gravity mods (moon = low gravity -> longer flights)
     this.vGen = opts.vGen || ((s) => 1.1 * this.speedAt(s));   // design speed (top speed the ball can have at s): every TIME -> metres conversion of the generator
+    this.chapterAt = opts.chapterAt || null;               // Rush chapters: chapterAt(s) -> { def, s0, s1, ... } (goals.js ChapterPlan); null = no chapters (campaign, tutorial)
     this.junctionOk = opts.junctionOk || (() => true);   // junctionOk(s) false (ice cave ...) = no junction there
     this.tutorial = !!opts.tutorial;
     this.juncWinAt = opts.juncWinAt || null;              // (kept for the runner; the window is stored on each junction: junction.s0)
@@ -215,6 +216,7 @@ export class Track {
     this._ids = 0;
     this._since = 99;          // pieces since the last hazardous piece
     this._yawOff = 0;          // multiple of 2 pi consumed by helix pieces (mean-reversion uses yaw - _yawOff)
+    this._chapSetAt = 0;
     this._nextSet = this.level ? 300 : 340;   // earliest s of the next set piece (helix, loop, halfpipe ...); endless keeps the first 300 m for teaching rows
     this._lastSet = '';
     // Temple Run junctions: earliest corner of the next one (endless: ~350 m, tutorial: 300 m), live junction list (junctionAt), blocked ranges
@@ -543,6 +545,12 @@ Object.assign(Track.prototype, {
       return kind;
     }
     if (s0 < (this.level ? 150 : 300)) return rng.chance(0.55) ? 'straight' : 'curve';     // endless: the first 300 m are plain pieces (teaching rows)
+    const cd = !this.level && this.chapterAt ? this.chapterAt(s0).def : null;      // chapter rule (goals.js CHAPTERS): which pieces this stretch is made of
+    if (cd && (cd.plain || cd.slalom || cd.gap)) {
+      if (cd.gap && since >= 1 && rng.chance(cd.gap)) return 'gapRamp';
+      const w = cd.slalom ? { slalom: 5, straight: 1.5, curve: 1.5 } : cd.plain ? { straight: 4, curve: 3, slalom: cd.bonus ? 0 : 1.2 } : null;
+      if (w) { let tot = 0; for (const k in w) tot += w[k]; let r = rng.next() * tot; for (const k in w) { r -= w[k]; if (r <= 0) return k; } return 'straight'; }
+    }
     const sk = s0 * this.hardness;     // hardness unlocks the hard pieces earlier (Kabus) / later (Kolay)
     const w = { straight: 5 - 3 * diff, curve: 4, slalom: 1.6 + 1.4 * diff, narrow: 0, gapRamp: 1.5 + diff, gapJump: 0, hexHoles: 0, split: 0, stairs: 0 };
     if (sk >= 220) w.narrow = 1 + 1.6 * diff;
@@ -575,7 +583,12 @@ Object.assign(Track.prototype, {
     if (this._bossStarted) return this._forced.length ? this._forced.shift() : 'straight';   // boss finale: chasm, straight, skiJump, then run-in
     if (L && sEst > L.length - 150) return 'straight';                                         // calm run-in before the finish
 
-    let kind = sEst >= this._nextSet && !this.zoneAt(sEst) && this.rng.chance(0.8) ? this._pickSet(sEst, diff) : null;
+    const cd = !L && this.chapterAt ? this.chapterAt(sEst).def : null, cs = cd ? cd.set : null;       // BUZ TÜNELİ / KAYAK RAMPALARI: the chapter's own set piece, again and again (~140 m apart)
+    let kind = null;
+    if (cs && sEst >= (this._chapSetAt || 0) && this.allows(cs) && this['_spec_' + cs] && !this.zoneAt(sEst)) {
+      kind = cs; this._chapSetAt = sEst + SET_LEN[cs] + 70 + this.rng.range(0, 50); this._lastSet = cs; this._nextSet = Math.max(this._nextSet, this._chapSetAt + 60);
+    }
+    if (!kind) kind = sEst >= this._nextSet && !this.zoneAt(sEst) && !(cd && cd.plain) && this.rng.chance(0.8) ? this._pickSet(sEst, diff) : null;
     if (!kind) kind = this._pickKind(sEst, diff, this._qSince);
     // Full vertical loops are no longer generated: from the inside, a 5.5-11 m ring fills the screen with track whatever the
     // camera does. A gentle rolling-hills section (waves) takes their slot. (A loop pushed into _q by hand still builds — tests.)

@@ -197,6 +197,9 @@ const CSS = `
 .cs-abilbox { display:flex; flex-direction:column; align-items:center; gap:2px; text-align:center; flex:none; max-width:100%; }
 .cs-abil-b { display:inline-block; font-size:10px; font-weight:900; letter-spacing:.08em; padding:2px 8px; border-radius:7px; background:linear-gradient(180deg,#ffe27a,#ffb400); color:#2a1a00; border:2px solid var(--ink,#17345c); }
 .cs-abil { font-size:11px; font-weight:800; line-height:1.2; color:#5a3a00; }
+.cs-abil-lv { display:flex; align-items:center; gap:5px; font-size:10px; font-weight:900; color:#5a3a00; white-space:nowrap; }
+.cs-abil-bar { display:inline-block; width:34px; height:6px; border-radius:4px; background:rgba(0,0,0,.18); overflow:hidden; }
+.cs-abil-bar i { display:block; height:100%; background:linear-gradient(90deg,#ffb300,#ff7a1a); }
 .cs-rar {
   position: absolute; top: 6px; left: 7px; z-index: 2; padding: 3px 6px 2px; border-radius: 8px; pointer-events: none;
   font-size: 9px; line-height: 1; letter-spacing: 0.06em; color: #fff; background: var(--rc);
@@ -256,6 +259,18 @@ const CSS = `
     repeating-linear-gradient(72deg, var(--a) 0 9px, var(--b) 9px 15px);
 }
 .p-dots { background: radial-gradient(var(--b) 3.5px, transparent 4.5px) 0 0 / 16px 16px, var(--a); }
+.p-blotch {
+  background:
+    radial-gradient(ellipse 12px 8px at 30% 30%, var(--b) 0 96%, transparent 100%),
+    radial-gradient(ellipse 8px 12px at 66% 24%, var(--b) 0 96%, transparent 100%),
+    radial-gradient(ellipse 14px 9px at 70% 62%, var(--b) 0 96%, transparent 100%),
+    radial-gradient(ellipse 17px 12px at 70% 62%, var(--c, transparent) 0 96%, transparent 100%),
+    radial-gradient(ellipse 9px 8px at 34% 72%, var(--b) 0 96%, transparent 100%),
+    radial-gradient(ellipse 12px 11px at 34% 72%, var(--c, transparent) 0 96%, transparent 100%),
+    radial-gradient(ellipse 6px 6px at 50% 50%, var(--b) 0 96%, transparent 100%),
+    var(--a);
+}
+.cs-newtag { position: absolute; top: 6px; right: 7px; z-index: 3; padding: 3px 6px 2px; border-radius: 8px; pointer-events: none; font-size: 9px; line-height: 1; letter-spacing: 0.06em; color: #fff; background: #ff3d6e; box-shadow: 0 2px 0 rgba(23, 52, 92, 0.5); }
 .p-swirl {
   background:
     radial-gradient(circle, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 62%),
@@ -727,6 +742,11 @@ function makePart(spec) {
   return e;
 }
 
+// new content: the three blotch skins (cow / mushroom / leopard) get a NEW tag until the Dolap was opened once
+const BLOTCH = new Set(['inek', 'mantar', 'leopar']);
+const NEW_KEY = 'patpat.newSkinSeen';
+const newSeen = () => { try { return localStorage.getItem(NEW_KEY) === '1'; } catch { return true; } };
+export function shopNewCount(save) { try { return newSeen() ? 0 : [...BLOTCH].filter((id) => !save.isOwned('skin', id)).length; } catch { return 0; } }
 const HIDDEN = { a: '#3f4f72', b: '#141c30', pattern: 'solid' };
 
 function buildPreview(kind, pv, secret) {
@@ -933,15 +953,32 @@ export function openShop({ save, onClose, onSelect } = {}) {
     const st = stateOf(it);
     const rar = RARITY[it.rarity] ? it.rarity : 'common';
     const card = h('div', `cs-card r-${rar}${st.selected ? ' sel' : ''}${st.locked ? ' locked' : ''}${st.secret ? ' secret' : ''}`);
-    card.appendChild(buildPreview(kind, st.secret ? HIDDEN : it.preview, st.secret));
+    card.appendChild(buildPreview(kind, st.secret ? HIDDEN : kind === 'skin' && BLOTCH.has(it.id) ? { ...it.preview, pattern: 'blotch' } : it.preview, st.secret));
+    if (kind === 'skin' && BLOTCH.has(it.id) && !st.owned && !newSeen()) card.appendChild(h('span', 'cs-newtag', 'YENİ'));
     card.appendChild(h('span', 'cs-rar', RARITY[rar].label));
     card.appendChild(h('div', 'cs-name', st.secret ? '???' : it.name));
     const ab = kind === 'skin' ? ABILITIES[it.id] : null;
-    if (ab) { const w = h('div', 'cs-abilbox'); w.appendChild(h('span', 'cs-abil-b', '★ ABİLİTE')); w.appendChild(h('div', 'cs-abil', ab.icon + ' ' + ab.text)); card.appendChild(w); }
+    if (ab) {
+      const w = h('div', 'cs-abilbox'); w.appendChild(h('span', 'cs-abil-b', '★ ABİLİTE'));
+      const ad = h('div', 'cs-abil'); ad.appendChild(h('span', '', ab.icon)); ad.appendChild(document.createTextNode(' ')); ad.appendChild(h('span', '', ab.text)); w.appendChild(ad); // separate nodes: the English translator cannot read "icon + text (x1)" as one string
+      try { // KARAKTER level 1-5 from shards (chests, act rewards, town conquests)
+        const si = meta.shardInfo(it.id);
+        if (si) {
+          const l = h('div', 'cs-abil-lv');
+          l.appendChild(h('span', '', si.max ? `★ Sv ${si.level}/5 · MAKS` : `★ Sv ${si.level}/5 · 🧩 ${si.shards}/${si.next}`));
+          const bar = h('span', 'cs-abil-bar'); const f = h('i'); f.style.width = (si.max ? 100 : Math.round(((si.shards - si.from) / Math.max(1, si.next - si.from)) * 100)) + '%'; bar.appendChild(f); l.appendChild(bar);
+          w.appendChild(l);
+        }
+      } catch { /* ignore */ }
+      card.appendChild(w);
+    }
     if (st.locked) {
-      const note = st.ch ? `🏆 ${st.ch.name}: ${st.ch.desc} ${fmt(Math.min(st.ch.value, st.ch.goal))}/${fmt(st.ch.goal)}`
-        : st.secret ? 'Gizli ödül' : `⭐ ${Math.min(st.stars, st.need)}/${st.need}`;
-      card.appendChild(h('div', 'cs-note', note));
+      const nd = h('div', 'cs-note');
+      if (st.ch) { // one node per sentence so the English translator reads each (name, goal text, counter) on its own
+        nd.appendChild(h('b', '', st.ch.name)); nd.appendChild(document.createTextNode(' 🏆 '));
+        nd.appendChild(h('span', '', st.ch.desc)); nd.appendChild(document.createTextNode(` ${fmt(Math.min(st.ch.value, st.ch.goal))}/${fmt(st.ch.goal)}`));
+      } else nd.textContent = st.secret ? 'Gizli ödül' : `⭐ ${Math.min(st.stars, st.need)}/${st.need}`;
+      card.appendChild(nd);
       card.appendChild(h('span', 'cs-lockbadge', '🔒'));
     }
 
@@ -1104,6 +1141,7 @@ export function openShop({ save, onClose, onSelect } = {}) {
     document.removeEventListener('keydown', onKey);
     if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
     clearInterval(pzTimer);
+    try { localStorage.setItem(NEW_KEY, '1'); } catch { /* ignore */ }
     root.remove();
     if (onClose) onClose();
   }
@@ -1113,6 +1151,6 @@ export function openShop({ save, onClose, onSelect } = {}) {
   render();
   host.appendChild(root);
   activeClose = close;
-  try { if (localStorage.getItem('patpat.shopTab') === 'pazar') { localStorage.removeItem('patpat.shopTab'); setTab('pazar'); } } catch { /* ignore */ }
+  try { const want = localStorage.getItem('patpat.shopTab'); if (want) { localStorage.removeItem('patpat.shopTab'); if (want === 'pazar' || want === 'trail' || want === 'skin') setTab(want); } } catch { /* ignore */ }
   return close;
 }

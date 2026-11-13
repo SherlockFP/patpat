@@ -1,9 +1,10 @@
 // KARTOPU ARENA - serverless room discovery (presence). Everybody who opens the online menu joins one well-known Trystero
 // room; hosts of PUBLIC rooms broadcast a tiny description every 2 s, browsers collect them and drop stale ones.
 // Loaded lazily (dynamic import) - never touched by single player. The actual game still runs over PeerJS (net.js).
+import { vPresence } from './validate.js';
 export const LOBBY_ROOM = 'patpat-arena-lobby-v1';
 const APP_ID = 'patpat-arena-presence';
-const STALE_MS = 6000, BEAT_MS = 2000;
+const STALE_MS = 6000, BEAT_MS = 2000, MAX_ROOMS = 40, MAX_PER_PEER = 2; // caps: a flooding peer cannot grow the list without bound
 
 export class Presence {
   /** onChange(): called whenever the room list / online count changes */
@@ -53,12 +54,17 @@ export class Presence {
   }
 
   _onMsg(d, peer) {
-    if (!d || typeof d !== 'object' || typeof d.code !== 'string' || d.code.length !== 5) return;
-    if (d.gone) { this.rooms.delete(d.code); this.onChange(); return; }
-    this.rooms.set(d.code, {
-      code: d.code, name: String(d.name || '').slice(0, 24), host: String(d.host || '').slice(0, 12),
-      n: Math.max(1, d.n | 0), max: Math.max(1, d.max | 0) || 8, map: d.map | 0, v: d.v | 0, ts: Date.now(), peer,
-    });
+    const r = vPresence(d);
+    if (!r) return;
+    const old = this.rooms.get(r.code);
+    if (old && old.peer !== peer) return; // first announcer owns a code: nobody else can overwrite or delete it
+    if (r.gone) { if (old) { this.rooms.delete(r.code); this.onChange(); } return; }
+    if (!old) {
+      if (this.rooms.size >= MAX_ROOMS) return;
+      let own = 0; for (const x of this.rooms.values()) if (x.peer === peer) own++;
+      if (own >= MAX_PER_PEER) return;
+    }
+    this.rooms.set(r.code, { code: r.code, name: r.name, host: r.host, n: r.n, max: r.max, map: 0, v: r.v, ts: Date.now(), peer });
     this.onChange();
   }
 

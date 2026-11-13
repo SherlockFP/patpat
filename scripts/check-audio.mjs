@@ -24,6 +24,7 @@ const violations = [];
 const bad = (m) => { violations.push(m); throw new RangeError(m); };
 const fin = (x, what) => { if (typeof x !== 'number' || !Number.isFinite(x)) bad(`${what}: not finite (${x})`); };
 const ctxs = [];
+const lateStarts = []; // sources scheduled into the past (an audible flam / a skipped attack)
 
 class Param {
   constructor(ctx, value, name, nyq) { this.ctx = ctx; this._v = value; this.name = name; this.nyq = nyq; this.events = []; }
@@ -73,6 +74,7 @@ class Source extends Node {
     if (this.started) bad(`${this.kind}.start twice`);
     fin(when, `${this.kind}.start`); if (when < 0) bad(`${this.kind}.start negative`);
     this.started = true; this.startAt = when;
+    if (when > 0 && when < this.ctx.currentTime - 0.05) lateStarts.push(`${this.kind} start ${(this.ctx.currentTime - when).toFixed(3)} s in the past`);
     if (this.ctx.live.indexOf(this) < 0) this.ctx.live.push(this);
   }
   stop(when = 0) { if (!this.started) bad(`${this.kind}.stop before start`); fin(when, `${this.kind}.stop`); if (when < 0) bad(`${this.kind}.stop negative`); this.stopAt = when; }
@@ -445,6 +447,65 @@ ok(near(fb, 784, 0.6), `no music: the ladder falls back to G5 (${fb})`);
   ok(violations.length === 0, `music sequencer: no Web Audio violations (${violations.slice(0, 3).join(' | ')})`);
 }
 
+// ---- 9c. every style renders through the real sequencer: bounded nodes, bounded voices, nothing scheduled in the past, B bars + fills present
+{
+  const MM = ctxs[1];
+  const per = {};
+  ok(music.styles.includes('menu'), 'a menu theme style exists');
+  for (const id of music.styles) {
+    for (const I of [0.5, 1]) {
+      MM.advance(3);
+      const n0 = MM.nodes.length, late0 = lateStarts.length;
+      let maxVoices = 0;
+      const stepSec = 15 / 120;
+      const bars = 8;
+      music._debugRender(id, bars, I, (n) => { if (n) MM.advance(stepSec); maxVoices = Math.max(maxVoices, music.voiceCount); });
+      const made = MM.nodes.length - n0;
+      per[id + I] = made; if (process.env.SHOW_NODES) origErr(id, I, Math.round(made / bars), "nodes/bar, max voices", maxVoices);
+      ok(made > 0 && made / bars <= 450, `${id} @${I}: ${bars} bars render with a bounded node budget (${Math.round(made / bars)} nodes/bar)`);
+      ok(maxVoices <= 30, `${id} @${I}: simultaneous voices stay under the cap (${maxVoices})`);
+      ok(lateStarts.length === late0, `${id} @${I}: nothing scheduled in the past (${lateStarts.slice(late0, late0 + 2).join(' | ')})`);
+      ok(violations.length === 0, `${id} @${I}: no Web Audio violations (${violations.slice(0, 2).join(' | ')})`);
+      music.stop();
+    }
+    ok(per[id + 1] > per[id + 0.5], `${id}: full intensity adds layers (${per[id + 0.5]} < ${per[id + 1]} nodes)`);
+  }
+  // the A phrase (bars 0-3) and the B phrase (bars 4-7) differ at full intensity: count lead/ghost nodes per half
+  for (const id of ['snow', 'desert', 'menu']) {
+    const half = [0, 0];
+    MM.advance(3);
+    let nPrev = MM.nodes.length;
+    music._debugRender(id, 8, 1, (n) => { if (n) MM.advance(0.125); if (n && n % 64 === 0) { half[(n / 64) - 1] = MM.nodes.length - nPrev; nPrev = MM.nodes.length; } });
+    half[1] = MM.nodes.length - nPrev;
+    ok(half[0] > 0 && half[0] !== half[1], `${id}: 8-bar phrase: B half differs from A half (${half[0]} vs ${half[1]} nodes)`);
+    music.stop();
+  }
+  // smooth layers + combo boost: more at the same base intensity right after a boost
+  const count = (bars) => { MM.advance(3); const b = MM.nodes.length; music._debugRender('town', bars, undefined, (n) => { if (n) MM.advance(0.125); }); music.stop(); return MM.nodes.length - b; };
+  music.start('town', 120); music.setIntensity(0.5);
+  const calm = count(4);
+  music.setIntensity(0.5); globalThis.__cigMusicBoost(0.4);
+  const boosted = count(4);
+  ok(typeof globalThis.__cigMusicBoost === 'function' && boosted > calm, `combo boost lifts the music's intensity (${calm} -> ${boosted} nodes)`);
+  // stingers: record / gameover / levelup / portal sound once, bounded
+  for (const k of ['record', 'gameover', 'levelup']) {
+    MM.advance(3);
+    const b = MM.nodes.length;
+    music.stinger(k);
+    const nn = MM.nodes.length - b;
+    ok(nn > 0 && nn < 200, `stinger '${k}' makes sound within budget (${nn} nodes)`);
+    const again = (music.stinger(k), MM.nodes.length - b - nn);
+    ok(again === 0, `stinger '${k}' is rate limited`);
+  }
+  MM.advance(10);
+  const leakM = MM.nodes.filter((n) => n.ended && n.out.length).length;
+  ok(leakM === 0, `music: every ended source was disconnected (${leakM})`);
+  ok(MM.live.filter((n) => n.stopAt === Infinity).length === 0, 'music: no source runs forever');
+  const hp = MM.nodes.find((n) => n.kind === 'biquad' && n.type === 'highpass' && n.frequency.value < 80);
+  const lm = MM.nodes.find((n) => n.kind === 'shaper');
+  ok(hp && lm && lm.curve && lm.curve.length >= 256, 'music master chain: sub highpass + soft limiter');
+}
+
 // ---- 10. music duck keeps the deeper dip
 music.start('snow', 100);
 const bus = M.nodes.find((n) => n.kind === 'gain');
@@ -474,6 +535,26 @@ if (WITH_SAMPLES) {
   ok(n2 === 2, 'a later start of the same sample still plays');
 }
 
+// ---- 12. an OS-closed context is rebuilt by the next gesture (music and sfx), and the sound comes back
+{
+  const nCtx = ctxs.length;
+  const MC = ctxs[1];
+  music.stop();
+  MC.state = 'closed';
+  music.note(); // ready() notices and drops the dead context
+  A.state = 'closed';
+  audio.pickupStreak();
+  fire('touchstart'); fire('touchend'); await flush();
+  ok(ctxs.length === nCtx + 2, `closed contexts are rebuilt on the next gesture (${ctxs.length - nCtx} new)`);
+  const A2 = ctxs[nCtx], M2 = ctxs[nCtx + 1];
+  ok(A2 && M2 && A2.state === 'running' && M2.state === 'running', 'the rebuilt contexts run');
+  A2.advance(1);
+  const b2 = A2.nodes.length;
+  audio.pickupStreak();
+  ok(A2.nodes.length > b2, 'audio plays on the rebuilt context');
+  music.start('snow', 120); M2.advance(0.5); music.stop();
+}
+ok(lateStarts.length === 0, `nothing was ever scheduled into the past (${lateStarts.slice(0, 3).join(' | ')})`);
 ok(violations.length === 0, `no Web Audio violations after the full run (${violations.slice(0, 3).join(' | ')})`);
 ok(errors.length === 0, `no engine errors after the full run (${errors.slice(0, 3).join(' | ')})`);
 console.error = origErr;

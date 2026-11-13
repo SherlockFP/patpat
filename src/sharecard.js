@@ -106,12 +106,17 @@ export function drawCard({ mode, big, unit, isRec, challenge }) {
   outlined(c, 'PATPAT', 0, 0, 230, '#ffd23f', 34);
   c.restore();
 
-  // result panel
-  c.fillStyle = 'rgba(255,255,255,0.94)'; c.strokeStyle = INK; c.lineWidth = 14;
-  rr(c, 90, 380, W - 180, 520, 56); c.fill(); c.stroke();
+  // confetti behind the panel (deterministic, denser on a record)
+  { const cols = ['#ffd23f', '#ff5a3c', '#2f9bff', '#43d17a', '#ffffff'];
+    for (let i = 0; i < (isRec ? 46 : 22); i++) { c.save(); c.translate((i * 241 + 70) % W, 330 + ((i * 173) % 640)); c.rotate(i); c.fillStyle = cols[i % 5]; c.globalAlpha = 0.85; c.fillRect(-9, -5, 18, 10); c.restore(); } }
+
+  // result panel (with a drop shadow so it reads on any snapshot)
+  c.save(); c.shadowColor = 'rgba(10,30,70,0.45)'; c.shadowBlur = 40; c.shadowOffsetY = 18;
+  c.fillStyle = 'rgba(255,255,255,0.96)'; c.strokeStyle = INK; c.lineWidth = 14;
+  rr(c, 90, 380, W - 180, 520, 56); c.fill(); c.restore();
+  c.strokeStyle = INK; c.lineWidth = 14; rr(c, 90, 380, W - 180, 520, 56); c.stroke();
   outlined(c, mode, W / 2, 450, 62, '#2f9bff', 12);
   fit(c, String(big), W / 2, 620, W - 260, 190, '#ff5a3c', 22);
-  outlined(c, unit, W / 2, 760, 56, '#14213d', 0);
   c.fillStyle = INK; c.font = '900 56px "Arial Black", Impact, system-ui, sans-serif'; c.fillText(t(unit), W / 2, 760);
   if (isRec) {
     c.save(); c.translate(W / 2, 850); c.rotate(-0.05);
@@ -121,6 +126,14 @@ export function drawCard({ mode, big, unit, isRec, challenge }) {
     c.restore();
   }
 
+  // little snowball mascot peeking over the panel corner
+  c.save(); c.translate(W - 170, 392); c.rotate(0.18);
+  c.fillStyle = '#ffffff'; c.strokeStyle = INK; c.lineWidth = 10;
+  c.beginPath(); c.arc(0, 0, 66, 0, 7); c.fill(); c.stroke();
+  c.fillStyle = INK; c.beginPath(); c.arc(-22, -10, 8, 0, 7); c.arc(22, -10, 8, 0, 7); c.fill();
+  c.fillStyle = '#ff8a2a'; c.beginPath(); c.moveTo(0, -2); c.lineTo(34, 10); c.lineTo(0, 20); c.closePath(); c.fill();
+  c.restore();
+
   // skin chip
   c.fillStyle = sk.a; c.strokeStyle = INK; c.lineWidth = 10;
   c.beginPath(); c.arc(300, 990, 34, 0, 7); c.fill(); c.stroke();
@@ -129,7 +142,8 @@ export function drawCard({ mode, big, unit, isRec, challenge }) {
   c.textAlign = 'center';
 
   // challenge + url
-  fit(c, challenge, W / 2, 1110, W - 120, 72, '#ffffff', 16);
+  c.fillStyle = 'rgba(20,33,61,0.55)'; rr(c, 60, 1060, W - 120, 100, 50); c.fill();
+  fit(c, challenge, W / 2, 1110, W - 200, 64, '#ffffff', 12);
   const url = shareUrl();
   c.fillStyle = INK; rr(c, 90, 1190, W - 180, 96, 40); c.fill();
   c.fillStyle = '#ffd23f'; c.font = '900 40px system-ui, sans-serif';
@@ -150,7 +164,9 @@ async function toast(msg) {
 /** opts: { mode, big, unit, isRec, challenge, text } — call from a click handler */
 export async function shareCard(opts) {
   const url = shareUrl();
-  const text = opts.text || `PATPAT ${t(opts.mode)}: ${opts.big} ${t(opts.unit)}${opts.isRec ? ' — ' + t('YENİ REKOR!') : ''} ${t(opts.challenge)}`;
+  // viral text: score first, then the dare, then the link (each on its own line so chat apps keep the link clickable)
+  const base = opts.text || `🏔️ PATPAT ${t(opts.mode)}: ${opts.big} ${t(opts.unit)}${opts.isRec ? ' ★ ' + t('YENİ REKOR!') : ''}\n${t(opts.challenge)}`;
+  const text = base.includes(url) ? base : `${base}\n${url}`;
   let cv;
   try { cv = drawCard(opts); } catch { cv = null; }
   if (!cv) { toast(t('Kart oluşturulamadı')); return 'failed'; }
@@ -159,7 +175,7 @@ export async function shareCard(opts) {
   const file = new File([blob], 'patpat.png', { type: 'image/png' });
   try {
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], text, url });
+      await navigator.share({ files: [file], text });
       return 'shared';
     }
   } catch (e) { if (e && e.name === 'AbortError') return 'failed'; }
@@ -169,7 +185,7 @@ export async function shareCard(opts) {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   } catch { /* ignore */ }
-  try { await navigator.clipboard.writeText(`${text}\n${url}`); } catch { /* ignore */ }
+  try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
   toast(t('Görsel indirildi, link kopyalandı!'));
   return 'copied';
 }

@@ -24,14 +24,22 @@ function run(g, seconds, msAt, t0 = 0) {
   ok(run(g, 120, () => 16.7).length === 0 && g.level === 0 && g.dpr === 2 && !g.lite, 'steady 60 fps must not move');
 }
 
-// 2. a slow device walks down 2 -> 1.75 -> 1.5 -> 1.25 -> 1 -> lite, one rung per 2 s window, and stops at the bottom
+// 2. a mildly slow device (< 35 fps but not by much) walks down 2 -> 1.75 -> 1.5 -> 1.25 -> 1 -> lite, one rung per 2 s window, and stops at the bottom;
+//    a badly slow one (mean > 1.35 x the threshold, ~28 ms) skips a rung per window, so it is at the bottom in ~6 s instead of ~10 s
 {
   const g = makeGovernor({ dprMax: 2 });
-  const mv = run(g, 40, () => 30);
-  ok(mv.length === 5, `slow device: expected 5 moves, got ${mv.length}`);
-  ok(mv.map((m) => m[2]).join() === '1.75,1.5,1.25,1,1', 'slow device: dpr ladder ' + mv.map((m) => m[2]).join());
+  const mv = run(g, 40, () => 25);
+  ok(mv.length === 5, `mildly slow device: expected 5 moves, got ${mv.length}`);
+  ok(mv.map((m) => m[2]).join() === '1.75,1.5,1.25,1,1', 'mildly slow device: dpr ladder ' + mv.map((m) => m[2]).join());
   ok(g.dpr === 1 && g.lite, 'slow device ends at dpr 1 + lite');
-  ok(mv[4][0] <= 11, 'slow device reaches the bottom within ~10 s, got ' + mv[4][0]);
+  ok(mv[4][0] <= 11, 'mildly slow device reaches the bottom within ~10 s, got ' + mv[4][0]);
+  const h = makeGovernor({ dprMax: 2 });
+  const mh = run(h, 40, () => 36);
+  ok(mh.length === 3 && mh.map((m) => m[2]).join() === '1.5,1,1', 'badly slow device: two rungs per window, ladder ' + mh.map((m) => m[2]).join());
+  ok(h.dpr === 1 && h.lite && mh[2][0] <= 7, 'badly slow device reaches dpr 1 + lite within ~6 s, got ' + (mh[2] && mh[2][0]));
+  const j = makeGovernor({ dprMax: 1.5 });
+  run(j, 20, () => 36);
+  ok(j.level === 3 && j.dpr === 1 && j.lite, 'a double step never overshoots the bottom (dprMax 1.5)');
 }
 
 // 3. ... and climbs back all the way once it is fast again, never above dprMax, never skipping a rung

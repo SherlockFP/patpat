@@ -35,7 +35,13 @@ function core(s) {
   if (w !== undefined) return w;
   for (let i = 0; i < PATTERNS.length; i++) {
     const p = PATTERNS[i];
-    if (p[0].test(s)) return s.replace(p[0], p[1]);
+    if (p[0].test(s)) return typeof p[1] === 'function' ? s.replace(p[0], p[1]) : s.replace(p[0], (...m) => p[1].replace(/\$(\d)/g, (_, i) => {
+      const g = m[+i];     // a captured name (mountain, ball, quest) is translated on its own: "DAĞ 37 · Şimşek Geçidi" -> "MOUNTAIN 37 · Lightning Pass"
+      if (typeof g !== 'string') return '';
+      if (g.length >= s.length || !HAS_LETTER.test(g)) return g;
+      const w = core(g);
+      return w === null ? g : w;
+    }));
   }
   return null;
 }

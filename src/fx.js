@@ -3,6 +3,7 @@ import { patchMaterial, SU } from './shaders.js';
 
 const MAX_PARTS = 700;
 const TRAIL_N = 90;
+const DEBRIS_MAX = 24, TAU2 = Math.PI * 2;   // town-destruction chunks per debris() call
 
 // ---- speed feel knobs ----
 const MIST_N = 300;                        // soft puffs in the pool (spray, steam, powder)
@@ -12,6 +13,14 @@ const STREAK_MIN = 22, STREAK_FULL = 52;   // m/s: world-space speed streaks fad
 const STREAK_N = 56;                       // streaks in the pool (one draw call, positioned in the vertex shader)
 const STREAK_ALPHA = 0.32;                 // peak opacity: they are a hint of wind, not a screen full of lines
 const STREAK_PX = 1.4;                     // line width in CSS px
+
+// ---- score floaters: a pool of DOM "+N" labels animated by CSS (zero per-frame JS); two alternating keyframes restart a label without a reflow ----
+const FL_N = 10;
+const FL_CSS = `.fxfl{position:fixed;left:0;top:0;z-index:30;pointer-events:none;opacity:0;font:900 22px/1 system-ui,sans-serif;white-space:nowrap;text-shadow:0 2px 0 rgba(0,0,0,.45),0 0 6px rgba(0,0,0,.35);will-change:transform,opacity;animation-duration:.85s;animation-timing-function:ease-out;animation-fill-mode:forwards}
+@keyframes fxflA{0%{opacity:0;transform:translate(-50%,-30%) scale(.6)}15%{opacity:1;transform:translate(-50%,-70%) scale(1.25)}100%{opacity:0;transform:translate(-50%,-230%) scale(1)}}
+@keyframes fxflB{0%{opacity:0;transform:translate(-50%,-30%) scale(.6)}15%{opacity:1;transform:translate(-50%,-70%) scale(1.25)}100%{opacity:0;transform:translate(-50%,-230%) scale(1)}}
+@keyframes fxpopA{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}
+@keyframes fxpopB{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}`;
 
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 export const sprayK = (v) => clamp01((v - SPRAY_MIN) / (SPRAY_FULL - SPRAY_MIN));
@@ -81,7 +90,9 @@ const _q = new THREE.Quaternion();
 const _p = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const _c = new THREE.Color();
+const _c2 = new THREE.Color();
 const _rgb = { r: 0, g: 0, b: 0 };
+const _rgbWhite = new THREE.Color(1, 1, 1);
 
 export class Fx {
   constructor(scene, world, camera = null) {
@@ -106,6 +117,7 @@ export class Fx {
     this.spinA = new Float32Array(MAX_PARTS);
     this.n = 0;
     this.axis = new THREE.Vector3(0.3, 1, 0.5).normalize();
+    this._shk = 0; this._st = 0; this.shakeOff = { x: 0, y: 0 };   // screen-shake hook (see shake())
 
     // ---- trail: ribbon pressed into the snow behind the ball ----
     const tg = new THREE.BufferGeometry();
@@ -156,6 +168,7 @@ export class Fx {
     this.mSize = new Float32Array(MN);
     this.mSizeAttr = new Float32Array(MN);
     this.mAlpha = new Float32Array(MN);
+    this.mKeep = new Uint8Array(MN);            // 1 = a pickup / hit flash: never thinned out near the ball
     this.mHead = 0;
     const mg = new THREE.BufferGeometry();
     mg.setAttribute('position', new THREE.BufferAttribute(this.mPos, 3).setUsage(THREE.DynamicDrawUsage));
@@ -172,7 +185,7 @@ export class Fx {
         void main() {
           vA = alpha; vC = color;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = size * uScale / max(0.5, -mv.z);
+          gl_PointSize = min(size * uScale / max(0.5, -mv.z), 256.0);   // (a puff right at the lens would be a full-screen fill)
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
@@ -180,7 +193,7 @@ export class Fx {
         void main() {
           vec2 d = gl_PointCoord - 0.5;
           float r = dot(d, d) * 4.0;
-          float a = vA * smoothstep(1.0, 0.0, r) * (0.7 + 0.3 * (1.0 - r));
+          float a = vA * (1.0 - smoothstep(0.0, 1.0, r)) * (0.7 + 0.3 * (1.0 - r));   // (smoothstep with edge0 > edge1 is undefined in GLSL ES)
           if (a < 0.01) discard;
           gl_FragColor = vec4(vC, a);
         }`,
@@ -200,6 +213,7 @@ export class Fx {
     this._sc = new THREE.Color();            // spray colour
     this.streaks = this._buildStreaks();
     scene.add(this.streaks);
+    this._fl = null; this._flStyle = null; this._flI = 0; this._flA = 0; this._popA = 0;   // score floaters (built on the first floater() call)
   }
 
   _buildStreaks() {
@@ -239,7 +253,7 @@ export class Fx {
   }
 
   // Soft puff: snow powder, steam, dust. vel in world units/s; size in metres.
-  puff(x, y, z, vx, vy, vz, size, life, color = 0xffffff, alpha = 0.55) {
+  puff(x, y, z, vx, vy, vz, size, life, color = 0xffffff, alpha = 0.55, keep = 0) {
     const i = this.mHead;
     this.mHead = (this.mHead + 1) % this.mN;
     const c = typeof color === 'number' ? _c.setHex(color) : color;
@@ -249,6 +263,7 @@ export class Fx {
     this.mLife[i] = this.mMax[i] = life;
     this.mSize[i] = size;
     this.mAlpha[i] = alpha;
+    this.mKeep[i] = keep;
     this.mBase = this.mBase || new Float32Array(this.mN);
     this.mBase[i] = alpha;
   }
@@ -268,7 +283,7 @@ export class Fx {
       this.mPos[o] += this.mVel[o] * dt; this.mPos[o + 1] += this.mVel[o + 1] * dt; this.mPos[o + 2] += this.mVel[o + 2] * dt;
       this.mSizeAttr[i] = this.mSize[i] * (0.5 + 1.6 * t);
       let al = (this.mBase ? this.mBase[i] : 0.5) * (t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85);
-      if (bp) {
+      if (bp && !this.mKeep[i]) {
         // storm / powder near the ball: thin it out so the white ball never vanishes into white
         const dx = this.mPos[o] - bp.x, dy = this.mPos[o + 1] - bp.y, dz = this.mPos[o + 2] - bp.z, q = (dx * dx + dy * dy + dz * dz) / (nearR * nearR);
         if (q < 1) { dens += al * (1 - q); al *= 0.3 + 0.7 * q; }
@@ -303,6 +318,7 @@ export class Fx {
   reset() {
     if (this.mLife) this.mLife.fill(0);
     this._kReady = false; this._ka = 0; this._sk = 0; this.speed = 0;
+    this._shk = 0; this.shakeOff.x = this.shakeOff.y = 0;
     this.streaks.visible = false;
     this.n = 0;
     this.parts.count = 0;
@@ -314,11 +330,20 @@ export class Fx {
   burst(x, y, d, count, color, speed = 6, size = 0.25, up = 4) {
     const c = typeof color === 'number' ? _c.setHex(color) : color;
     // debris budget: smaller, fewer, short-lived, thrown away from the camera (never between camera and ball)
+    const big = count >= 3;
     count = Math.min(count, 12);
     if (this._bb === undefined) this._bb = 0;
     count = Math.min(count, Math.max(0, 40 - this._bb));
     this._bb += count;
-    size *= 0.6;
+    size *= 0.75;
+    if (big) {
+      // readability: a soft bright flash + a short-lived halo in the item's colour, so a pickup / hit reads even when the chunks are tiny
+      _c2.copy(c).lerp(_rgbWhite, 0.4);
+      this.puff(x, y + size, -d - size, 0, 0.6, 0, size * 9 + 0.6, 0.28, _c2, 0.8, 1);
+      this.puff(x, y + size * 2, -d - size, 0, 1.2, 0, size * 14 + 1.0, 0.55, c, 0.4, 1);
+      // pop ring: five bright sparks fly out sideways (skipped in the lite quality rung)
+      if (!SU.uLite.value) for (let k = 0; k < 5; k++) { const a = k * 1.2566 + 0.4; this.puff(x, y + size, -d - size, Math.cos(a) * 4, Math.sin(a) * 3 + 1, 0, size * 3 + 0.25, 0.32, _c2, 0.75, 1); }
+    }
     for (let k = 0; k < count; k++) {
       let i;
       if (this.n < MAX_PARTS) i = this.n++;
@@ -330,7 +355,7 @@ export class Fx {
       this.pv[i * 3] = Math.cos(a) * speed * (0.3 + e);
       this.pv[i * 3 + 1] = up * (0.4 + Math.random() * 0.6) * 0.8;
       this.pv[i * 3 + 2] = -Math.abs(Math.sin(a)) * speed * (0.3 + e);
-      this.maxLife[i] = this.life[i] = 0.3 + Math.random() * 0.3;
+      this.maxLife[i] = this.life[i] = 0.4 + Math.random() * 0.4;
       this.size[i] = size * (0.5 + Math.random());
       this.spinA[i] = Math.random() * 6;
       this.parts.setColorAt(i, c);
@@ -342,6 +367,13 @@ export class Fx {
     const w = this.world;
     this.updateMist(dt, ball);
     this._bb = 0;
+    const fl = SU.uFlash.value;
+    if (fl.w > 0) fl.w = fl.w < 0.004 ? 0 : fl.w * Math.exp(-dt * 9);
+    if (this._shk > 0.005) {
+      this._shk *= Math.exp(-dt * 7);
+      this._st += dt * 55;
+      this.shakeOff.x = Math.sin(this._st) * this._shk; this.shakeOff.y = Math.cos(this._st * 1.3) * this._shk * 0.7;
+    } else { this._shk = 0; this.shakeOff.x = this.shakeOff.y = 0; }
     // particles
     let n = this.n;
     for (let i = 0; i < n; i++) {
@@ -454,6 +486,118 @@ export class Fx {
       if (lum > 0.55) u.uTint.value.setRGB(_rgb.r * 0.8, _rgb.g * 0.84, _rgb.b * 0.9, THREE.LinearSRGBColorSpace);
       else u.uTint.value.setRGB(_rgb.r + (1 - _rgb.r) * 0.65, _rgb.g + (1 - _rgb.g) * 0.65, _rgb.b + (1 - _rgb.b) * 0.65, THREE.LinearSRGBColorSpace);
     }
+  }
+
+  // Full-screen hit flash (white by default, display-space rgb 0..1): the strength eases out in ~0.3 s in update(). Cheap: one uniform in the shared finish.
+  // Intended call sites (nobody calls it yet; src/runner/runner.js, the rush lane owns it): on a lost life / stumble `fx.hitFlash(0.5, 1, 0.3, 0.25)` (red), on a near miss
+  // `fx.hitFlash(0.25)` (white), on a multiplier / set-complete pop `fx.hitFlash(0.35, 1, 0.9, 0.5)` (gold). One call per event, never per frame (it only raises the strength).
+  hitFlash(strength = 0.55, r = 1, g = 1, b = 1) {
+    const fl = SU.uFlash.value;
+    fl.set(r, g, b, Math.max(fl.w, Math.min(0.9, strength)));
+  }
+
+  // Short full-screen white "photo flash" (postcard moments): hitFlash at its cap.
+  photoFlash() { this.hitFlash(0.9, 1, 1, 1); }
+
+  // Town destruction (ÇIĞ finale; the cig lane calls these as fx.debris?.() / fx.dust?.() / fx.shake?.()). pos = world {x, y, z} (z = -d), like puff().
+  // Chunks go into the shared particle pool (no new draw call); a call throws at most DEBRIS_MAX (the pool recycles when full). Both are off in the lite rung.
+  debris(pos, color = 0xb08a5a, n = 8) {
+    if (SU.uLite.value || !pos) return;
+    const c = typeof color === 'number' ? _c.setHex(color) : color;
+    n = Math.min(n | 0, DEBRIS_MAX);
+    for (let k = 0; k < n; k++) {
+      const i = this.n < MAX_PARTS ? this.n++ : (Math.random() * MAX_PARTS) | 0;
+      const a = Math.random() * TAU2, sp = 3 + Math.random() * 7, sz = 0.3 + Math.random() * 0.5;
+      this.px[i * 3] = pos.x + Math.cos(a) * 0.4; this.px[i * 3 + 1] = pos.y + Math.random() * 0.6; this.px[i * 3 + 2] = pos.z + Math.sin(a) * 0.4;
+      this.pv[i * 3] = Math.cos(a) * sp; this.pv[i * 3 + 1] = 5 + Math.random() * 9; this.pv[i * 3 + 2] = Math.sin(a) * sp;
+      this.maxLife[i] = this.life[i] = 0.8 + Math.random() * 0.7;
+      this.size[i] = sz;
+      this.spinA[i] = Math.random() * 6;
+      this.parts.setColorAt(i, c);
+    }
+    this.parts.instanceColor.needsUpdate = true;
+  }
+
+  // Expanding dust ring of r metres (soft puffs from the shared mist pool, 8 + 3 rising).
+  dust(pos, r = 3, color = 0xcdbfa8) {
+    if (SU.uLite.value || !pos) return;
+    for (let k = 0; k < 8; k++) {
+      const a = k * 0.7854 + Math.random() * 0.4;
+      this.puff(pos.x + Math.cos(a) * r * 0.3, pos.y + 0.3, pos.z + Math.sin(a) * r * 0.3, Math.cos(a) * r * 1.6, 0.8, Math.sin(a) * r * 1.6, r * 0.5 + 0.6, 0.9, color, 0.55, 1);
+    }
+    for (let k = 0; k < 3; k++) this.puff(pos.x + (Math.random() - 0.5) * r * 0.6, pos.y + 0.5, pos.z + (Math.random() - 0.5) * r * 0.6, 0, 2.5 + Math.random() * 2, 0, r * 0.6 + 0.8, 1.2, color, 0.5, 1);
+  }
+
+  // Screen-shake hook: raises the strength (metres of camera offset, max 1.2); update() decays it in ~0.4 s and keeps
+  // this.shakeOff {x, y} current. The camera owner adds shakeOff to its position (nothing applies it here); dead in the lite rung.
+  shake(amp = 0.4) { if (!SU.uLite.value) this._shk = Math.max(this._shk, Math.min(1.2, amp)); }
+
+  // Pooled "+N" label at screen position (x, y) in CSS px (client coords), colour = hex or CSS string. Text is whatever the caller passes (already translated).
+  // At most FL_N labels live at once (the oldest is reused); no per-frame work here: the CSS animation does it all. No DOM (node check, SSR) = no-op.
+  floater(text, x, y, color = 0xffffff) {
+    const d = typeof document !== 'undefined' ? document : null;
+    if (!d || !d.body || !d.head) return;
+    if (!this._fl) {
+      this._ensureCss(); this._fl = [];
+      for (let i = 0; i < FL_N; i++) { const e = d.createElement('div'); e.className = 'fxfl'; e.setAttribute('aria-hidden', 'true'); d.body.appendChild(e); this._fl.push(e); }
+    }
+    const e = this._fl[this._flI]; this._flI = (this._flI + 1) % FL_N;
+    e.textContent = text;
+    e.style.left = x + 'px'; e.style.top = y + 'px';
+    e.style.color = typeof color === 'number' ? '#' + color.toString(16).padStart(6, '0') : color;
+    e.style.animationName = (this._flA ^= 1) ? 'fxflA' : 'fxflB';
+  }
+
+  // Shader-free score pop: a 0.18 s scale bump on any DOM element (the HUD score), restarted on every call. Safe to call per pickup.
+  scorePop(el) {
+    if (!el || !el.style) return;
+    this._ensureCss();
+    el.style.animationName = (this._popA ^= 1) ? 'fxpopA' : 'fxpopB';
+    el.style.animationDuration = '0.18s';
+    el.style.animationTimingFunction = 'ease-out';
+  }
+
+  _ensureCss() {
+    const d = typeof document !== 'undefined' ? document : null;
+    if (!d || !d.head || this._flStyle) return;
+    const st = d.createElement('style'); st.textContent = FL_CSS; d.head.appendChild(st); this._flStyle = st;
+  }
+
+  // Level-up burst at world pos {x, y, z} (z = -d): a gold ring of soft puffs + a rising column + a faint gold flash. Pool puffs only; half as many in the lite rung.
+  levelUp(pos) {
+    if (!pos) return;
+    const n = SU.uLite.value ? 6 : 12;
+    _c2.setHex(0xffd23a);
+    for (let k = 0; k < n; k++) {
+      const a = k * TAU2 / n;
+      this.puff(pos.x + Math.cos(a) * 0.4, pos.y, pos.z + Math.sin(a) * 0.4, Math.cos(a) * 5, 1.2, Math.sin(a) * 5, 0.7, 0.7, _c2, 0.85, 1);
+    }
+    for (let k = 0; k < 3; k++) this.puff(pos.x, pos.y + k * 0.5, pos.z, 0, 3 + k, 0, 1.1, 0.9, _c2, 0.6, 1);
+    this.hitFlash(0.3, 1, 0.9, 0.5);
+  }
+
+  // Compile every program this file owns once, before the first frame that needs it (the speed streaks are hidden until the ball is fast,
+  // so their shader would otherwise compile in the middle of a run). Call after the scene is built, e.g. at run start: fx.prewarm?.(renderer, scene, camera).
+  prewarm(renderer, scene = this.scene, camera = this.camera) {
+    if (!renderer || !renderer.compile || !scene || !camera) return;
+    const m = this.streaks, was = m.visible;
+    m.visible = true;
+    try { renderer.compile(scene, camera); } catch (e) { /* a failed warm-up must never stop the run */ }
+    m.visible = was;
+  }
+
+  // Free the GPU resources (geometry, materials, the shadow texture) and take everything out of the scene.
+  dispose() {
+    SU.uFlash.value.w = 0;
+    for (const m of [this.parts, this.trail, this.shadow, this.mist, this.streaks]) {
+      this.scene.remove(m);
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) { if (m.material.map) m.material.map.dispose(); m.material.dispose(); }
+    }
+    if (this.parts.dispose) this.parts.dispose();
+    if (this._fl) for (const e of this._fl) e.remove();
+    if (this._flStyle) this._flStyle.remove();
+    this._fl = null; this._flStyle = null;
   }
 
   copyPart(from, to) {

@@ -9,15 +9,16 @@
 // Everything lives in its own localStorage key (`freemon.meta.v1`); every storage access is wrapped in try/catch and a
 // corrupted blob falls back to a fresh state. Importing this module never touches `document` / `localStorage`.
 // Rewards that touch the shop economy (❄️, skins, trails) go through the `save` object handed to init().
-import { SKINS, TRAILS } from './skins.js';
+import { SKINS, TRAILS, ABILITIES } from './skins.js';
 import { ACTS, CAMPAIGN_SIZE, LEVELS_PER_ACT, levelById, evalGoals, BONUS_COUNT, BONUS_STARS, bonusReward } from './campaign.js';
 
 const KEY = 'freemon.meta.v1';
 const MAX_MULT = 30;
 const WORD = 'PATPAT';
 const MAX_UP = 5;
-const XP_K = 260;
-const XP_P = 1.8;
+// Level curve retuned (was 260 / 1.8) so the level-gated unlocks (UNLOCK_LV) come at about run 1 / 3 / 5 / 8 / 10; old saves only ever gain levels.
+const XP_K = 50;
+const XP_P = 1.5;
 
 // =================================================================================================== small helpers
 
@@ -30,9 +31,26 @@ const EMPTY = Object.freeze({});
 const NONE = Object.freeze([]);
 
 // Local calendar day key + day arithmetic (DST safe: goes through UTC day numbers).
-function dateKey(ms = now()) {
+function rawKey(ms) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+// "Today" with a clock-change guard: the latest real day seen is remembered, and a clock moved BACK up to a week keeps
+// returning that day (daily / globe / postcard / task rewards cannot be re-armed by changing the phone date). A bigger step back
+// is trusted (a wrong date that gets fixed must not lock the player out). dateKey(ms) with an explicit time is plain.
+const HW_KEY = 'freemon.meta.hw';
+let hw = null;
+function dateKey(ms) {
+  if (ms !== undefined) return rawKey(ms);
+  const k = rawKey(now());
+  if (hw === null) {
+    try { hw = globalThis.localStorage ? globalThis.localStorage.getItem(HW_KEY) || '' : ''; } catch { hw = ''; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(hw)) hw = '';
+  }
+  const back = hw ? dayNum(hw) - dayNum(k) : 0;
+  if (back > 0 && back <= 7) return hw;
+  if (k !== hw) { hw = k; try { if (globalThis.localStorage) globalThis.localStorage.setItem(HW_KEY, k); } catch { /* ignore */ } }
+  return k;
 }
 function dayNum(key) {
   const p = String(key).split('-');
@@ -62,16 +80,48 @@ export const DAILY_REWARDS = [
   { day: 7, coins: 500, crystals: 2, special: true }, // coins = fallback when every skin/trail is already owned
 ];
 
+// ---- progressive lobby: runs played -> what a BRAND-NEW save sees (veterans see everything; menus.js applies this) ----
+// 0 runs: OYNA + settings only. Each id gets a one-time "new" tag + toast on its first visible menu.
+export const UNLOCKS = { shop: 1, daily: 1, tasks: 2, cig: 2, map: 2, gems: 3, rails: 3, globe: 3, post: 3, pass: 4, arena: 4 };
+export const UNLOCK_END = 5; // the gate switches off here: everything is visible
+// PLAN_V3 8.4: these five open by PLAYER LEVEL (new saves; anyone who already had the system by run count keeps it: S.ug, see sanitize).
+export const UNLOCK_LV = { map: 2, cig: 3, daily: 4, arena: 5, season: 6 };
+export const UNLOCK_LV_MAX = 6;
+export const isUnlocked = (id, runs) => (runs | 0) >= (UNLOCKS[id] || 0);
+// Welcome economy (session 1): first-run bonus + wheel gift, so the 50% wheel coupon is never held with an empty wallet.
+export const WELCOME = { ftue: 60, wheel: 100, couponPct: 50 };
+// ❄️ the welcome spin pays: at least WELCOME.wheel, and enough that the cheapest ball is affordable at the coupon price.
+export const welcomeGift = (cheapest, coins) => Math.max(WELCOME.wheel, (Number.isFinite(cheapest) ? Math.ceil(cheapest * (1 - WELCOME.couponPct / 100)) : 0) - (coins | 0));
+
 // ---- power-up upgrades (index = level 0..5; costs[i] = price of level i -> i+1) ----
 export const UPGRADES = [
-  { id: 'magnet', name: 'Mıknatıs', icon: '🧲', desc: 'Kar tanelerini çeker', durations: [8, 10, 12, 14, 17, 20], costs: [150, 400, 900, 1800, 3500] },
+  { id: 'magnet', name: 'Mıknatıs', icon: '🧲', desc: 'Kar tanelerini çeker', durations: [8, 10, 12, 14, 17, 20], costs: [100, 400, 900, 1800, 3500] },
   { id: 'x2', name: '2x Skor', icon: '✖️', desc: 'Skor iki katı', durations: [10, 12, 14, 17, 20, 24], costs: [200, 500, 1100, 2200, 4200] },
-  { id: 'jump', name: 'Süper Zıplama', icon: '🦘', desc: 'Dev zıplamalar', durations: [8, 10, 12, 14, 17, 20], costs: [150, 350, 800, 1600, 3200] },
+  { id: 'jump', name: 'Süper Zıplama', icon: '🦘', desc: 'Dev zıplamalar', durations: [8, 10, 12, 14, 17, 20], costs: [100, 350, 800, 1600, 3200] },
   { id: 'rocket', name: 'Roket', icon: '🚀', desc: 'Hız + her şeyi kır', durations: [3.5, 4.5, 5.5, 6.5, 7.5, 9], costs: [250, 600, 1300, 2600, 5000] },
 ];
 const UP_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
+// GÜÇ screen branches (PLAN_V3 8.2). These tiered upgrades share S.u / upgradeLevel / upgradeCost / buyUpgrade with UPGRADES.
+// Games read meta.upgradeLevel(id) (0..5) or meta.upgradeValue(id) = values[level]: topSize = tiers added at the start, topMelt = fraction of the melt
+// rate removed, topMagnet = metres added to an active magnet (same tables as runner/goals.js upStartSize / upMeltMul / upMagnet),
+// flakes = multiplier on run flakes, xp = multiplier on run XP (both applied here at run end), chest = chance per run of +1 chest (rolled here).
+export const GUC = [
+  { id: 'topSize', icon: '🌱', name: 'Başlangıç Boyu', desc: 'Daha büyük başla', values: [0, 0.15, 0.3, 0.45, 0.6, 0.75], costs: [120, 400, 900, 1800, 3500] },
+  { id: 'topMelt', icon: '🧊', name: 'Erime Direnci', desc: 'Kar daha yavaş erir', values: [0, 0.06, 0.12, 0.18, 0.24, 0.3], costs: [160, 500, 1100, 2200, 4200] },
+  { id: 'topMagnet', icon: '🧲', name: 'Mıknatıs Menzili', desc: 'Mıknatıs daha uzaktan çeker', values: [0, 0.35, 0.7, 1.05, 1.4, 1.75], costs: [160, 500, 1100, 2200, 4200] },
+  { id: 'flakes', icon: '❄️', name: 'Kar Çarpanı', desc: 'Koşu sonu daha çok kar tanesi', values: [1, 1.1, 1.2, 1.3, 1.4, 1.5], costs: [200, 600, 1300, 2600, 5000] },
+  { id: 'xp', icon: '⭐', name: 'XP Çarpanı', desc: 'Koşular daha çok XP verir', values: [1, 1.1, 1.2, 1.3, 1.4, 1.5], costs: [200, 600, 1300, 2600, 5000] },
+  { id: 'chest', icon: '🎁', name: 'Sandık Şansı', desc: 'Koşu sonunda sandık düşme şansı', values: [0, 0.05, 0.1, 0.15, 0.2, 0.25], costs: [240, 700, 1500, 3000, 5500] },
+];
+const GUC_BY_ID = Object.fromEntries(GUC.map((u) => [u.id, u]));
+export const POWER_BRANCHES = [
+  { id: 'ball', name: 'TOP', icon: '⚪', ids: ['topSize', 'topMelt', 'topMagnet'] },
+  { id: 'power', name: 'GÜÇLER', icon: '⚡', ids: UPGRADES.map((u) => u.id) },
+  { id: 'gain', name: 'KAZANÇLAR', icon: '💰', ids: ['flakes', 'xp', 'chest'] },
+];
 const UP_ALIAS = { superjump: 'jump', super_jump: 'jump', double: 'x2', '2x': 'x2', mult: 'x2', jetpack: 'rocket' };
-const upId = (k) => (UP_BY_ID[k] ? k : UP_ALIAS[k] || null);
+const upId = (k) => (UP_BY_ID[k] || GUC_BY_ID[k] ? k : UP_ALIAS[k] || null);
+const UPX = (k) => UP_BY_ID[k] || GUC_BY_ID[k];
 
 // Sled (kızak) = Subway "hoverboard": consumable one-hit shield, activated by double-tap during a run.
 export const SLED_PACK = { count: 3, price: 270 };
@@ -315,7 +365,7 @@ const MISSION_TPL = [
 ];
 const TPL_BY_ID = Object.fromEntries(MISSION_TPL.map((t) => [t.id, t]));
 // Runtime-only live counters for the current run (reconciled with the *_end payloads) + the notice queue (never saved).
-const RT = { turns: 0, stomps: 0, buffs: 0, doneRun: [], finished: null, notices: [], lastCigEnd: -1e9, lastStomp: -1e9 };
+const RT = { turns: 0, stomps: 0, buffs: 0, doneRun: [], finished: null, notices: [], lastCigEnd: -1e9, lastStomp: -1e9, bonus: { coins: 0, chest: 0, xp: 0 } };
 const MISSION_EVENTS = new Set();
 for (const t of MISSION_TPL) for (const ev of Object.keys(t.on)) MISSION_EVENTS.add(ev);
 
@@ -327,7 +377,8 @@ const STAT_KEYS = [
   'dailyRuns', 'flattened', 'boxesOpened', 'lettersFound', 'huntsDone', 'sledsUsed', 'upgrades', 'crystalsEarned', 'stomps',
   'buffCards', 'fevers', 'arenaRuns', 'arenaFeeds',
 ];
-const SET_KEYS = ['biomes', 'visual', 'skins', 'powers', 'trails'];
+const SET_KEYS = ['biomes', 'visual', 'skins', 'powers', 'trails', 'cards', 'chaps'];
+export const POSTCARDS = 18;   // one per Rush biome: meta.track('biome_seen', { id }) -> meta.cards()
 
 function fresh() {
   const st = {};
@@ -338,7 +389,8 @@ function fresh() {
     v: 1, born: 0, xp: 0, cr: 0, boxes: 0, sleds: 0,
     st, sets, a: {}, eggs: {}, hol: {}, sp: {}, po: { day: '', open: 0 },
     d: { last: '', streak: 0, pos: 0, total: 0 },
-    u: { magnet: 0, x2: 0, jump: 0, rocket: 0 },
+    u: { magnet: 0, x2: 0, jump: 0, rocket: 0, topSize: 0, topMelt: 0, topMagnet: 0, flakes: 0, xp: 0, chest: 0 },
+    lp: 1, sh: {}, shT: {}, ug: {}, // lp = highest player level whose level-up reward was claimed; sh = shards per KARAKTER; shT = towns that paid a shard; ug = unlocks kept from the run-count era
     m: { n: 0, mult: 1, cur: [], awarded: false, skipDay: '' },
     h: { day: '', found: new Array(WORD.length).fill(0), done: false, last: '', streak: 0 },
     g: { day: '', n: 0 },
@@ -372,7 +424,7 @@ function sanitize(p) {
     }
   }
   if (isObj(p.sp)) for (const k of Object.keys(p.sp)) if (k.length < 24 && p.sp[k]) s.sp[k] = nz(p.sp[k]) || 1;
-  if (isObj(p.po)) { s.po.day = typeof p.po.day === 'string' && /^d{4}-dd-dd$/.test(p.po.day) ? p.po.day : ''; s.po.open = p.po.open ? 1 : 0; }
+  if (isObj(p.po)) { s.po.day = typeof p.po.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.po.day) ? p.po.day : ''; s.po.open = p.po.open ? 1 : 0; }
   if (isObj(p.eggs)) for (const e of EGGS) if (p.eggs[e.id]) s.eggs[e.id] = num(p.eggs[e.id], 1) || 1;
   if (isObj(p.hol)) for (const k of Object.keys(p.hol)) if (p.hol[k] && /^\d{4}-[a-z0-9]+$/.test(k)) s.hol[k] = 1;
   if (isObj(p.d)) {
@@ -382,6 +434,12 @@ function sanitize(p) {
     s.d.total = Math.floor(nz(p.d.total));
   }
   if (isObj(p.u)) for (const k of Object.keys(s.u)) s.u[k] = Math.min(MAX_UP, Math.floor(nz(p.u[k])));
+  // level rewards: a save from before them starts "paid up" (no retro handout); shards / unlock migration
+  s.lp = Number.isFinite(p.lp) ? Math.max(1, Math.floor(p.lp)) : levelFor(s.xp);
+  if (isObj(p.sh)) for (const id of Object.keys(ABILITIES)) { const n = Math.min(999, Math.floor(nz(p.sh[id]))); if (n) s.sh[id] = n; }
+  if (isObj(p.shT)) for (const k of Object.keys(p.shT)) if (/^\d{1,3}$/.test(k) && p.shT[k]) s.shT[k] = 1;
+  if (isObj(p.ug)) { for (const k of Object.keys(UNLOCK_LV)) if (p.ug[k]) s.ug[k] = 1; }
+  else if (isObj(p.st)) for (const k of Object.keys(UNLOCK_LV)) if (isUnlocked(k === 'season' ? 'rails' : k, nz(p.st.runs))) s.ug[k] = 1; // run-count era: whatever the player already had stays open
   if (isObj(p.m)) {
     s.m.n = Math.floor(nz(p.m.n));
     s.m.mult = Math.min(MAX_MULT, Math.max(1, Math.floor(num(p.m.mult, 1))));
@@ -399,13 +457,13 @@ function sanitize(p) {
     s.g.n = Math.floor(nz(p.g.n));
   }
   if (isObj(p.fs)) {
-    if (isObj(p.fs.d)) for (const k of Object.keys(p.fs.d)) if (/^d{1,2}$/.test(k) && p.fs.d[k]) s.fs.d[k] = 1;
+    if (isObj(p.fs.d)) for (const k of Object.keys(p.fs.d)) if (/^\d{1,2}$/.test(k) && p.fs.d[k]) s.fs.d[k] = 1;
     if (Array.isArray(p.fs.p)) s.fs.p = p.fs.p.filter((x) => typeof x === 'string' && x.length < 80).slice(0, 8);
   } else if (s.st.runs >= 5) {
     for (const n of FS_RUNS) s.fs.d[n] = 1; // veteran save from before ILK ADIMLAR: no retro handout
   }
   if (isObj(p.ss)) {
-    s.ss.day = typeof p.ss.day === 'string' && /^d{4}-d{2}-d{2}$/.test(p.ss.day) ? p.ss.day : '';
+    s.ss.day = typeof p.ss.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.ss.day) ? p.ss.day : '';
     if (Array.isArray(p.ss.ids)) s.ss.ids = p.ss.ids.map((x) => Math.floor(num(x))).filter((x) => x >= 1 && x <= CAMPAIGN_SIZE).slice(0, 3);
     if (isObj(p.ss.got)) for (const k in p.ss.got) if (p.ss.got[k]) s.ss.got[k] = 1;
     s.ss.extra = Math.max(0, Math.min(999, Math.floor(nz(p.ss.extra))));
@@ -537,6 +595,45 @@ function addXp(n) {
   if (after > before && !quiet) { pushNotice({ kind: 'level', level: after }); fire('levelup', after, before); }
 }
 
+// ---- GÜÇ values, run-end bonuses, level rewards, KARAKTER shards ----
+const upVal = (id) => { const u = GUC_BY_ID[id]; return u ? u.values[Math.min(MAX_UP, S.u[id] | 0)] : 0; };
+const CHARS = Object.keys(ABILITIES);
+const SHARD_AT = [0, 3, 8, 15, 25]; // shards needed for KARAKTER level 1..5
+const charLv = (n) => { let l = 1; for (let i = 1; i < SHARD_AT.length; i++) if (n >= SHARD_AT[i]) l = i + 1; return l; };
+function giveShards(id, n) {
+  if (!ABILITIES[id] || !(n > 0)) return 0;
+  const before = charLv(S.sh[id] | 0);
+  S.sh[id] = Math.min(999, (S.sh[id] | 0) + Math.floor(n));
+  pushNotice({ kind: 'shard', id, n: Math.floor(n), level: charLv(S.sh[id]), up: charLv(S.sh[id]) > before });
+  return charLv(S.sh[id]);
+}
+const shardPick = () => { // prefer a character the player owns; else any
+  const own = CHARS.filter((id) => wallet().isOwned('skin', id));
+  const pool = own.length ? own : CHARS;
+  return pool[Math.floor(rand() * pool.length)];
+};
+// Level-up reward for reaching level L: the five gated systems open at UNLOCK_LV (the reward screen introduces them), other levels alternate
+// a character shard and ❄️; every 5th level adds a 💎.
+export function levelReward(L) {
+  const r = {};
+  const un = Object.keys(UNLOCK_LV).find((k) => UNLOCK_LV[k] === L);
+  if (un) { r.unlock = un; r.coins = 50; }
+  else if (L % 2 === 1) r.shard = { id: CHARS[L % CHARS.length], n: L > 20 ? 2 : 1 };
+  else r.coins = Math.min(400, 40 + L * 8);
+  if (L % 5 === 0) r.crystals = 1;
+  return r;
+}
+// Run XP goes through the XP multiplier (GÜÇ > KAZANÇ); every run end also rolls the flake bonus and the chest chance (RT.bonus, shown by the result screen).
+function runEnd(xp, d, isEndless) {
+  addXp(xp * upVal('xp'));
+  const b = { coins: 0, chest: 0, xp: Math.round(xp * upVal('xp')) };
+  const fm = upVal('flakes');
+  if (isEndless && fm > 1) { b.coins = Math.floor(nz(d.coins) * (fm - 1)); if (b.coins > 0) wallet().addCoins(b.coins); }
+  const ch = upVal('chest');
+  if (ch > 0 && rand() < ch) { S.boxes++; b.chest = 1; }
+  RT.bonus = b;
+}
+
 // =================================================================================================== achievements engine
 
 function ent(id) {
@@ -625,6 +722,8 @@ function pickMission(exclude) {
 }
 
 function genMissions() {
+  // first set ever: things a new player already does in run 1 (cards only appear from run 3, so never a card mission here)
+  if (S.m.n === 0 && !S.m.cur.length) return [{ id: 'jump', g: 5, v: 0, d: 0 }, { id: 'turn', g: 3, v: 0, d: 0 }, { id: 'stomp', g: 3, v: 0, d: 0 }];
   const prevIds = new Set(S.m.cur.map((m) => m.id));
   const groups = new Set();
   const out = [];
@@ -720,7 +819,7 @@ function huntReward(k) {
 
 function rollHunt(t = now()) {
   const H = S.h;
-  const today = dateKey(t);
+  const today = dateKey();
   // The word changed length (FREEMON → PATPAT): re-arm today's hunt with the right number of tiles.
   if (!Array.isArray(H.found) || H.found.length !== WORD.length) { H.found = new Array(WORD.length).fill(0); H.done = false; }
   if (H.day === today) return;
@@ -801,6 +900,7 @@ function rollBox() {
 
 function onRunStart(d) {
   RT.turns = 0; RT.stomps = 0; RT.buffs = 0; RT.doneRun.length = 0;
+  RT.bonus = { coins: 0, chest: 0, xp: 0 };
   resetRunMissions();
   rollMissions();
   // (after the roll: a set that was finished in an earlier run and only rolled now must not show up again on THIS run's result screen)
@@ -815,7 +915,7 @@ function onCigEndlessEnd(d) {
   const tons = nz(d.tons);
   st.totalTons += tons;
   pushRecent('c');
-  addXp(15 + nz(d.dist) / 25 + Math.sqrt(tons) * 0.9);
+  runEnd(15 + nz(d.dist) / 25 + Math.sqrt(tons) * 0.9, d, false);
 }
 
 function onEndlessEnd(d) {
@@ -829,7 +929,7 @@ function onEndlessEnd(d) {
   st.maxTier = Math.max(st.maxTier, nz(d.maxTier));
   if (d.cause === 'explode') st.explosions++;
   pushRecent('e');
-  addXp(10 + dist / 10 + nz(d.coins) * 0.5 + nz(d.maxTier) * 8);
+  runEnd(10 + dist / 10 + nz(d.coins) * 0.5 + nz(d.maxTier) * 8 + nz(d.chapterXp), d, true);
 }
 
 function onCigEnd(d) {
@@ -844,7 +944,10 @@ function onCigEnd(d) {
   const theme = typeof d.theme === 'string' ? d.theme : (!d.daily ? LEVEL_CYCLE[(Math.max(1, num(d.level, 1) | 0) - 1) % LEVEL_CYCLE.length] : '');
   if (theme === 'night' && reached) st.nightRuns++;
   pushRecent('c');
-  addXp(20 + nz(d.stars) * 30 + nz(d.pct) * 40 + Math.sqrt(tons) * 0.8);
+  runEnd(20 + nz(d.stars) * 30 + nz(d.pct) * 40 + Math.sqrt(tons) * 0.8, d, false);
+  // town conquest: the first conquest of each town pays one KARAKTER shard
+  const tl = Math.max(1, Math.floor(num(d.level, 1)));
+  if (reached && !d.daily && d.endless !== true && !S.shT[tl]) { S.shT[tl] = 1; giveShards(CHARS[(tl - 1) % CHARS.length], 1); }
 }
 
 // ---- SEZON AVI: season tokens + 15-tier reward track (own localStorage key; a season lasts 28 days from its first launch) ----
@@ -935,6 +1038,8 @@ function handle(ev, d, newly) {
     case 'powerup': st.powerups++; addSet('powers', d.kind); break;
     case 'close_call': st.closeCalls++; break;
     case 'perfect': st.perfects++; break;
+    case 'biome_seen': addSet('cards', d.id); break;
+    case 'chapter_seen': addSet('chaps', d.id); break;
     case 'portal': st.portals++; addSet('biomes', d.biome); break;
     case 'jump': st.jumps++; break;
     case 'skin_select': addSet('skins', d.id); break;
@@ -1018,10 +1123,11 @@ const POST_LINES = [
 
 export const meta = {
   // ---- lifecycle ----
+  today() { return dateKey(); }, // local day with the clock-change guard (wheel / any once-a-day reward)
   init(save) {
     sv = save || null;
     let parsed = null;
-    try { const raw = lsGet(); parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
+    try { const raw = lsGet(); parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; try { const raw = lsGet(); if (raw && globalThis.localStorage) globalThis.localStorage.setItem(KEY + '.corrupt', raw); } catch { /* keep a copy of the unreadable blob, never lose it silently */ } }
     S = sanitize(parsed);
     if (!S.born) S.born = now();
     quiet = true; // retro-unlocks from an existing save must not spam toasts
@@ -1074,6 +1180,35 @@ export const meta = {
   stamp(id) { try { return stampEarn(id); } catch { return false; } },
   onLevelUp(cb) { return meta.on('levelup', cb); },
 
+  // ---- player level rewards + level-gated unlocks (PLAN_V3 8.4) ----
+  // unlocked('map'|'cig'|'daily'|'arena'|'season'): player level >= UNLOCK_LV[id], or already owned from the run-count era. Any other id -> true.
+  unlocked(id) { return !UNLOCK_LV[id] || levelFor(S.xp) >= UNLOCK_LV[id] || !!S.ug[id]; },
+  unlockLevel(id) { return UNLOCK_LV[id] || 0; },
+  // level-ups not yet claimed on the reward screen: [{ level, reward }]; claimLevelUp() pays the first one and returns { level, coins?, crystals?, shard?, unlock? } (null if none)
+  pendingLevelUps() { const out = []; for (let L = S.lp + 1; L <= levelFor(S.xp) && out.length < 12; L++) out.push({ level: L, reward: levelReward(L) }); return out; },
+  claimLevelUp() {
+    const L = S.lp + 1;
+    if (L > levelFor(S.xp)) return null;
+    S.lp = L;
+    const rw = levelReward(L);
+    const out = grant({ coins: rw.coins, crystals: rw.crystals });
+    if (rw.shard) { giveShards(rw.shard.id, rw.shard.n); out.shard = rw.shard; }
+    if (rw.unlock) out.unlock = rw.unlock;
+    out.level = L;
+    persistNow();
+    return out;
+  },
+  // KARAKTER ball level 1..5 from shards (0 for a ball without a passive); the game scales the passive with it
+  charLevel(id) { return ABILITIES[id] ? charLv(S.sh[id] | 0) : 0; },
+  addShards(id, n) { const l = giveShards(id, num(n)); if (l) persistNow(); return l; },
+  shardInfo(id) {
+    if (!ABILITIES[id]) return null;
+    const n = S.sh[id] | 0, l = charLv(n), max = l >= SHARD_AT.length;
+    return { level: l, shards: n, from: SHARD_AT[l - 1], next: max ? SHARD_AT[l - 1] : SHARD_AT[l], max };
+  },
+  // last run's end bonuses { coins, chest, xp } (flake multiplier, chest drop, XP gained) for the result screen
+  runBonus() { return { ...RT.bonus }; },
+
   // ---- achievements ----
   progress(id) {
     const def = DEF_BY_ID[id];
@@ -1099,9 +1234,10 @@ export const meta = {
   // day: cycle day (1..7) on offer (when available) or last claimed (when not). reward: what that day pays.
   daily() {
     const t = now();
-    const today = dateKey(t);
+    const today = dateKey();
     const D = S.d;
-    const gap = D.last ? dayDiff(D.last, today) : null;
+    let gap = D.last ? dayDiff(D.last, today) : null;
+    if (gap !== null && gap < 0) { D.last = today; gap = 0; markDirty(); } // last claim "in the future" (clock was set forward, then fixed): count it as today, never lock the player out
     const claimedToday = gap === 0;
     const available = gap === null || gap > 0;
     let streak = D.streak;
@@ -1297,11 +1433,20 @@ export const meta = {
     return true;
   },
 
+  // ---- postcards: biomes the player has reached in a Rush run ----
+  cards() { const n = S.sets.cards.length; return { n, total: Math.max(POSTCARDS, n) }; },
+  cardSeen(id) { return S.sets.cards.includes(id); },
+  chapterSeen(id) { return S.sets.chaps.includes(id); },
+
   // ---- upgrades + sleds ----
   upgrades: UPGRADES,
+  guc: GUC,
+  branches: POWER_BRANCHES,
   upgradeLevel(kind) { const k = upId(kind); return k ? S.u[k] : 0; },
-  duration(kind) { const k = upId(kind); return k ? UP_BY_ID[k].durations[S.u[k]] : 0; },
-  upgradeCost(kind) { const k = upId(kind); return k && S.u[k] < MAX_UP ? UP_BY_ID[k].costs[S.u[k]] : null; },
+  duration(kind) { const k = upId(kind); return k && UP_BY_ID[k] ? UP_BY_ID[k].durations[S.u[k]] : 0; },
+  // what the game reads: UPGRADES id -> power-up duration in s; GUC id -> values[level] (start/melt/reach/chest fractions, flakes/xp multipliers). Unknown id -> 0
+  upgradeValue(kind) { const k = upId(kind); return !k ? 0 : UP_BY_ID[k] ? UP_BY_ID[k].durations[S.u[k]] : GUC_BY_ID[k].values[S.u[k]]; },
+  upgradeCost(kind) { const k = upId(kind); return k && S.u[k] < MAX_UP ? UPX(k).costs[S.u[k]] : null; },
   buyUpgrade(kind) {
     const k = upId(kind);
     const cost = meta.upgradeCost(kind);
@@ -1363,6 +1508,7 @@ export const meta = {
     const out = grant(spec);
     out.rare = rare;
     out.kind = spec.skin ? 'skin' : spec.trail ? 'trail' : spec.crystals ? 'crystals' : spec.sleds ? 'sleds' : 'coins';
+    if (rand() < 0.4) { const id = shardPick(); if (id) { giveShards(id, 1); out.shard = { id, n: 1 }; } } // chests also drop KARAKTER shards
     addXp(5);
     derive(null);
     persistNow();
@@ -1482,6 +1628,8 @@ export const meta = {
     if (lv.boss && firstClear && !C.chest[lv.act - 1]) {
       C.chest[lv.act - 1] = 1;
       chest = grant(ACT_CHEST[lv.act - 1]);
+      chest.shard = { id: CHARS[(lv.act - 1) % CHARS.length], n: 2 }; // act reward: 2 shards of that act's KARAKTER
+      giveShards(chest.shard.id, 2);
       parts.push(chest);
     }
     let perfect = false;

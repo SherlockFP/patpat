@@ -5,6 +5,19 @@ export const words = {
   // --- lobby / menus
   'KARTOPU ARENA': 'SNOWBALL ARENA',
   'KARTOPU': 'SNOWBALL',
+  '▶ OYNA': '▶ PLAY',
+  '🌐 ÇEVRİMİÇİ': '🌐 ONLINE',
+  'ÇEVRİMİÇİ': 'ONLINE',
+  'ÇEVRİMİÇİ OYUN': 'ONLINE PLAY',
+  'Çevrimiçi odalarda başka oyuncularla karşılaşırsın. İsimler filtrelenir, sohbet yalnızca hazır cümlelerle yapılır.': 'In online rooms you meet other players. Names are filtered and chat uses preset phrases only.',
+  'ANLADIM': 'GOT IT',
+  'Botlarla devam ediyorsun': 'Continuing against bots',
+  'ODA SAHİBİ AYRILDI': 'THE HOST LEFT',
+  'Oda kapandı. Botlarla devam edebilirsin.': 'The room closed. You can keep playing against bots.',
+  '🤖 BOTLARLA DEVAM': '🤖 CONTINUE VS BOTS',
+  '5 haneli kodu gir.': 'Enter the 5-character code.',
+  'RAKİBİNİ YUTTUN! +bonus': 'RIVAL EATEN! +bonus',
+  'SON 1 DAKİKA! Çember daralıyor': 'LAST MINUTE! The ring is closing in',
   '⚡ HIZLI OYNA': '⚡ QUICK PLAY',
   'HIZLI OYNA': 'QUICK PLAY',
   '🌐 AÇIK ODALAR': '🌐 OPEN ROOMS',
@@ -64,11 +77,23 @@ export const words = {
   'Oda kapandı': 'Room closed',
   'Oda açıldı - katılmak serbest!': 'Room is open. Anyone can join!',
   'Oda açıldı': 'Room is open',
-  'Mesaj yaz...': 'Type a message...',
   'Selam!': 'Hi!',
   'Kaç!': 'Run!',
   'Takım?': 'Team up?',
   'GG': 'GG',
+  'İyi oyun!': 'Good game!',
+  'Şans!': 'Good luck!',
+  'Vay be!': 'Wow!',
+  'Yardım!': 'Help!',
+  "4 dakikada ilk 3'e gir!": 'Reach the top 3 in 4 minutes!',
+  'SON 1 DAKİKA!': 'LAST MINUTE!',
+  'MAÇ BİTTİ!': 'MATCH OVER!',
+  'sıran': 'your rank',
+  'durum': 'status',
+  'ELENDİN': 'ELIMINATED',
+  'Süre dolmadan elendin.': 'You were eliminated before time ran out.',
+  'YENİ MAÇ': 'NEW MATCH',
+  "İlk 10'a girersen bonus kazanırsın.": 'Finish in the top 10 to earn a bonus.',
 
   // --- titles / power-ups / tiers
   'Çömez': 'Rookie', 'Kar Tanesi': 'Snowflake', 'Kartopu': 'Snowball', 'Dev Kartopu': 'Giant Snowball',
@@ -98,8 +123,8 @@ export const words = {
   'KORUMA': 'SHIELD',
   'İNTİKAM': 'REVENGE',
   'Zirvedesin!': "You're on top!",
-  'Sürükle: yön · HIZLAN: atıl · BÖL: ikiye bölün · küçükleri ye, büyüklerden kaç': 'Drag: steer · BOOST: dash · SPLIT: divide in two · eat the small, run from the big',
-  '❄ Buz dikeni büyükleri böler — arkasına saklan!': '❄ Ice spikes split big balls. Hide behind them!',
+  'Sürükle: yön · küçüğü ye, büyükten kaç': 'Drag: steer · eat the small, flee the big',
+  '❄ Buz dikeni büyükleri böler': '❄ Ice spikes split big balls',
   '⚠ ÇEMBERİN DIŞINDASIN! Kütle eriyor': '⚠ YOU ARE OUTSIDE THE RING! Mass is melting',
   'Küçükleri ye!': 'Eat the small ones!',
 
@@ -189,6 +214,7 @@ export const words = {
 
 // Replacement functions receive (match, ...groups).
 export const patterns = [
+  [/^Madalya bonusu: \+(\d+) ❄️$/, (m, n) => 'Medal bonus: +' + n + ' ❄️'],
   // kill feed / events (Turkish accusative suffixes handled by S)
   [new RegExp('^Sen ➜ (.+?)' + S + ' yuttun!$'), (m, n) => 'You ➜ swallowed ' + n + '!'],
   [new RegExp('^(.+), (.+?)' + S + ' yuttu!$'), (m, a, b) => a + ' swallowed ' + b + '!'],
@@ -215,7 +241,6 @@ export const patterns = [
   [/^Sv (\d+)$/, (m, n) => 'Lv ' + n],
   [/^🔼 (.+) boyutu!(?: (.+))?$/, (m, n, h) => '🔼 ' + n + ' size!' + (h ? ' ' + h : '')],
   [/^(.+) boyutu!(?: (.+))?$/, (m, n, h) => n + ' size!' + (h ? ' ' + h : '')],
-  [/^(.+): (.+)$/, (m, n, q) => { const Q = words[q]; return Q ? n + ': ' + Q : m; }], // bot trash-talk in the feed
   // fort / avalanche labels (canvas + DOM)
   [/^(.+?)'n?[iıuü]n KALESİ$/, (m, n) => n + "'s FORT"],
   [/^ÇIĞ GELİYOR! (\d+)$/, (m, n) => 'AVALANCHE INCOMING! ' + n],
@@ -242,4 +267,7 @@ export const patterns = [
   [/^En iyi sıran #(\d+) — bir üstüne çık!$/, (m, r) => 'Your best rank #' + r + ' — climb one higher!'],
   [/^(.+)Oda (\S+) · (\d+)\/(\d+) oyuncu$/, (m, i, c, a, b) => i + 'Room ' + c + ' · ' + a + '/' + b + ' players'],
   [/^🤖 Botlarla$/, () => '🤖 With bots'],
+  [/^RAKİP: (.+)$/, (m, n) => 'RIVAL: ' + n],
+  // must stay LAST: it matches any 'x: y' line, so a specific pattern placed after it (lobby subtitle, 'Kod: ..') is shadowed and stays Turkish
+  [/^(.+): (.+)$/, (m, n, q) => { const Q = words[q]; return Q ? n + ': ' + Q : m; }], // bot trash-talk in the feed
 ];

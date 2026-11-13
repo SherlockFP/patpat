@@ -12,11 +12,9 @@ export const chainBonus = (c) => (c >= 8 ? 3 : c >= 5 ? 2 : c >= 3 ? 1 : 0);
 /** Yeti closeness → bonus: +1 while a stumble window is open (the Yeti is right behind you), else 0 */
 export const dangerBonus = (stumbling) => (stumbling ? 1 : 0);
 
-/** Coins for crossing checkpoint number n (1 = first layer boundary). */
-export const checkpointReward = (n, per = 25) => per * Math.min(Math.max(1, n), 8);
+/** Coins for crossing checkpoint number n (1 = first layer boundary); a CLEAN layer (no crash since the last checkpoint) pays double. */
+export const checkpointReward = (n, per = 25, clean = false) => per * Math.min(Math.max(1, n), 8) * (clean ? 2 : 1);
 
-/** Seconds-between-boulders scale for the Yeti rage: 1 at the first one, faster every layer, floor 0.7. */
-export const rageScale = (layer) => Math.max(0.7, Math.pow(0.93, Math.max(0, layer - 1)));
 
 /**
  * Hunger: how fast the ball melts, in size tiers per second.
@@ -100,3 +98,143 @@ export function gustAt(s, lead = 0) {
   }
   return null;
 }
+
+// ---------- score read-out (death screen) ----------
+
+/** Round scores a player chases once the record is theirs (a new best has no "points left"). */
+export const SCORE_STEPS = [500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
+
+/** The ONE next goal on the death screen: below the record = { k: 'rec', val: points that beat it }, else { k: 'next', val: the next round score }. */
+export function nextGoal(score, best) {
+  if (best > 0 && score <= best) return { k: 'rec', val: best - score + 1 };
+  for (let i = 0; i < SCORE_STEPS.length; i++) if (SCORE_STEPS[i] > score) return { k: 'next', val: SCORE_STEPS[i] };
+  return { k: 'next', val: (Math.floor(score / 1e6) + 1) * 1e6 };
+}
+
+// ---------- Yeti on screen / score record (pure) ----------
+
+/** Scale (0.25..1) that keeps the Yeti at most ~`frac` of the view height: d3 = distance camera -> Yeti (m), fovDeg = vertical fov, H = its full height (m). */
+export const yetiFit = (d3, fovDeg, H, frac = 0.2) => Math.min(1, Math.max(0.25, (2 * frac * d3 * Math.tan(fovDeg * Math.PI / 360)) / H));
+
+/** How far (0..1) the Yeti slides to the far side of the track: full when it is within 4.5 m of the camera, none from 9.5 m. */
+export const yetiSide = (dCam) => Math.min(1, Math.max(0, (9.5 - dCam) / 5));
+
+/** "To the record" in METRES from a SCORE record: the points left, turned into metres at this run's own points-per-metre. 0 = unknown (too early). */
+export const recordEqDist = (s, score, bestScore) => (s >= 50 && score > 0 ? s + (bestScore - score) * s / score : 0);
+
+// ---------- goal chain (endless): always one visible goal ----------
+
+/** ÇIĞ-only mission ids: they cannot advance in Rush (backs up rows without `modes`). */
+const CIG_ONLY = { cigtier: 1, cigtons: 1, cigdist: 1, swallow: 1, stars: 1, destroy: 1 };
+/** The open mission closest to done in `rows` (meta.missions(): { text, value, goal, done }): highest value / goal, a tie keeps the first. null when none is open. Allocates nothing. */
+export function pickMission(rows) {
+  let best = null, bf = -1;
+  if (!rows) return null;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.done || r.modes === 'cig' || CIG_ONLY[r.id] || !(r.goal > 0)) continue;
+    const f = r.value / r.goal;
+    if (f > bf) { bf = f; best = r; }
+  }
+  return best;
+}
+export const missionFrac = (r) => (r && r.goal > 0 ? Math.min(1, Math.max(0, r.value / r.goal)) : 0);
+/** How many missions of the set are still open. */
+export function missionsLeft(rows) {
+  let n = 0;
+  if (rows) for (let i = 0; i < rows.length; i++) if (rows[i] && !rows[i].done) n++;
+  return n;
+}
+/** What finishing the set pays: the permanent multiplier +1 (30 is meta's ceiling). */
+export const nextMult = (m) => Math.min(30, Math.max(1, Math.round(m) || 1) + 1);
+/** Run-start line (shown ~2 s): "GÖREV: 3 yaratık ez (1/3) · ÇARPAN x4". `tr` translates the parts, so the line is built in the player's language. */
+export const missionLine = (r, mult, tr = (s) => s) => `${tr('GÖREV:')} ${tr(r.text)} (${r.value}/${r.goal})${mult > 0 ? ` · ${tr('ÇARPAN')} x${mult}` : ''}`;
+/** Postcard moment: "KARTPOSTAL: Volkan 5/14". */
+export const postcardLine = (name, n, total, tr = (s) => s) => `${tr('KARTPOSTAL:')} ${tr(name)} ${n}/${total}`;
+/** Which ONE goal the death screen names: the record gap when it is within reach (>= 75% of it) or when no mission is open, else the closest mission, else the next round score. */
+export function deathGoalKind(ng, score, best, row) {
+  if (ng.k === 'rec' && (!row || score >= best * 0.75)) return 'rec';
+  return row ? 'mission' : ng.k;
+}
+
+// ---------- YETİ RUSH chapters (PLAN_V3 §9) ----------
+// A run is a chain of named chapters (~500-700 m) with one signature rule each. The plan is a pure function of (seed, best distance):
+// the track generator, the obstacle spawner and the runner all ask chapterAt(s) and always agree. Rule fields are read by track.js
+// (set: forced set piece, plain: only plain pieces, gap: gap-piece chance, slalom) and obstacles.js (dens, pat / own: row-pattern weights,
+// fog / wind: chance on plain pieces, pads: jump-pad chance, slide: ice strips, bonus: coin rain with no rows); runner.js (spd, pin, duel, lights).
+// Replaced by a chapter of existing pieces (a whole new system each): "Gece Koşusu" (no night grade) -> YAY TARLASI, "Kızak" (rideable sled) -> BUZ KAYDIRAĞI.
+export const CHAPTERS = [
+  { id: 'yamac', name: 'YAMAÇ', unlock: 0, intro: 'Zıpla, eğil, şerit değiştir.' },
+  { id: 'orman', name: 'ORMAN SLALOMU', unlock: 0, intro: 'Ağaç kapılarından sağa sola kay.', slalom: 1, gates: 0.95, pat: { phrase: 2.2, single: 1.2, _: 0.6 } },
+  { id: 'tunel', name: 'BUZ TÜNELİ', unlock: 600, intro: 'Tünelde duvarlara tırman, sarkıtlardan eğil.', set: 'tube', plain: 1 },
+  { id: 'ray', name: 'RAY HATTI', unlock: 1200, intro: 'Raylara bin, raydan raya atla.', pat: { rail: 8, _: 0.4 }, own: ['rail'], gap: 0.3 },
+  { id: 'cig', name: 'ÇIĞ KAÇIŞI', unlock: 1800, intro: 'Çığ arkanda: durma, engel az.', plain: 1, dens: 0.55, spd: 1.1, pin: 6.5 },
+  { id: 'duello', name: 'YETİ DÜELLOSU', unlock: 2400, intro: 'Yeti kaya atıyor: 3 kıl payı onu sersemletir.', plain: 1, dens: 0.6, duel: 1, len: 680 },
+  { id: 'damar', name: 'ALTIN DAMAR', unlock: 0, intro: 'Engel yok: kar tanesi yağıyor!', plain: 1, bonus: 1 },
+  { id: 'sis', name: 'SİS VADİSİ', unlock: 3000, intro: 'Görüş kısa: kenardaki ışıkları izle.', plain: 1, fog: 0.9, lights: 1 },
+  { id: 'rampa', name: 'KAYAK RAMPALARI', unlock: 3600, intro: 'Art arda rampalar: havada kal, bonus kap.', set: 'skiJump', plain: 1 },
+  { id: 'ruzgar', name: 'TERS RÜZGÂR', unlock: 4200, intro: 'Rüzgâr seni yana iter: şeridini tut.', plain: 1, wind: 0.9 },
+  { id: 'yay', name: 'YAY TARLASI', unlock: 5000, intro: 'Yaylara bas, havadaki kar tanelerini topla.', plain: 1, pads: 0.9 },
+  { id: 'kaydirak', name: 'BUZ KAYDIRAĞI', unlock: 6000, intro: 'Buzda hızlan: dönüşler genişler.', plain: 1, dens: 0.7, slide: 1 },
+];
+export const CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
+export const CHAPTER_FIXED = ['yamac', 'orman', 'tunel', 'ray', 'cig', 'duello'];
+export const BONUS_EVERY = 4;       // an ALTIN DAMAR interlude after every 4th chapter (it is not numbered)
+export const BONUS_SECS = 10;
+const ch1 = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7 + 7.7) * 43758.5453; return x - Math.floor(x); };
+
+/**
+ * The chapter plan of one run. at(s) returns a shared segment { n, id, def, s0, s1, bonus, i } (n = chapter number, the bonus interlude keeps the number of the
+ * chapter before it), extending the plan lazily; nothing is allocated per call once the segment exists. speedFn(s) sizes the 10 s bonus.
+ * Types unlock by the best distance (or the distance the run has reached: a chapter that starts at s can use every type unlocked <= max(best, s)).
+ */
+export class ChapterPlan {
+  constructor(seed = 1, best = 0, speedFn = () => 20) { this.seed = seed >>> 0; this.best = Math.max(0, +best || 0); this.speedFn = speedFn; this.segs = []; this._c = 0; this._n = 0; this._i = 0; }
+
+  _pick(n, s0, prevId) {
+    if (n <= CHAPTER_FIXED.length) return CHAPTER_FIXED[n - 1];
+    const lim = Math.max(this.best, s0), pool = CHAPTERS.filter((c) => !c.bonus && c.id !== 'yamac' && c.id !== prevId && c.unlock <= lim);
+    return pool[Math.floor(ch1(this.seed % 9973, n) * pool.length) % pool.length].id;
+  }
+
+  _grow() {
+    const last = this.segs[this.segs.length - 1], s0 = last ? last.s1 : 0;
+    let seg;
+    if (last && !last.bonus && last.n % BONUS_EVERY === 0) {
+      seg = { n: last.n, id: 'damar', def: CHAPTER_BY_ID.damar, s0, s1: s0 + Math.round(BONUS_SECS * this.speedFn(s0 + 60)), bonus: true, i: this.segs.length };
+    } else {
+      const n = last ? last.n + 1 : 1, prev = last ? this.segs[this.segs.length - (last.bonus ? 2 : 1)] : null;
+      const id = this._pick(n, s0, prev ? prev.id : ''), def = CHAPTER_BY_ID[id];
+      const len = def.len || (n <= 2 ? 600 : 500 + Math.floor(ch1(this.seed % 7919, n + 50) * 200));
+      seg = { n, id, def, s0, s1: s0 + len, bonus: false, i: this.segs.length };
+    }
+    this.segs.push(seg);
+  }
+
+  at(s) {
+    const S = this.segs;
+    if (!S.length) this._grow();
+    while (S[S.length - 1].s1 <= s) this._grow();
+    let i = Math.min(this._i, S.length - 1);
+    while (i > 0 && S[i].s0 > s) i--;
+    while (S[i].s1 <= s) i++;
+    this._i = i;
+    return S[i];
+  }
+}
+
+/** Chapter-end pay: coins and XP grow with the chapter number (capped); a clean chapter (no crash) pays double. */
+export const chapterReward = (n, clean) => { const k = clean ? 2 : 1, m = Math.min(8, Math.max(1, n | 0)); return { coins: 30 * m * k, xp: (12 + 4 * m) * k }; };
+
+/** "BÖLÜM 3 · BUZ TÜNELİ" (the en_menus catch-all ^BÖLÜM (\d+) would turn it into "LEVEL 3 · BUZ TÜNELİ": the word is picked here, the name goes through `tr`). */
+export const chapterLine = (n, name, tr = (s) => s, en = false) => `${en ? 'CHAPTER' : 'BÖLÜM'} ${n} · ${tr(name)}`;
+
+// ---------- permanent upgrade hooks (PLAN_V3 §8.2): small, and the score share they add is capped ----------
+export const UP_SCORE_CAP = 0.25;                 // upgrades add at most 25% to the score multiplier
+export const upStartSize = (lv) => 0.15 * Math.min(5, Math.max(0, lv | 0));        // tiers added at the start (0..0.75)
+export const upMeltMul = (lv) => 1 - 0.06 * Math.min(5, Math.max(0, lv | 0));      // melt rate x (1 .. 0.7)
+export const upMagnet = (lv) => 0.35 * Math.min(5, Math.max(0, lv | 0));           // metres added to an active magnet's radius
+/** The multiplier with its upgrade part limited: never more than (1 + cap) x what the same play earns without any upgrade. */
+export const capUpgradeMult = (full, base, cap = UP_SCORE_CAP) => Math.min(full, base * (1 + cap));
+/** Character level 1..5 (passive strength steps 0..4). */
+export const charStep = (lv) => Math.min(4, Math.max(0, (lv | 0) - 1));

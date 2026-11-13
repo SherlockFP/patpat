@@ -1,7 +1,7 @@
 {
   "name": "patpat",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -15,7 +15,11 @@
     "check:audio": "node scripts/check-audio.mjs",
     "check:ui": "node scripts/check-ui-math.mjs",
     "check:feel": "node scripts/check-feel.mjs && node scripts/check-feel-sim.mjs",
-    "check": "npm run check:camera && npm run check:visuals && npm run check:audio && npm run check:ui && npm run check:feel"
+    "check:levels": "node -e \"const f='scripts/check-levels.mjs';if(require('fs').existsSync(f))require('child_process').execFileSync('node',[f],{stdio:'inherit'})\"",
+    "check:arena": "node -e \"const f='scripts/check-arena.mjs';if(require('fs').existsSync(f))require('child_process').execFileSync('node',[f],{stdio:'inherit'})\"",
+    "check:economy": "node -e \"const f='scripts/check-economy.mjs';if(require('fs').existsSync(f))require('child_process').execFileSync('node',[f],{stdio:'inherit'})\"",
+    "test:e2e": "node scripts/smoke-e2e.mjs",
+    "check": "npm run check:camera && npm run check:visuals && npm run check:audio && npm run check:ui && npm run check:feel && npm run check:levels && npm run check:arena && npm run check:economy"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",

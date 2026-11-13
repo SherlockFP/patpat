@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { t, getLang } from '../i18n.js';
 const UP = (s) => { const x = t(s); return x.toLocaleUpperCase(getLang() === 'en' ? 'en-US' : 'tr-TR'); };
+const NUM = (n) => Math.round(n).toLocaleString(getLang() === 'en' ? 'en-US' : 'tr-TR');
 import { Track, flightDist, LANES, setLanes } from './track.js';
 import { Obstacles } from './obstacles.js';
 import { ABILITIES, SKINS } from '../skins.js';
@@ -10,7 +11,8 @@ import { BuffSet, BUFFS, rollBuff, BUFF_LEN, DESTRUCTION, destructionTier, RUN_P
 import { music } from './music.js';
 import { RhythmLane } from './rhythm.js';
 import { patchMaterial } from '../shaders.js';
-import { gustAt, scoreMult, chainBonus, dangerBonus, checkpointReward, rageScale, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep } from './goals.js';
+import { gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionLine, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
+import { starProgress } from '../campaign.js';
 
 // YETİ RUSH — endless Temple-Run-style downhill run (RUNNER.md).
 // Core loop: the ball's SIZE is its health AND its hunger. It melts all the time; snow piles refill it, so you steer for
@@ -92,10 +94,6 @@ export const RCFG = {
   cpCoins: 25,           // checkpoint (every layerLen) pays this × layer (layer capped at 8)
   recNear: 300,          // metres out: the goal strip switches to "REKORA n m"
   recCoins: 50,          // one-off payout for passing your record distance
-  rageLen: 130,          // "YETİ ÖFKESİ": the Yeti throws boulders over the last N m of a layer (from layer 2 on) ...
-  rageSecs: 7,           // ... or the last N seconds of running, whichever is longer (so fast runs still get 2+ boulders)
-  rageEvery: [14.0, 18.0], // seconds between boulders (× 0.93 per layer, floor 0.7)
-  rageBack: 4,           // the Yeti drops back this far when you survive a barrage
   multCap: 6,            // + layer, at most 12
   closeCall: 4,
 };
@@ -120,6 +118,7 @@ const KILL_NAME = {
   boulder: 'KAYA TOPU', missile: 'FÜZE',
 };
 const FLOAT_PRI = { '': 1, big: 2, bad: 3 };
+const TEACH_MSG = new Set(['DÖN!', 'KAYDIR!', 'ERİYORSUN!']);   // the only floats of the first two runs: they teach a control / the melt
 // Skill callout (see skillTag): colour by heat, one reused element, one reused animation.
 const TAG_COL = ['#e4f4ff', '#ffe066', '#ffa23a', '#ff6ad5'];
 const TAG_KF = [
@@ -147,6 +146,7 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const _tp = new THREE.Vector3();
 const _yp = new THREE.Vector3();
 const _goal = { mode: 'cp', val: 0, frac: 0 };
+const _lst = {};   // live campaign stats scratch (starProgress)
 const _bi = { biome: null, index: 0, t: 0, next: null };   // biomeAt() scratch: read it right away, never keep it
 const RAGE_SKIP = new Set(['zipline', 'rail', 'loop', 'corkscrew']); // sections where the Yeti keeps its boulders
 const GLOW_KINDS = new Set(['star', 'x2', 'superjump', 'crystal', 'timewarp', 'ghost', 'risk', 'clone', 'helmet', 'magnet', 'rocket', 'cannon']);
@@ -173,6 +173,19 @@ function storeDaily(dl, dist, score) {
   try { localStorage.setItem('patpat.dailyRush', JSON.stringify(r)); } catch (e) { /* ignore */ }
   return r;
 }
+/**
+ * HYPER-CASUAL FIRST MINUTE: how many Rush runs this player started BEFORE this one (own counter; a save with a record counts as a veteran).
+ * Runs 1-2 (depth < DEPTH_FULL) start instantly: no perk pick, no weekly mutator, no card gates. From the 3rd run every system is on.
+ */
+const RUNS_KEY = 'patpat.rushRuns', DEPTH_FULL = 2;
+export function rushDepth(save, bump) {
+  let n;
+  try { n = +localStorage.getItem(RUNS_KEY) || 0; if (bump) localStorage.setItem(RUNS_KEY, String(n + 1)); } catch (e) { n = DEPTH_FULL; }   // no storage: never hide the systems
+  if ((save?.runnerBestDist?.() ?? 0) > 0) n = Math.max(n, DEPTH_FULL);
+  return n;
+}
+export const depthFull = (d) => d >= DEPTH_FULL;
+
 /** HAFTANIN MUTATÖRÜ: one per ISO week (seeded from year+week), normal Rush runs only. Static table = no per-frame allocation. */
 export const MUTATORS = [
   { id: 'ters', name: 'Ters Dünya', icon: '⇄', score: 1, desc: 'Sağ-sol yer değiştirdi' },
@@ -229,15 +242,19 @@ export class Runner {
     if (level) seed = level.seed >>> 0;
     this.seed = seed;
     this.tut = !level && !this.ctx.noTut && !(save.runnerTutDone?.() ?? true);
-    // HAFTALIK MUTATÖR: normal Rush only (not daily / campaign / tutorial)
-    this.week = (!level && !dly && !this.tut) ? weekInfo() : null;
+    this.depth = level ? DEPTH_FULL : rushDepth(save, true);
+    // HAFTALIK MUTATÖR: normal Rush only (not daily / campaign / tutorial), not in the first runs
+    this.week = (!level && !dly && !this.tut && depthFull(this.depth)) ? weekInfo() : null;
     this.mut = this.week ? this.week.mut : null;
     this.mutSpd = this.mut?.speed || 1; this.mutScore = this.mut?.score || 1; this.mutCoin = this.mut?.coin || 1;
     this.mutInv = this.mut?.id === 'ters'; this.mutFog = this.mut?.fog || 0; this.mutMag = !!this.mut?.magnet;
     this.mutYMax = this.mut?.yetiMax || RCFG.yetiMax;
     Biomes.setBiomeOverride?.(level ? level.biome : null);
+    // RUSH BÖLÜMLERİ (goals.js CHAPTERS): a pure plan of (seed, best distance); the track and the obstacles read it through track.chapterAt. A daily uses best 0 so everyone gets the same chapters.
+    const chp = this.chapters = !level && !this.tut ? opts.chapterPlan || new ChapterPlan(seed, dly ? 0 : (save.runnerBestDist?.() ?? 0), speedAt) : null;       // (opts.chapterPlan: a hand-made plan for tests)
     this.track = new Track(scene, {
       seed,
+      chapterAt: chp ? (s) => chp.at(s) : null,
       palette: trackPalette,
       speedAt,
       bpmAt,
@@ -271,12 +288,16 @@ export class Runner {
     // ---- size / hunger ----
     this.tier = level ? Math.max(0, Math.min(4, level.startTier ?? 1)) : (this.mut?.tier || 2);
     this.grow = level ? 0 : 0.5;            // progress to the next tier (0..1)
+    // permanent upgrades (meta, GÜÇ / TOP branch; 0 when meta cannot say): start size, melt resistance, magnet range
+    this.upSize = this.upLv('topSize'); this.upMelt = this.upLv('topMelt'); this.upMag = this.upLv('topMagnet');
+    { const t0 = this.tier, add = upStartSize(this.upSize); if (add > 0) { const tot = Math.min(TIERS - 1.001, this.tier + this.grow + add); this.tier = Math.floor(tot); this.grow = tot - this.tier; } this.upTier = this.tier - t0; }
     const b = (this.b = { s: 16, u: 0, h: 0, r: RCFG.tierR[this.tier], vs: RCFG.startSpeed * 0.6, vu: 0, ve: 0, vh: 0, size: 2 });
     this.buffs.reset();
     b.r = this.radiusNow();
     b.size = this.sizeNow();
     this.rShown = b.r;
     this.meltK = level ? (level.id < 6 ? 0 : 0.35 + 0.25 * Math.min(1, (level.id - 6) / 40)) : 1;   // campaign: none before level 6, then gentle
+    this.meltK *= upMeltMul(this.upMelt);
     this.meltGraceT = 0;
     this.meltWarnT = 0;
     this.hungerWarn = false;
@@ -320,6 +341,7 @@ export class Runner {
     this.minGap = Infinity;
     this.closeArmed = false;
     this.roarT = 4;
+    this.pulseCd = rand(11, 15); this.pulseT = 0;      // YETİ SOLUĞU: the first glimpse of the chaser ~15 s in
 
     // ---- score / bookkeeping ----
     this.score = 0;
@@ -361,9 +383,9 @@ export class Runner {
     // endless Rush: nothing kills in one touch (only gaps and the Yeti); campaign keeps its level gates
     this.lethalOn = level ? { base: RCFG.lethal && lid >= 16, car: RCFG.lethal && lid >= 30, wall: RCFG.lethal && lid >= 60 } : { base: false, car: false, wall: false };
     this.state = 'play';
-    this.countT = opts.retry ? 0.7 : 2;       // a retry is "just go": a short silent count-in (was 1 s)
+    this.countT = opts.retry ? 0.4 : 0.9;     // play within 0.9 s of opening, a retry within 0.4 s (silent): the world waits, no 3-2-1
     this.countQuiet = !!opts.retry;
-    this.layer = 0;
+    this.layer = 0; this.layerCrash0 = 0;
     this.speedTier = 0;
     this.flow = 0;
     this.flowLvl = 0;
@@ -374,6 +396,8 @@ export class Runner {
     this.bestScore = save.runnerBest?.() ?? 0;
     this.passedDist = this.bestDist < 50;
     this.passedScore = this.bestScore < 100;
+    let nRuns = 0; try { nRuns = this.ctx.meta?.stats?.().runs || 0; } catch (e) { nRuns = 0; }
+    this.quietRun = nRuns < 2;      // the first two runs: no jargon, no scoring toasts; only what teaches a control (TEACH_MSG)
     this.baseHard = level ? level.hardness : 1;
     this.hardS = -1e9;
     this.perm = save.perm?.() ?? {};
@@ -399,7 +423,9 @@ export class Runner {
     this.rampT = 0;
     this.cannonN = 0; this.cannonCd = 0; this.cannonT = 0; this.slideT = 0; this.slideMsgT = 0; this.tunnelMsgT = 0;
     this.fogK = 0;
-    this.fogTarget = this.wxT > 0 ? (this.wxT -= dt, this.wxFog) : 0;
+    this.fogTarget = 0;
+    this.lmNext = undefined; this.lmLabel = null; this.lmPassed = false;   // 500 m landmark gate: a longer previous run left lmNext far ahead, so a new run never saw its early gates
+    this._nmAt = -9; this.ringChain = 0; this.slalom = null; this.deathZoom = 0;
 
     // ---- buff cards ----
     this.buffT = level ? Infinity : rand(RCFG.buffFirst[0], RCFG.buffFirst[1]);   // campaign levels have no auto cards
@@ -436,8 +462,6 @@ export class Runner {
     this.bannerQ = [];        // queued banners [text, level, hold, ...]
     this.bannerT = 0;
     this.later = [];          // delayed callbacks that follow game time (and die with the run)
-    this.rage = null;         // "YETİ ÖFKESİ" mini-boss { s0, B, t, n, crashes0 }
-    this.rageCount = 0;
     this.zone = null; this._rainDone = false;      // staged rule change { kind, from, until, name, announced }
     this.inZone = null;
     this.warned = null;
@@ -487,9 +511,11 @@ export class Runner {
     this.markedSize = this.sizeNow();
     // KARAKTER ability (endless Rush only)
     { let id = null; try { id = this.level ? null : this.ctx.save.selected?.('skin'); } catch (e) { id = null; }
-      this.abil = ABILITIES[id] ? id : null; this.simitUsed = false; this.gapBonus = 0; this._gemNext = 0;
-      if (this.abil === 'nazar') { this.gapBonus = 3; this.gap += 3; }
-      if (this.abil === 'penguen') this.penN = 1;
+      this.abil = ABILITIES[id] ? id : null; this.simitUsed = false; this.simitN = 0; this.gapBonus = 0; this._gemNext = 0;
+      let cl = 1; try { cl = this.ctx.meta?.charLevel?.(id) ?? 1; } catch (e) { cl = 1; }       // KARAKTER level 1..5 strengthens the passive (step 0..4)
+      this.cs = this.abil ? charStep(cl) : 0; this.simitMax = 1 + (this.cs >= 3 ? 1 : 0);
+      if (this.abil === 'nazar') { this.gapBonus = 3 + this.cs; this.gap += 3 + this.cs; }
+      if (this.abil === 'penguen') this.penN = 1 + (this.cs >> 1);
       if (this.abil) this.charIntro(id); }
     this.initRunPerk(opts);
     this.mutChip();
@@ -522,12 +548,17 @@ export class Runner {
     ui.stompCombo?.(0);
     ui.hunger?.(this.hungerFrac(), false);
     if (level) ui.runnerGoal?.(null); // campaign has its own finish-line progress bar
-    if (!this.countQuiet) ui.banner(String(Math.ceil(this.countT)), 3);
+    this.hintOn = false;
     if (this.tut || level === 1) {
-      // the very first run: one quiet line until the first swipe (or 8 s), never a popup
+      // the very first run: one quiet line until the first swipe (or 5 s), never a popup; tips wait while it is up
       ui.hint?.(true, '← → şerit · ↑ zıpla · ↓ eğil');
-      this.after(5, () => { if (!this.jnOpen) ui.hint?.(false); });
+      this.hintOn = true;
+      this.after(5, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); });
     }
+    this._pcId = null; this._mrow = null; this._msT = 0; this._recV = -1; this._starK = -1;
+    this.chapterInit();
+    this.starPips = this.starPips || [1, 1, 1];
+    if (!level && !this.hintOn) this.goalIntro();
     this.updateHud();
     this.placeBall(true);
   }
@@ -536,18 +567,21 @@ export class Runner {
   // RCFG.multCap); permanent progression (mission sets, upgrades) sits on top of the cap. No more compounding.
   get mult() {
     if (!this.buffs) return 1;
-    return this.mutScore * this._mult0();
+    const full = this._mult0(false);
+    // what upgrades add to the multiplier (start size, Yeti Kaçağı, longer 2x) is capped at 25% of the same play without them (goals.js UP_SCORE_CAP)
+    return this.mutScore * (this.upOn || this.x2Up > 0 ? capUpgradeMult(full, this._mult0(true)) : full);
   }
 
-  _mult0() {
+  _mult0(noUp) {
     // Combo is earned: flow (skill events only) adds +0.5 per point (x10 / x25 / x50 at 18 / 48 / 98); size counts for at most +2.
     // Rebalanced: the skill combo (flow) saturates at x5 with diminishing returns; size / chain / danger / power-ups add at most
     // +2.5 together, permanent progression at most +1.5, ÖFKE +1. Everything ADDS, nothing multiplies: hard ceiling ~x10.
     const comboM = 1 + 4 * (1 - Math.exp(-this.flow / 12));
-    const extras = Math.min(2.5, Math.min(2, this.tier) * 0.5 + 0.1 * (this.penN || 0) + this.chainBonus() * 0.5 + this.dangerBonus() * 0.5 + this.riskBonus() * 0.5);
-    const keep = Math.min(1.5, 0.1 * ((this.ctx.meta?.multiplier?.() ?? 1) - 1) + 0.15 * Math.min(5, this.perm.speed || 0));
+    const extras = Math.min(2.5, Math.min(2, noUp ? Math.max(0, this.tier - this.upTier) : this.tier) * 0.5 + 0.1 * (this.penN || 0) + this.chainBonus() * 0.5 + this.dangerBonus() * 0.5 + this.riskBonus(noUp) * 0.5);
+    const keep = Math.min(1.5, 0.1 * ((this.ctx.meta?.multiplier?.() ?? 1) - 1) + (noUp ? 0 : 0.15 * Math.min(5, this.perm.speed || 0)));
     // (FLOW STATE gives the same +1 as ÖFKE and the two never stack: the ceiling stays ~x10)
-    return Math.round((comboM + extras + keep + (this.furyT > 0 || this.flowSt > 0 ? 1 : 0)) * 10) / 10;
+    // (YETİ KOŞUSU gives +2 instead of that +1, never on top of it)
+    return Math.round((comboM + extras + keep + (this.pulseT > 0 ? 2 : this.furyT > 0 || this.flowSt > 0 ? 1 : 0)) * 10) / 10;
   }
 
   // chip on the run start: "BU HAFTA: Ters Dünya ⇄" (once per start, not per frame)
@@ -561,15 +595,18 @@ export class Runner {
   chainBonus() { return chainBonus(this.nearChain || 0); }
 
   // Power-ups: flat bonuses instead of multipliers.
-  riskBonus() {
+  riskBonus(noUp) {
     let m = 0;
-    if (this.x2T > 0) m += 3;
+    if (this.x2T > (noUp ? this.x2Up : 0)) m += 3;
     if (this.riskT > 0) m += 4;
     if (this.clone) m += 2;
     return m;
   }
 
   dur(kind) { return this.ctx.meta?.duration?.(kind) || RCFG.dur[kind]; }
+
+  /** permanent upgrade level 0..5 (meta.upgradeLevel; 0 when meta cannot say) */
+  upLv(id) { try { const v = this.ctx.meta?.upgradeLevel?.(id); return v > 0 ? Math.min(5, v | 0) : 0; } catch (e) { return 0; } }
 
   // ---------- size ----------
   /** b.size: 1 + tier (obstacle "smash" comparisons use it). */
@@ -731,10 +768,10 @@ export class Runner {
         if (!this.zip) { this.laneBufT = 0; lane = clamp(lane + this.laneBuf, -2, 2); this.laneBuf = 0; }
       }
     }
-    if (lane) this.laneChange(lane);
+    if (lane) { this.laneChange(lane); if (this.hintOn && !counting) { this.hintOn = false; ui.hint?.(false); } }
     this.targetU = this.lane * RCFG.laneW;
     if (!counting && !this.wallRun) {
-      if (input.consumeJump()) { ui.hint(false); this.jumpBufT = RCFG.jumpBuf; }
+      if (input.consumeJump()) { ui.hint(false); this.hintOn = false; this.jumpBufT = RCFG.jumpBuf; }
       if (input.consumeDive()) {
         const now = this.time, dbl = this.bait > 0 && now - this.baitTap < 0.4;      // down, down: drop the bait
         this.baitTap = now;
@@ -747,7 +784,7 @@ export class Runner {
     this.duckT -= dt;
 
     // ---- speed: downhill pace + size bonus; rocket overrides ----
-    const top = speedAt(b.s) * this.mutSpd * (1 + this.tier * RCFG.sizeSpeed) * (this.rocketT > 0 ? 1.35 : 1) * (this.riskT > 0 ? 1.45 : 1) * (this.cardRiskT > 0 ? 1.04 : 1) * (this.slideT > 0 ? (this.abil === 'buzejder' ? 1.4 : 1.2) : 1) * (this.rhythm ? this.rhythm.speedK : 1);
+    const top = speedAt(b.s) * this.mutSpd * (1 + this.tier * RCFG.sizeSpeed) * (this.rocketT > 0 ? 1.35 : 1) * (this.riskT > 0 ? 1.45 : 1) * (this.cardRiskT > 0 ? 1.04 : 1) * (this.slideT > 0 ? (this.abil === 'buzejder' ? 1.4 + 0.05 * this.cs : 1.2) : 1) * (this.rhythm ? this.rhythm.speedK : 1) * this.chapSpd;
     if (b.vs < top) b.vs = Math.min(top, b.vs + RCFG.accel * dt);
     else b.vs = Math.max(top, b.vs - RCFG.accel * 0.6 * dt);
     this.invulnT -= dt;
@@ -755,7 +792,7 @@ export class Runner {
     this.iceT -= dt;
     this.slideT -= dt; this.slideMsgT -= dt; this.tunnelMsgT -= dt;
     if (this.magnetT > 0) this.magnetT -= dt;
-    if (this.abil === 'altin') { const n = this.obstacles.next; if (n) { if (this._gemNext && n.gem > this._gemNext) n.gem -= 200; this._gemNext = n.gem; } }
+    if (this.abil === 'altin') { const n = this.obstacles.next; if (n) { if (this._gemNext && n.gem > this._gemNext) n.gem -= 200 + 40 * this.cs; this._gemNext = n.gem; } }
     if (this.x2T > 0) this.x2T -= dt;
     if (this.superT > 0) this.superT -= dt;
     if (this.helmetT > 0) { this.helmetT -= dt; if (this.helmetT <= 0 && this.helmet) { this.helmet = false; this.float('KASK GİTTİ', ''); } }
@@ -795,7 +832,6 @@ export class Runner {
     // ---- Yeti: right behind you at the start and while you stumble, otherwise it falls back ----
     this.yetiTick(dt, top);
 
-    this.rageTick(dt);
     this.bossTick(dt);
     this.progression(dt);
     this.zoneTick();
@@ -807,7 +843,7 @@ export class Runner {
     if (this.turboT > 0) this.turboT -= dt; else this.turboN = 0;
     this.score += b.vs * dt * this.mult * (this.dblT > 0 ? 2 : 1);
     music.setBpm(bpmAt(b.s));
-    music.setIntensity(clamp(0.55 + b.s / 4000 + (this.stumbleT > 0 || this.rage ? 0.35 : 0), 0.55, 1));
+    music.setIntensity(clamp(0.55 + b.s / 4000 + (this.stumbleT > 0 ? 0.35 : 0), 0.55, 1));
     this.ctx.audio.setRoll(this.grounded ? clamp(b.vs / RCFG.maxSpeed, 0, 1) * 0.7 : 0, clamp(b.r / 1.5, 0, 1) * 0.5);
     this.updateHud();
 
@@ -845,7 +881,7 @@ export class Runner {
   // YETİ ÖFKESİ meter: near misses + stomp chains fill it (~8 near misses); full -> 5 s of snowball rain, invulnerable, score x2.
   addFury(a) {
     if (this.furyT > 0 || this.state !== 'play') return;
-    this.fury = Math.min(1, this.fury + a * (this.abil === 'kizilkaos' ? 1.2 : 1));
+    this.fury = Math.min(1, this.fury + a * (this.abil === 'kizilkaos' ? 1.2 + 0.05 * this.cs : 1));
     if (this.fury < 1) return;
     this.fury = 1; this.furyT = 5; this.furyCd = 0;
     const { audio, platform } = this.ctx;
@@ -946,7 +982,6 @@ export class Runner {
         fired = true;
         if (!this.edgeAssist()) this.jump(RCFG.jumpV, false);
       }
-      else if (this.airJ > 0 && !this.grounded && !this.zip && this.coyoteT <= 0 && this.edgeS < 0 && this.b.vh < 6) { fired = true; this.airJ--; this.jump(RCFG.jumpV * 0.9, true); }
       else if (this.airJ > 0 && !this.grounded && !this.zip && this.coyoteT <= 0 && this.edgeS < 0 && this.b.vh < 6) { fired = true; this.airJ--; this.jump(RCFG.jumpV * 0.9, true); }
       if (fired) this.jumpBufT = 0; else this.jumpBufT -= dt;
     }
@@ -1123,7 +1158,6 @@ export class Runner {
     const turn = (J.Lc > 0 && J.R > 0) ? 0.9 * J.Lc / J.R : 1.0;      // heading change of the corner (rad)
     this.wallRun = { dir: J.dir, sC: J.s, Lc: Math.max(4, J.Lc || 8), turn: Math.min(1.3, Math.max(0.6, turn)), t: 0 };
     this.killKind = 'wall';
-    this.rage = null;
     this.jumpBufT = 0;
     this.edgeS = -1;
     this.ctx.audio.bump(0.6);
@@ -1205,7 +1239,7 @@ export class Runner {
       this.buffTickT -= dt;
       if (this.buffTickT <= 0) { this.buffTickT = 0.25; ui.buffTick?.(this.buffs.list); }
     }
-    if (!this.level) {
+    if (!this.level && depthFull(this.depth)) {       // the first runs have no cards at all: nothing to read, nothing to pick
       this.buffT -= dt;
       if (this.buffT <= 0) {
         if (this.jnNear || this.zip || this.rocketT > 0) this.buffT = 1.5;     // not in the middle of a corner approach
@@ -1332,7 +1366,6 @@ export class Runner {
     if (ui.buffAdd) ui.buffAdd(def.id, def.icon, def.name, secs);
     else this.float(`${def.icon} ${UP(def.name)}`, 'big');
     if (this.perk) this.checkSynergy(def.id);
-    if (this.perk) this.checkSynergy(def.id);
     if (def.id === 'akis') this.flow = Math.min(100, this.flow + 25);
     if (def.id === 'yetikov') this.stumbleT = 0;
     this.syncRadius();
@@ -1346,7 +1379,8 @@ export class Runner {
     this.perk = null; this.synHit = []; this.steelUsed = false; this.airJ = 0; this.airJumpMax = 0; this.pickT = 0;
     const ui = this.ctx.ui;
     ui.runnerPerkIcon?.(null);
-    if (this.level || this.daily || this.tut || !ui.runnerPerkPick) return;
+    if (this.level || this.daily || this.tut || !ui.runnerPerkPick || !depthFull(this.depth)) return;      // no pick screen in the first 2 runs
+    if (opts && opts.retry && this._lastPerk) { this.pickT = 1; this.pickPerk(this._lastPerk); return; }      // quick retry keeps your perk: no 6 s pick screen between a death and the next run
     this.pickT = 6.1;
     const offer = rollPerks(3);
     ui.runnerPerkPick(offer, (id) => this.pickPerk(id), 6);
@@ -1357,7 +1391,7 @@ export class Runner {
     this.pickT = 0;
     const def = RUN_PERK_BY_ID[id];
     if (!def) return;
-    this.perk = id;
+    this.perk = this._lastPerk = id;
     if (id === 'kalin') { this.tier = Math.min(4, this.tier + 1); this.maxTier = Math.max(this.maxTier, this.tier); this.syncRadius(); this.rShown = this.b.r; }
     else if (id === 'yetidostu') { this.gapBonus = (this.gapBonus || 0) + 4; this.gap += 4; }
     else if (id === 'cifte') this.airJumpMax = 1;
@@ -1399,10 +1433,12 @@ export class Runner {
     if (this.bread && !this.boss && this.baitT <= 0 && this.gap <= 6) this.useBread();
     if (this.bait > 0 && !this.boss && this.stumbleT > 0 && this.stumbleHits >= 2) this.useBait(true);     // about to be caught: auto-use
     const far = this.buffs.has('yetikov');
-    if (this.boss) { if (this.stumbleT > 0) this.stumbleT = Math.max(0, this.stumbleT - dt); this.gap = RCFG.yetiMax; return; }
+    this.pulseCd -= dt;
+    if (this.boss) { this.pulseT = 0; if (this.stumbleT > 0) this.stumbleT = Math.max(0, this.stumbleT - dt); this.gap = RCFG.yetiMax; return; }
+    if (this.pulseT > 0 && !far) { this.pulseT -= dt; if (this.pulseT <= 0) this.pulseEnd(); }   // counts down in every branch (slow / hold / stumble no longer freeze the +2)
     if (far) {
       // The repellent: no window, no hold — it drops back and stays far.
-      this.stumbleT = 0;
+      this.stumbleT = 0; this.pulseT = 0;
       this.yetiHoldT = 0;
       this.gap = Math.min(RCFG.yetiMax, this.gap + 6 * dt);
     } else if (this.yetiHoldT > 0) {
@@ -1417,7 +1453,13 @@ export class Runner {
         this.float('KURTULDUN!', 'big');
       }
     } else if (b.vs >= top * RCFG.yetiStumbleSpeed) {
-      this.gap = Math.min(this.mutYMax, this.gap + RCFG.yetiRecover * dt);
+      // YETİ SOLUĞU: every 24-36 s of clean running the Yeti sprints into view just behind you for 3 s (roar, rumble, red edge), then drops back: the chase stays alive without a stumble
+      if (this.pulseT <= 0 && this.pulseCd <= 0 && this.gap > 10.5 && !this.jnNear && !this.zip && !this.grind) {
+        this.pulseT = 4; this.pulseCd = rand(24, 36); this._pulseCr = this.crashes; this.roar(true);
+        this.skillTag('YETİ KOŞUSU!', 'ÇARPAN +2', 3, 9);
+      }
+      if (this.pulseT > 0) this.gap += (8.2 - this.gap) * Math.min(1, dt * 2.5);
+      else this.gap = Math.min(this.mutYMax, this.gap + RCFG.yetiRecover * dt);
     } else {
       this.gap = Math.max(RCFG.yetiStart, this.gap - (top * RCFG.yetiStumbleSpeed - b.vs) * 0.32 * dt);
     }
@@ -1425,6 +1467,22 @@ export class Runner {
     this.roarT -= dt;
     if (this.gap < 8 && !this._chaseHot && this.roarT <= 0) { this.roarT = 6; this.roar(true); }   // edge-triggered + rate-limited
     this._chaseHot = this.gap < 8;
+    const pin = this.chap && this.chap.def.pin;       // ÇIĞ KAÇIŞI: the Yeti and its powder wall stay right behind you
+    if (pin && !this.boss && this.gap > pin) this.gap = pin;
+  }
+
+  // YETİ KOŞUSU (every 24-36 s of clean running, first ~13 s in): for 4 s the Yeti sprints in just behind you; the multiplier is +2 and a near miss pays double.
+  // Cleared with no crash it pays 150 x mult and a combo bump. A crash (openStumble) or the bait / repellent cancels it: no free multiplier while stumbling.
+  pulseEnd() {
+    const pts = Math.round(150 * this.mult);       // (paid at the sprint multiplier, before it drops)
+    this.pulseT = 0;
+    if (this.crashes !== this._pulseCr || this.state !== 'play') return;
+    this.score += pts;
+    this.addFlow(4);
+    this.kick += 2;
+    this.skillTag('KOŞUYU ATLATTIN!', '+' + pts, 2, 7);
+    this.ctx.audio.chime?.();
+    this.ctx.platform.haptic('success');
   }
 
   /** BALIK YEMİ: drops the bait; the Yeti stops to eat it for 3 s (gap +12 m and more, no stumble window); in the boss phase it skips the next throw. */
@@ -1433,7 +1491,7 @@ export class Runner {
     if (!(this.boss || this.stumbleT > 0 || this.gap < 9)) return false;
     this.bait--; this.baitT = 3; this.baitBonus = Math.max(this.baitBonus, 12);
     if (this.boss) this.boss.baitSkip = 1;
-    this.stumbleT = 0; this.stumbleHits = 0; this.yetiHoldT = 0;
+    this.stumbleT = 0; this.stumbleHits = 0; this.yetiHoldT = 0; this.pulseT = 0;
     this.roar(true); this.ctx.audio.chime?.(); this.ctx.platform.haptic('success');
     this.float('🐟 AFİYET OLSUN!', 'big');
     this.baitChip();
@@ -1445,7 +1503,7 @@ export class Runner {
   useBread() {
     if (!this.bread || this.baitT > 0 || this.state !== 'play') return false;
     this.bread = 0; this.baitT = 3; this.baitBonus = Math.max(this.baitBonus, 10);
-    this.stumbleT = 0; this.stumbleHits = 0; this.yetiHoldT = 0;
+    this.stumbleT = 0; this.stumbleHits = 0; this.yetiHoldT = 0; this.pulseT = 0;
     this.roar(true); this.ctx.audio.chime?.(); this.ctx.platform.haptic('success');
     this.float('🥐 YETİ KOKLUYOR', 'big');
     this.breadChip();
@@ -1510,7 +1568,7 @@ export class Runner {
     const layerK = Math.min(4, this.layer);
     this.stumbleMax = Math.min(6, RCFG.stumbleWin + 0.25 * layerK) * (1 - 0.04 * Math.min(5, this.perm.yeti || 0));
     if (this.stumbleT <= 0) this.stumbleHits = 1;
-    this.stumbleT = this.stumbleMax;
+    this.stumbleT = this.stumbleMax; this.pulseT = 0;
     this.gap = Math.min(this.gap, RCFG.yetiStumbleGap + 4);
     this.yetiHoldT = 0;
     this.stumbles++;
@@ -1532,7 +1590,7 @@ export class Runner {
     this.stormTick(dt);
     // Flow decays when you stop doing skilful things.
     this.flowT -= dt;
-    if (this.flowT <= 0 && this.flow > 0) this.flow = Math.max(0, this.flow - 18 * (this.buffs.has('akis') ? 0.5 : 1) * (this.perk === 'kombo' ? (this.buffs.has('akis') ? 0.25 : 0.6) : 1) * (this.perk === 'kombo' ? (this.buffs.has('akis') ? 0.25 : 0.6) : 1) * (1 - 0.06 * Math.min(5, this.perm.flow || 0)) * dt);
+    if (this.flowT <= 0 && this.flow > 0) this.flow = Math.max(0, this.flow - 18 * (this.buffs.has('akis') ? 0.5 : 1) * (this.perk === 'kombo' ? (this.buffs.has('akis') ? 0.12 : 0.4) : 1) * (1 - 0.06 * Math.min(5, this.perm.flow || 0)) * dt);
     const lvl = this.flow >= 98 ? 4 : this.flow >= 48 ? 3 : this.flow >= 18 ? 2 : this.flow >= 6 ? 1 : 0;
     if (lvl !== this.flowLvl) {
       if (lvl > this.flowLvl) {
@@ -1545,7 +1603,8 @@ export class Runner {
     const ff = Math.round(this.flow);
     if (this.flowLvl !== this._flowL || ff !== this._flowF) { this._flowL = this.flowLvl; this._flowF = ff; ui.runnerFlow?.(this.flowLvl, this.flow / 100); }
     // Records.
-    if (!this.passedDist && b.s > this.bestDist) {
+    if (!this.passedScore && this.score > this.bestScore) {       // the record is the SCORE (PLAN_V3 §2-3); distance is a side stat
+      this.passedScore = true;
       this.passedDist = true;
       this.rcpAdd('rec');
       // ONE record moment per run: a single top-edge toast (the HUD's score-record toast counts as it), never a centre banner
@@ -1558,8 +1617,7 @@ export class Runner {
       }
     }
     if (this.newRecT > 0) this.newRecT -= dt;
-    if (!this.passedScore && this.score > this.bestScore) this.passedScore = true;   // the HUD shows the one score-record toast
-    ui.runnerRecord?.(this.bestDist, b.s);
+    ui.runnerRecord?.(this.bestScore);       // one-argument form: a plain "REKOR <score>" label
     this.placeRecordFlag();
     this.landmarkTick();
     this.ghostTick();
@@ -1670,15 +1728,17 @@ export class Runner {
   // Nothing here blocks the view (no banner cluster) and nothing pauses.
   layerUp(layer) {
     const { ui, audio, platform } = this.ctx;
-    const rage = this.rageEnd(layer);   // 1 survived the barrage, -1 crashed in it, 0 no barrage
+    const clean = this.crashes === this.layerCrash0;   // TEMİZ KAT: not one crash since the last checkpoint = double pay (the goal strip's 600 m is also a no-crash goal)
+    this.layerCrash0 = this.crashes;
     this.layer = layer;
     this.stageZone(layer);
     // Checkpoint: a few coins through the normal run-coin path (banked with the run, like flakes).
-    const pay = checkpointReward(layer, RCFG.cpCoins);
+    const pay = checkpointReward(layer, RCFG.cpCoins, clean);
     this.coins += pay;
-    const text = `✔ ${layer * RCFG.layerLen} m · +${pay} ❄️`;
-    if (ui.toastSoft) ui.toastSoft(text); else this.queueBanner(`✔ ${layer * RCFG.layerLen} m`, 3);
-    if (rage <= 0) audio.star(2);
+    const text = `✔ ${layer * RCFG.layerLen} m · ${clean ? 'TEMİZ KAT! ' : ''}+${pay} ❄️`;
+    if (clean) { this.addFlow(6); this.ctx.audio.chime?.(); }
+    if (this.quietRun || this.chapters) { /* first two runs / chapters (they have their own strip and pay): the coins still pay, no toast */ } else if (ui.toastSoft) ui.toastSoft(text); else this.queueBanner(`✔ ${layer * RCFG.layerLen} m`, 3);
+    audio.star(2);
     platform.haptic('success');
     ui.runnerGoalPop?.();
     this.after(1.1, () => audio.milestone(Math.min(5, 2 + (layer >> 1))));
@@ -1717,65 +1777,11 @@ export class Runner {
     }
   }
 
-  // "YETİ ÖFKESİ": over the last rageLen m of every layer (from layer 2 on) the Yeti throws boulders at your lane (the
-  // same throwBoulder path the boss zone uses). Survive without a crash → it gives up: bonus, and it falls back.
-  rageOk() {
-    if (this.boss || this.inZone === 'boss' || this.zip || this.grind || this.rocketT > 0 || this.jnNear) return false; // boss zone / rope / rail / corner already own the moment
-    return !RAGE_SKIP.has(this.track.pieceAt(this.b.s)?.kind);
-  }
-
-  rageTick(dt) {
-    return;   // YETİ ÖFKESİ barrages (boulders thrown from behind) are off
-    // eslint-disable-next-line no-unreachable
-    if (this.level || this.layer < 2 || this.layer % 2) return;   // campaign has no layers; endless: only every 2nd layer (2, 4, 6 …)
-    const b = this.b, L = RCFG.layerLen;
-    const B = (Math.floor(b.s / L) + 1) * L;
-    let r = this.rage;
-    if (!r) {
-      if (b.s < B - Math.max(RCFG.rageLen, b.vs * RCFG.rageSecs) || b.s > B - 40 || !this.rageOk() || this.stumbleT > 0) return;
-      r = this.rage = { s0: b.s, B, t: 0.9, n: 0, crashes0: this.crashes };
-      this.roar(true);
-      this.queueBanner('YETİ ÖFKESİ!', 4, 1.1, true);
-      return;
-    }
-    r.t -= dt;
-    if (r.t > 0) return;
-    if (!this.rageOk() || this.stumbleT > 0) { r.t = 0.6; return; }   // never pile a boulder onto a stumble / a corner
-    const sLand = b.s + b.vs * 1.8 + 9;             // lands ~9 m ahead of where you will be
-    if (sLand > B - 6) { r.t = 1; return; }          // the last boulder lands before the boundary
-    if (r.n >= (this.rageCount === 0 ? 2 : 3)) { r.t = 2; return; }  // a barrage is 2 boulders (first) / 3 at most
-    const NLn = LANES.length, pl = Math.round(this.lane + (NLn - 1) / 2);
-    const lane = Math.random() < 0.5 ? pl : (pl + 1 + ((Math.random() * (NLn - 1)) | 0)) % NLn;
-    if (this.obstacles.throwBoulder(lane, sLand) < 0) { r.t = 0.8; return; }
-    r.n++;
-    r.t = rand(RCFG.rageEvery[0], RCFG.rageEvery[1]) * rageScale(this.layer);
-    this.ctx.audio.bump(0.8);
-    this.ctx.platform.haptic('warning');
-  }
-
-  // At the layer boundary: 1 survived (bonus, the Yeti falls back), -1 crashed during it, 0 it never got to throw.
-  rageEnd(layer) {
-    const r = this.rage;
-    if (!r) return 0;
-    this.rage = null;
-    this.rageCount++;
-    if (this.crashes !== r.crashes0) return -1;
-    if (!r.n) return 0;
-    const bonus = Math.round(150 * layer * this.mult);
-    this.score += bonus;
-    this.gap = Math.min(RCFG.yetiMax, this.gap + RCFG.rageBack);
-    this.ctx.audio.win();
-    this.ctx.platform.haptic('success');
-    this.float('YETİ PES ETTİ!', 'big');
-    this.after(0.35, () => this.float(`+${bonus.toLocaleString('tr-TR')}`, 'big'));
-    return 1;
-  }
-
   // Every layer the rules change (Jetpack Joyride-style zones) — announced ahead so you wonder what's next.
   stageZone(layer) {
     // Plain running is the default: a zone only on every 2nd layer (1.2 km apart), and the coin-rain bonanza at most once per run
     // and never before ~1.5 km (it is the 3rd zone, layer 6 = 3.6 km, or a later random pick).
-    if (layer % 2) return;
+    if (layer % 2 || this.chapters) return;       // (chapters carry the rule changes now)
     const ZONES = [
       { kind: 'movers', name: 'HAREKETLİ ENGELLER' },
       { kind: 'narrow', name: 'DAR KÖPRÜLER' },
@@ -2043,7 +2049,7 @@ export class Runner {
     this.ctx.menus?.confetti?.(140);
     this.ctx.audio.milestone?.(5);
     this.topMsg('BOSS YENİLDİ!', 'big');
-    this.ctx.ui.float('+' + bonus.toLocaleString('tr-TR') + ' · +' + coins + ' ❄️', window.innerWidth * 0.5, window.innerHeight * 0.21, 'big');
+    this.ctx.ui.float('+' + NUM(bonus) + ' · +' + coins + ' ❄️', window.innerWidth * 0.5, window.innerHeight * 0.21, 'big');
   }
 
   // ---------- KAR YANKISI: ghost of your best Rush run (lane/height every 5 m, up to 5 km) ----------
@@ -2186,7 +2192,7 @@ export class Runner {
     if (tier > this.destTier) {
       this.destTier = tier;
       const text = `YIKIM: ${DESTRUCTION[tier].name}`;
-      if (this.ctx.ui.toastSoft) this.ctx.ui.toastSoft(text); else this.ctx.ui.banner(text, Math.min(5, 2 + tier));
+      if (this.quietRun) { /* first two runs: silent */ } else if (this.ctx.ui.toastSoft) this.ctx.ui.toastSoft(text); else this.ctx.ui.banner(text, Math.min(5, 2 + tier));
       this.ctx.audio.milestone(Math.min(5, 1 + tier));
       this.ctx.platform.haptic('success');
     }
@@ -2194,21 +2200,31 @@ export class Runner {
 
   updateHud() {
     const ui = this.ctx.ui;
-    ui.runnerDanger?.(this.dangerBonus(), this.chainBonus(), this.riskT > 0 ? 4 : 0);
+    // the +N jargon strip (RİSK / TEHLİKE / ZİNCİR) only when nothing else is talking, and never in the first two runs
+    const hush = this.quietRun || this.bannerT > 0 || this.time - this.floatT < 1.3 || this.time < this.tagT;
+    if (hush) ui.runnerDanger?.(0, 0, 0); else ui.runnerDanger?.(this.dangerBonus(), this.chainBonus(), this.riskT > 0 ? 4 : 0);
     const near = this.state === 'play' ? Math.max(0, Math.min(1, (9 - this.gap) / 5)) : 0;
     ui.chaseVig?.(near);
     this.ctx.audio.yetiNear?.(near);        // chase layer: rumble + footfalls speeding up as the Yeti closes in (fades out on its own)
+    if (this.chapters && this.state === 'play' && this.countT <= 0) this.chapterTick();
     this.updateGoal();
     const bi = biomeAt(this.b.s, _bi);
+    if (!this.level) {
+      if (bi.biome.id !== this._pcId) { this._pcId = bi.biome.id; this.postcard(bi.biome); }
+      if (this.time >= this._msT) { this._msT = this.time + 0.5; this._mrow = pickMission(this.ctx.meta?.missions?.()); }   // (a fresh row list twice a second)
+    } else if (this.time >= (this._msT || 0)) this.updateStars();
     const prog = this.level ? clamp(this.b.s / this.level.length, 0, 1) : bi.t;
     const key = this.level ? this.level : bi.biome;
     if (this._lblKey !== key) { this._lblKey = key; this._lbl = this.level ? `${this.level.act}-${this.level.idx} · ${this.level.name}` : bi.biome.name; }
     const label = this._lbl;
     const mult = this.mult;
-    ui.runnerStats(this.score, this.coins, mult, prog, Math.round(this.b.s), label);
+    ui.runnerStats(this.score, this.coins, mult, prog, Math.round(this.b.s), label, this.hudInfo());
     // the multiplier climbing a whole step (x2 -> x3 ...) is announced once; a flicker around a step stays quiet
     const mt = multStep(mult, this._multTop);
-    if (mt > this._multTop && this._multTop >= 0 && this.state === 'play') this.skillTag(`ÇARPAN x${mt}`, '', Math.min(3, (mt >> 1) - 1), 7);
+    if (mt > this._multTop && this._multTop >= 0 && this.state === 'play') {
+      this.skillTag(`ÇARPAN x${mt}`, this.flowSt > 0 || this.furyT > 0 ? 'AKIŞ SERİSİ' : this.chainBonus() > 0 ? 'KIL PAYI SERİSİ' : this.dangerBonus() > 0 ? 'YETİ ARKANDA' : this.flow > 12 ? 'EZME SERİSİ' : 'BÜYÜK TOP', Math.min(3, (mt >> 1) - 1), 7);   // why it grew
+      this.kick += 1 + 0.3 * Math.min(6, mt); this.ctx.audio.star?.(Math.min(2, mt >> 1)); this.ctx.platform.haptic('light');      // felt: a nudge, a rising chime, a tick
+    }
     this._multTop = mt;
     if ((this._progT = (this._progT || 0) + 1) % 30 === 0) this.ctx.meta?.track?.('run_progress', { distance: Math.round(this.b.s), coins: this.coins });
     const v = this._vit, y = this._yeti;
@@ -2220,17 +2236,176 @@ export class Runner {
     ui.runnerVitals(v);
   }
 
-  // Goal strip: the next checkpoint (every layer), "REKORA n m" when your record is near, the Yeti's barrage while it lasts.
+  // Goal strip: the next checkpoint (every layer), "REKORA n m" when your record is near.
   updateGoal() {
     if (this.level) { if (this.bossIntro === 1) this.ctx.ui.runnerGoal?.('boss', 0, clamp((this.level.length - this.b.s) / 150, 0, 1)); return; }
     if (this.furyT > 0 || this.fury > 0) return;
-    const ui = this.ctx.ui, s = this.b.s, r = this.rage;
+    const ui = this.ctx.ui, s = this.b.s;
     if (this.boss && this.boss.ph !== 'out') { ui.runnerGoal?.('boss', 0, this.boss.ph === 'in' ? 1 : Math.max(0, 1 - this.boss.t / this.boss.dur)); return; }
-    if (r) { ui.runnerGoal?.('rage', 0, (s - r.s0) / Math.max(1, r.B - r.s0)); return; }
     if (this.cannonN > 0) { ui.runnerGoal?.('cannon', this.cannonN, this.cannonN / 5); return; }
     if (this.newRecT > 0) { ui.runnerGoal?.('new', 0, 1); return; }
-    const g = goalFor(s, RCFG.layerLen, this.bestDist, this.passedDist, RCFG.recNear, _goal);
+    // ONE goal at a time: the closest open mission (also in the first two runs: the strip is never empty), else the record in POINTS, else the checkpoint strip
+    const h = this._hud, m = this._mrow;
+    if (m) {
+      const k = m.id + ':' + m.value;
+      if (k !== this._mK) { this._mK = k; this._mTxt = (m.icon ? m.icon + ' ' : '') + t(m.text) + ' ' + m.value + '/' + m.goal; }
+      h.goalKind = 'mission'; h.goalText = this._mTxt; h.goalFrac = missionFrac(m);
+      this.goalStrip('rec', Math.max(1, m.goal - m.value), h.goalFrac, this._mTxt);
+      return;
+    }
+    if (!this.passedScore && this.bestScore >= 100 && this.bestScore > this.score) {
+      const pts = Math.max(10, Math.ceil((this.bestScore - this.score) / 10) * 10);
+      if (pts !== this._recV) { this._recV = pts; this._recTxt = t("REKOR'A " + NUM(pts) + ' PUAN'); }
+      h.goalKind = 'record'; h.goalText = this._recTxt; h.goalFrac = clamp(this.score / this.bestScore, 0, 1);
+      this.goalStrip('rec', pts, h.goalFrac, this._recTxt);
+      return;
+    }
+    const g = goalFor(s, RCFG.layerLen, 0, true, RCFG.recNear, _goal);
+    h.goalKind = 'checkpoint'; h.goalText = ''; h.goalFrac = g.frac;
     ui.runnerGoal?.(g.mode, g.val, g.frac);
+  }
+
+  // ---------- chapters (PLAN_V3 §9; plan, rules and pieces: goals.js CHAPTERS) ----------
+  chapterInit() {
+    this.chap = null; this.chapSpd = 1; this.chapCrash0 = 0; this.chapDone = 0; this.chapClean = 0; this.chapXp = 0; this.duelNear = 0; this._air = 0; this._armed = null; this.x2Up = 0;
+    this.upOn = !!((this.perm.speed | 0) || this.upTier > 0);
+    this.bestChapter = this.chapters ? this.readBestChapter() : 0;
+    this.nextBossS = this.chapters ? Infinity : 1800;      // (with chapters the Yeti boss is the duel chapter's: chapterTick arms it)
+    this._hud = this._hud || { chapter: 0, chapterId: '', chapterName: '', chapterFrac: 0, chapterLeft: 0, chapterBonus: false, chapterClean: true, bestChapter: 0, duelNear: 0, goalKind: '', goalText: '', goalFrac: 0, mission: null };
+    this._hud.chapter = 0; this._hud.chapterId = ''; this._hud.bestChapter = this.bestChapter;
+  }
+
+  readBestChapter() {
+    let n = 0;
+    try { n = this.ctx.save.runnerBestChapter?.() ?? 0; } catch (e) { n = 0; }
+    if (!(n > 0)) try { n = +localStorage.getItem('patpat.bestChapter') || 0; } catch (e) { n = 0; }
+    return n > 0 ? n | 0 : 0;
+  }
+
+  saveBestChapter() {
+    try { if (typeof this.ctx.save.setRunnerBestChapter === 'function') this.ctx.save.setRunnerBestChapter(this.bestChapter); else localStorage.setItem('patpat.bestChapter', String(this.bestChapter)); } catch (e) { /* storage may be blocked */ }
+  }
+
+  chapterSeen(id) {
+    const m = this.ctx.meta;
+    try { if (typeof m?.chapterSeen === 'function') return !!m.chapterSeen(id); } catch (e) { /* fall through */ }
+    try { return (JSON.parse(localStorage.getItem('patpat.chapSeen') || '[]') || []).includes(id); } catch (e) { return false; }
+  }
+
+  markChapterSeen(id) {
+    this.ctx.meta?.track?.('chapter_seen', { id });
+    if (typeof this.ctx.meta?.chapterSeen === 'function') return;
+    try { const a = JSON.parse(localStorage.getItem('patpat.chapSeen') || '[]') || []; if (!a.includes(id)) { a.push(id); localStorage.setItem('patpat.chapSeen', JSON.stringify(a)); } } catch (e) { /* storage may be blocked */ }
+  }
+
+  // every frame (from updateHud): enter / leave chapters, arm the duel, pay the air bonus
+  chapterTick() {
+    const P = this.chapters, b = this.b, seg = P.at(b.s);
+    if (seg !== this.chap) this.chapterEnter(seg);
+    const nx = P.at(b.s + 430);
+    if (nx.def.duel && nx !== this._armed && !this.boss) { this._armed = nx; this.nextBossS = Math.max(b.s + 10, nx.s0 + 25); }
+    if (!this.grounded && !this.zip && !this.grind && this.rocketT <= 0) this._air += this.stepDt || 0.016;
+    else {
+      if (this._air > 0.9 && seg.id === 'rampa') {      // KAYAK RAMPALARI: the air time of a jump pays (replaces the air trick: there is no trick input)
+        const pts = Math.round(250 * (this._air - 0.6) * this.mult);
+        this.score += pts; this.addFlow(3); this.skillTag('HAVA BONUSU', '+' + pts, 1, 4);
+      }
+      this._air = 0;
+    }
+  }
+
+  chapterEnter(seg) {
+    const prev = this.chap, def = seg.def, ui = this.ctx.ui;
+    if (prev && !prev.bonus) this.chapterEnd(prev);
+    this.chap = seg; this.chapCrash0 = this.crashes; this.duelNear = 0; this._air = 0; this.chapSpd = def.spd || 1;
+    if (!seg.bonus && seg.n > this.bestChapter) { this.bestChapter = seg.n; this.saveBestChapter(); }
+    const line = seg.bonus ? t('ALTIN DAMAR') : chapterLine(seg.n, def.name, t, getLang() === 'en');
+    if (ui.runnerChapter) ui.runnerChapter(line, seg.n, seg.bonus); else this.queueBanner(line, 4, 1.0);      // a 1 s name strip
+    this.ctx.audio.milestone?.(2);
+    if (!this.chapterSeen(seg.id)) {
+      this.markChapterSeen(seg.id);
+      this.after(1.2, () => { if (this.chap === seg) ui.toastSoft?.(t(def.intro), { icon: '🗺️', prio: 2 }); });      // first entry: one sentence
+    }
+  }
+
+  chapterEnd(prev) {
+    const meta = this.ctx.meta, clean = this.crashes === this.chapCrash0, R = chapterReward(prev.n, clean);
+    this.coins += R.coins;       // (the run's coin path: banked with the run; it also feeds the run XP)
+    this.chapXp += R.xp;         // the extra XP rides the run-end payload (endless_end.chapterXp): meta has no direct XP call
+    this.chapDone++; if (clean) this.chapClean++;
+    meta?.track?.('chapter_end', { n: prev.n, id: prev.id, clean, coins: R.coins, xp: R.xp });
+    if (this.addFlow && clean) this.addFlow(4);
+    if (!this.quietRun) this.queueBanner((clean ? t('TEMİZ BÖLÜM! x2') : t('BÖLÜM TAMAM')) + ' · +' + R.coins + ' ❄️ · +' + R.xp + ' XP', 3);
+    this.ctx.audio.star?.(clean ? 2 : 1); this.ctx.platform.haptic('success');
+  }
+
+  duelNearHit() {
+    const n = ++this.duelNear;
+    this.float(n >= 3 ? 'YETİ SERSEMLEDİ!' : 'KIL PAYI ' + n + '/3', 'big');
+    if (n >= 3 && this.boss && !this.boss.stun) {
+      const B = this.boss, bonus = Math.round(1500 * this.mult), coins = 80;
+      B.stun = true; B.ph = 'out'; B.t = 0; B.off0 = B.off;       // the Yeti reels and drops back; endBoss pays the usual prize on top
+      this.score += bonus; this.coins += coins; this.roar(true);
+      this.queueBanner('YETİ SERSEMLEDİ!', 5, 1.6, true);
+      this.after(0.5, () => { this.float('+' + NUM(bonus) + ' · +' + coins + ' ❄️', 'big'); });
+    }
+  }
+
+  /** the HUD fields of the stats payload (one reused object: ui.runnerStats(..., label, info)) */
+  hudInfo() {
+    const h = this._hud, c = this.chap, s = this.b.s;
+    if (c) {
+      h.chapter = c.bonus ? 0 : c.n; h.chapterId = c.id; h.chapterName = c.def.name; h.chapterBonus = !!c.bonus;
+      h.chapterFrac = clamp((s - c.s0) / Math.max(1, c.s1 - c.s0), 0, 1); h.chapterLeft = Math.max(0, Math.round(c.s1 - s)); h.chapterClean = this.crashes === this.chapCrash0;
+    }
+    h.bestChapter = this.bestChapter; h.duelNear = this.boss && c && c.def.duel ? this.duelNear : 0; h.mission = this._mrow;
+    return h;
+  }
+
+  // The goal strip with a text of our own (the strip only knows its fixed labels): the 4th argument is for a UI that takes it; otherwise the label is set here.
+  goalStrip(mode, val, frac, text) {
+    const ui = this.ctx.ui;
+    ui.runnerGoal?.(mode, val, frac, text);
+    const l = ui.el?.goalLbl;
+    if (l && l.textContent !== text) l.textContent = text;
+  }
+
+  // Run start, runs 3+: one 2-second line "GÖREV: 3 yaratık ez (1/3) · ÇARPAN x4" (the open mission closest to done and what the set pays).
+  goalIntro() {
+    const meta = this.ctx.meta;
+    const m = this._mrow = pickMission(meta?.missions?.());
+    if (!m) return;
+    this._msT = this.time + 0.5;
+    const ui = this.ctx.ui;
+    this.hintOn = true;
+    ui.hint?.(true, missionLine(m, this.quietRun ? 0 : nextMult(meta?.multiplier?.() ?? 1), t));   // (first runs: no multiplier jargon)
+    this.after(2, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); });
+  }
+
+  // First time in a biome (endless): a gold flash and "KARTPOSTAL: Volkan 5/14"; the count lives in meta (biome_seen -> meta.cards()). Silent in the first two runs.
+  postcard(bm) {
+    const meta = this.ctx.meta;
+    if (!meta) return;
+    const seen = typeof meta.cardSeen === 'function' ? meta.cardSeen(bm.id) : null;     // null: this meta cannot tell, so count it and stay quiet
+    if (seen) return;
+    meta.track?.('biome_seen', { id: bm.id });
+    const c = meta.cards?.();
+    if (seen === null || !c || this.quietRun || this.state !== 'play' || this.time < 1) return;     // (the biome you START in is no arrival)
+    this.ctx.ui.flash?.('gold');
+    this.ctx.ui.toastSoft?.(postcardLine(bm.name, c.n, c.total, t), { icon: '📮', prio: 2 });
+    this.ctx.platform.haptic('light');
+  }
+
+  // Campaign: the three star pips (2 met / 1 still possible / 0 lost) four times a second; the HUD reads this.starPips or the runnerStars call.
+  updateStars() {
+    this._msT = this.time + 0.25;
+    const st = _lst;
+    st.flakes = this.coins; st.flakesPct = clamp(this.coins / Math.max(1, this.level.length / 8), 0, 1);
+    st.crashes = this.crashes; st.layersLost = this.layersLost; st.maxTier = this.maxTier;
+    st.minYetiGap = Number.isFinite(this.minGap) ? this.minGap : RCFG.yetiMax; st.perfects = this.perfects; st.powerups = this.powerups; st.finished = false;
+    const p = starProgress(this.level, st, this.starPips);
+    const k = p[0] * 9 + p[1] * 3 + p[2];
+    if (k !== this._starK) { this._starK = k; this.ctx.ui.runnerStars?.(p); }
   }
 
   // ---------- physics ----------
@@ -2530,7 +2705,7 @@ export class Runner {
   // the lanes (red landing disc >= 1.3 s, at most 1 / 2 ahead so a lane is always free). Survive: it falls behind, reward + a card.
   bossSafe() {
     const b = this.b;
-    if (this.state !== 'play' || this.jnNear || this.jnOpen || this.jnJ || this.zip || this.grind || this.wallRun || this.rocketT > 0 || this.stumbleT > 0 || this.rage || this.inZone || this.fallLock) return false;
+    if (this.state !== 'play' || this.jnNear || this.jnOpen || this.jnJ || this.zip || this.grind || this.wallRun || this.rocketT > 0 || this.stumbleT > 0 || this.inZone || this.fallLock) return false;
     const pc = this.track.pieceAt(b.s), L = RCFG.layerLen;
     if (pc && (RAGE_SKIP.has(pc.kind) || ROUND_KINDS.has(pc.kind) || pc.kind === 'junction')) return false;
     return this.layer < 2 || (Math.floor(b.s / L) + 1) * L - b.s > 120;
@@ -2544,7 +2719,8 @@ export class Runner {
       tr.bossHold = b.s > this.nextBossS - 420;       // no corners / loops / helixes generated for the stretch the Yeti owns
       if (b.s < this.nextBossS || !this.bossSafe()) return;
       const o0 = -Math.max(4, this.gap);
-      this.boss = B = { ph: 'in', t: 0, off: o0, off0: o0, throwT: 2.6, n: 0, crashes0: this.crashes, yu: 0, dur: 20 };
+      this.boss = B = { ph: 'in', t: 0, off: o0, off0: o0, throwT: 2.6, n: 0, crashes0: this.crashes, yu: 0, dur: this.chap && this.chap.def.duel ? 17 : 20, stun: false };
+      this.duelNear = 0;
       this.yetiHoldT = 0; this.stumbleT = 0;
       this.roar(false);
       this.queueBanner('YETİ ÖNÜNDE!', 5, 1.8, true);
@@ -2591,14 +2767,14 @@ export class Runner {
     if (!B) return;
     this.boss = null;
     this.track.bossHold = false;
-    this.nextBossS = this.b.s + (won ? 1900 : 1500);
+    this.nextBossS = this.chapters ? Infinity : this.b.s + (won ? 1900 : 1500);       // (with chapters the Yeti boss belongs to YETİ DÜELLOSU)
     if (!won) return;
     this.gap = Math.min(RCFG.yetiMax, 14);
     const bonus = Math.round(1000 * this.mult), coins = 120;
     this.score += bonus; this.coins += coins;
     this.rcpAdd('boss');
     this.queueBanner("YETİ'Yİ ATLATTIN!", 5, 1.8, true);
-    this.after(0.4, () => { this.float('+' + bonus.toLocaleString('tr-TR') + ' · +' + coins + ' ❄️', 'big'); });
+    this.after(0.4, () => { this.float('+' + NUM(bonus) + ' · +' + coins + ' ❄️', 'big'); });
     this.ctx.audio.win?.(); this.ctx.platform.haptic('success');
     this.mistBurst(18, 0xffd060, 5, 1.2);
     this.ctx.menus?.confetti?.(70); this.kick += 2;
@@ -2617,7 +2793,7 @@ export class Runner {
   hurt(e) {
     if (this.invulnT > 0 || this.ghostT > 0) return false;
     if (this.absorbShield(e)) { this.invulnT = RCFG.invulnAfterCrash; return false; }
-    if (this.abil === 'simit' && !this.simitUsed) { this.simitUsed = true; this.invulnT = RCFG.invulnAfterCrash; this.float('SİMİT KURTARDI!', 'big'); this.ctx.audio.chime?.(); return false; }
+    if (this.abil === 'simit' && this.simitN < this.simitMax) { this.simitUsed = true; this.simitN++; this.invulnT = RCFG.invulnAfterCrash; this.float('SİMİT KURTARDI!', 'big'); this.ctx.audio.chime?.(); return false; }
     if (this.isLethal(e)) { this.lethalHit(e); return true; }
     this.crash(e);
     return true;
@@ -2897,11 +3073,12 @@ export class Runner {
         break;
       case 'near': {
         if ((e.toughness || 0) < 2) break;
+        if (e.boulder && this.boss && this.chap && this.chap.def.duel) this.duelNearHit();
         this.nearChain = this.nearT > 0 ? this.nearChain + 1 : 1;
         this.nearT = 2.6;
         this.addFury(0.125);
         this.addFlow(3);
-        const bonus = Math.round(50 * this.mult * (this.perk === 'yakin' ? 3 : 1));
+        const bonus = Math.round(80 * this.mult * (this.perk === 'yakin' ? 3 : 1) * (this.pulseT > 0 ? 2 : 1));
         this.score += bonus;
         if (this.perk === 'yakin') this.addFlow(2);
         const cm = this.chainBonus();
@@ -2922,7 +3099,7 @@ export class Runner {
       }
       case 'over': {
         this.addFlow(1.5);
-        const pts = 50 * this.mult;
+        const pts = 80 * this.mult;
         this.score += pts;
         this.fovPunch(1.5);
         this.skillTag('ÜSTÜNDEN!', '+' + Math.round(pts), 0, 3);
@@ -2993,7 +3170,7 @@ export class Runner {
           this.perfects++;
           this.addFlow(5);
           this.ctx.meta?.track?.('perfect', {});
-          this.score += 100 * this.mult;
+          this.score += 150 * this.mult;
           music.perfect();
           this.float('PERFECT!', 'big');
           platform.haptic('success');
@@ -3010,6 +3187,7 @@ export class Runner {
         if (this.rocketT <= 0 && !this.buffs.has('donma')) this.drainSoft((e.rate || 0.2) * this.stepDt);
         break;
       case 'portal': {
+        if (e.biome < 0) { this.score += 200 * this.mult; audio.milestone(2); this.gap = Math.min(RCFG.yetiMax, this.gap + 6); break; }       // chapter gate: no biome change
         const bi = biomeAt(b.s + 5);
         this.score += 200 * this.mult;
         music.setStyle(musicStyleAt(b.s + 5));
@@ -3033,7 +3211,7 @@ export class Runner {
     this.kick += 0.4 * cm * hot;
     if (cm) this.mistBurst(2 + 2 * cm, cm > 1 ? 0xffe27a : 0xbfe6ff, 3 + cm, 0.8);
     this.skillTag(n > 1 ? `KIL PAYI x${n}` : 'KIL PAYI!', '+' + bonus + (step ? ' · ÇARPAN +0,5' : ''), cm, step ? 7 : 5);
-    if (step) this.ctx.audio.chime?.();
+    if (step) { this.ctx.audio.chime?.(); this.warpT = Math.max(this.warpT, 0.2); }      // chain step 3 / 5 / 8: a 0.2 s half-speed beat so the squeeze is felt
   }
 
   // Warm ground (volcano / desert): extra melt on top of hunger.
@@ -3127,7 +3305,7 @@ export class Runner {
         audio.milestone(2);
         break;
       case 'x2':
-        this.x2T = this.dur('x2');
+        this.x2T = this.dur('x2'); this.x2Up = Math.max(0, this.x2T - RCFG.dur.x2);      // (the seconds an upgrade added are the tail of the timer: see _mult0)
         audio.milestone(3);
         this.float('ÇARPAN +3!', 'big');
         this.powerups = (this.powerups || 0) + 1; this.ctx.meta?.track?.('powerup', { kind: 'x2' });
@@ -3225,7 +3403,7 @@ export class Runner {
         }
         break;
       case 'magnet':
-        this.magnetT = this.dur('magnet') * (this.abil === 'kofte' ? 1.3 : 1);
+        this.magnetT = this.dur('magnet') * (this.abil === 'kofte' ? 1.3 + 0.1 * this.cs : 1);
         this.powerups = (this.powerups || 0) + 1; this.ctx.meta?.track?.('powerup', { kind: 'magnet' });
         audio.milestone(3);
         this.float('MIKNATIS!', 'big');
@@ -3254,7 +3432,7 @@ export class Runner {
 
   // Flakes (coins). The gold card doubles them; permanent upgrades add a little. Whole coins only.
   addFlakes(v) {
-    this.coinsF += v * this.mutCoin * (this.abil === 'cini' ? 1.1 : 1) * (this.buffs.has('altin') ? 2 : 1) * (this.perk === 'altinkar' ? 1.25 : 1) * (this.perk === 'miknatis' && this.buffs.has('altin') ? 2 : 1) * (1 + 0.08 * Math.min(5, this.perm.coin || 0));
+    this.coinsF += v * this.mutCoin * (this.abil === 'cini' ? 1.1 + 0.03 * this.cs : 1) * (this.buffs.has('altin') ? 2 : 1) * (this.perk === 'altinkar' ? 1.25 : 1) * (this.perk === 'miknatis' && this.buffs.has('altin') ? 2 : 1) * (1 + 0.08 * Math.min(5, this.perm.coin || 0));
     const whole = Math.floor(this.coinsF);
     this.coins += whole;
     this.coinsF -= whole;
@@ -3277,7 +3455,7 @@ export class Runner {
       this.holeAir = false;
       this.coyoteT = 0;
       this.duckT = 0;
-      b.vh = (this.jumpBufT > 0 ? RCFG.stompV + 3 : RCFG.stompV) + (this.abil === 'kirpi' ? 2 : 0);      // a jump pressed just before = a higher bounce (Mario)
+      b.vh = (this.jumpBufT > 0 ? RCFG.stompV + 3 : RCFG.stompV) + (this.abil === 'kirpi' ? 2 + 0.4 * this.cs : 0);      // a jump pressed just before = a higher bounce (Mario)
       this.jumpBufT = 0;
       const n = this.stompN;
       this.addFlakes(n);
@@ -3342,7 +3520,7 @@ export class Runner {
   }
 
   // Magnet: pull nearby flakes in by widening the pickup radius for flakes only.
-  magnetRadius() { return this.mutMag ? 4.5 : this.magnetT > 0 || this.buffs.has('miknatis') ? 4.5 : this.perk === 'miknatis' ? 3.2 : 0; }
+  magnetRadius() { const r = this.mutMag ? 4.5 : this.magnetT > 0 || this.buffs.has('miknatis') ? 4.5 : this.perk === 'miknatis' ? 3.2 : 0; return r > 0 ? r + upMagnet(this.upMag) : 0; }
 
   finish() {
     if (this.state !== 'play') return;
@@ -3370,6 +3548,8 @@ export class Runner {
       crashes: this.crashes, layersLost: this.layersLost, maxTier: this.maxTier,
       minYetiGap: Number.isFinite(this.minGap) ? this.minGap : RCFG.yetiMax, perfects: this.perfects, powerups: this.powerups, time: this.time, seasonTokens: this.seasonTokens || 0,
       turns: this.turns, stumbles: this.stumbles, stomps: this.stompTotal, killKind: this.killKind,
+      progress: clamp(this.b.s / len, 0, 1),     // how far the run got (0..1)
+      failText: this.state === 'finished' ? '' : t('az kaldı: %' + Math.round(clamp(this.b.s / len, 0, 1) * 100)),     // "az kaldı: %87"
     };
   }
 
@@ -3383,7 +3563,6 @@ export class Runner {
     const { ui, audio, platform } = this.ctx;
     this.zip = null;
     this.grind = null;
-    this.rage = null;
     this.wallRun = null;
     this.bannerQ.length = 0;
     this.later.length = 0;
@@ -3417,7 +3596,7 @@ export class Runner {
     const TXT = { wall: 'DUVARA ÇARPTIN', fall: 'DÜŞTÜN', melt: 'ERİDİN', yeti: 'YETİ YAKALADI', smash: 'ÇARPTIN', explode: 'PATLADIN' };
     const d = Math.round(this.b.s);
     const kn = this.killKind && (this.cause === 'smash' || this.cause === 'explode') ? KILL_NAME[this.killKind] : null;      // "ÇARPTIN (KAYA)": WHAT got you
-    this.ctx.ui.float?.((ICON[this.cause] || '💀') + ' ' + (TXT[this.cause] || 'BİTTİ') + (kn ? ' (' + kn + ')' : '') + ' · ' + d.toLocaleString('tr-TR') + ' m', window.innerWidth * 0.5, window.innerHeight * 0.3, 'bad');
+    this.ctx.ui.float?.((ICON[this.cause] || '💀') + ' ' + (TXT[this.cause] || 'BİTTİ') + (kn ? ' (' + kn + ')' : '') + ' · ' + NUM(d) + ' m', window.innerWidth * 0.5, window.innerHeight * 0.3, 'bad');
   }
 
   updateDying(dt, rdt) {
@@ -3428,12 +3607,12 @@ export class Runner {
     const inp = this.ctx.input;
     if (this.deadT > 0.4 && inp && inp.swipe && inp.swipe.t > this._dieAt + 350) { this._skipRecap = true; this.finishOver(); return; }
     if (this.deadT < 0.6) this.deathZoom = Math.min(1, this.deadT / 0.4);
-    let T = 1.15;            // (was 1.4 / 1.8 / 1.5: the read-out is the first ~0.7 s; the rest was waiting)
+    let T = 0.75;            // the read-out lands in ~0.7 s (was 1.15 / 1.4 / 1.8): death -> result in 0.75 s untouched, 0.4 s with a tap
     if (this.cause === 'fall') {
       b.vh -= RCFG.gravity * dt;
       b.h = Math.max(-70, b.h + b.vh * dt);
       b.s += b.vs * 0.5 * dt;
-      T = 1.5;
+      T = 1.1;
     } else if (this.cause === 'yeti') {
       // The Yeti catches up and scoops the ball.
       this.gap = Math.max(-1, this.gap - 25 * dt);
@@ -3447,7 +3626,7 @@ export class Runner {
       b.r = Math.max(0.04, b.r - rdt * 0.5);
       if (Math.random() < rdt * 40) this.mistBurst(1, 0xaed8ff, 1.5, 0.6);
       if (this.deadT > 1.0) this.ctx.ball.group.visible = false;
-      T = 1.3;
+      T = 1.0;
     } else {
       b.vs *= Math.exp(-4 * dt);
     }
@@ -3475,6 +3654,7 @@ export class Runner {
     meta?.track?.('endless_end', {
       distance: dist, score, coins: this.coins, crashes: this.crashes, cause: this.cause, killKind: this.killKind,
       maxTier: this.maxTier, seasonTokens: this.seasonTokens || 0, jumps: this.jumps, smashes: this.smashes, turns: this.turns, stumbles: this.stumbles, stomps: this.stompTotal,
+      chapters: this.chapDone, cleanChapters: this.chapClean, chapterXp: this.chapXp, bestChapter: this.bestChapter,
     });
     if (this.boxes) meta?.addBoxes?.(this.boxes);      // credited silently
     this.recInfo = { rank, dailyBest, weeklyBest };
@@ -3516,7 +3696,7 @@ export class Runner {
 
   showRecap(done) {
     const dist = Math.max(1, Math.round(this.b.s));
-    if (dist < 50 || typeof document === 'undefined') { done(); return; }
+    if (dist < 300 || typeof document === 'undefined') { done(); return; }      // a short run has nothing to recap: straight to the result
     const ev = this.rcp.slice();
     if (this.rcpN >= 4) ev.push({ s: this.rcpS, k: 'combo', n: this.rcpN });
     ev.push({ s: this.b.s, k: 'death' });
@@ -3525,7 +3705,7 @@ export class Runner {
     const IC = { rec: '🏆', boss: '🧌', combo: '🔥', wall: '🧱', fall: '🕳️', melt: '💧', yeti: '👹', smash: '💥', explode: '💣' };
     const el = this._rcpEl = document.createElement('div');
     el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);width:min(92vw,380px);box-sizing:border-box;top:calc(env(safe-area-inset-top,0px) + 70px);z-index:60;padding:10px 12px 8px;border-radius:18px;background:rgba(15,30,55,.88);color:#fff;font:800 16px system-ui,sans-serif;text-align:center;touch-action:manipulation;opacity:0;transition:opacity .15s';
-    let h = '<div style="letter-spacing:.12em;opacity:.85">BÖLÜM ÖZETİ</div><div style="font-size:26px;line-height:1.1">' + dist.toLocaleString('tr-TR') + ' m</div><div style="position:relative;height:62px;margin:8px 10px 0"><div style="position:absolute;left:0;right:0;top:30px;height:6px;border-radius:3px;background:rgba(255,255,255,.2)"></div><div class="rf" style="position:absolute;left:0;top:30px;height:6px;width:0;border-radius:3px;background:#7fd0ff;transition:width 1s linear"></div>';
+    let h = '<div style="letter-spacing:.12em;opacity:.85">BÖLÜM ÖZETİ</div><div style="font-size:26px;line-height:1.1">' + NUM(dist) + ' m</div><div style="position:relative;height:62px;margin:8px 10px 0"><div style="position:absolute;left:0;right:0;top:30px;height:6px;border-radius:3px;background:rgba(255,255,255,.2)"></div><div class="rf" style="position:absolute;left:0;top:30px;height:6px;width:0;border-radius:3px;background:#7fd0ff;transition:width 1s linear"></div>';
     for (const e of ev) {
       const f = Math.min(1, Math.max(0, e.s / dist));
       const ic = e.k === 'death' ? (IC[this.cause] || '💀') : IC[e.k];
@@ -3542,7 +3722,7 @@ export class Runner {
       el.querySelector('.rf').style.width = '100%';
       el.querySelectorAll('.ri').forEach((n) => { n.style.transform = 'translateX(-50%) scale(1)'; });
     }));
-    this._rcpTm = setTimeout(end, 1250);
+    this._rcpTm = setTimeout(end, 900);
   }
 
   // The result screen. While a revive is possible the run is NOT recorded yet (a revive continues the same run).
@@ -3556,6 +3736,11 @@ export class Runner {
     if (!canRevive) { const info = this.recordRun(); rank = info.rank; dailyBest = info.dailyBest; weeklyBest = !!info.weeklyBest; }
     else rank = save.previewRunnerRank?.(dist) ?? 0;
     const isBestDist = dist >= 50 && dist > bestDistBefore;
+    // score read-out: one big number (score), how far from the best (deltaBest, signed) and one next goal (text is ready to show)
+    const ng = nextGoal(score, bestBefore);
+    const mrep = meta?.missionsReport?.(), mrows = mrep ? mrep.rows : (meta?.missions?.() ?? []), mrow = pickMission(mrows), dk = deathGoalKind(ng, score, bestBefore, mrow);
+    const left = missionsLeft(mrows);
+    if (!canRevive && dist >= 50 && score > bestBefore) music.stinger('record');
     const dt = ui.runnerDeathText ? ui.runnerDeathText(this.cause, this.killKind) : null;
     ui.showRunnerResult({
       cause: this.cause,
@@ -3569,13 +3754,17 @@ export class Runner {
       daily: this.daily ? { num: this.daily.num, best: (this.dailyRec || { dist }).dist } : null,
       perk: this.perk ? RUN_PERK_BY_ID[this.perk] : null,
       synergies: this.synHit.length ? this.synHit.slice() : null,
-      perk: this.perk ? RUN_PERK_BY_ID[this.perk] : null,
-      synergies: this.synHit.length ? this.synHit.slice() : null,
       destruction: DESTRUCTION[this.destTier].name,
       tons: Math.round(this.destTons),
       rank,
-      toRecord: Math.max(0, Math.round(bestDistBefore - dist)),
-      missions: meta?.missions?.() ?? [],
+      toRecord: Math.max(0, Math.round(bestDistBefore - dist)),   // (old, metres: kept for old readers)
+      toRecordScore: Math.max(0, bestBefore - score),
+      isRecord: dist >= 50 && score > bestBefore,
+      deltaBest: bestBefore > 0 ? score - bestBefore : 0,
+      nextGoal: ng,
+      nextGoalKind: dk,
+      nextGoalText: dk === 'mission' ? t('GÖREV:') + ' ' + t(mrow.text) + ' (' + mrow.value + '/' + mrow.goal + ')' + (left < 3 ? ' · ' + t(left === 1 ? 'SET İÇİN 1 GÖREV KALDI' : 'SET İÇİN ' + left + ' GÖREV KALDI') : '') : t(ng.k === 'rec' ? 'EN İYİYE ' + NUM(ng.val) + ' PUAN' : 'SIRADAKİ: ' + NUM(ng.val) + ' PUAN'),
+      missions: mrows,
       layer: this.layer + 1,
       boxes: this.boxes,
       seasonTokens: this.seasonTokens || 0,
@@ -3588,7 +3777,7 @@ export class Runner {
       best: Math.max(bestBefore, score),
       bestScore: Math.max(bestBefore, score),
       bestDist: Math.max(bestDistBefore, dist),
-      isBest: isBestDist,
+      isBest: dist >= 50 && score > bestBefore,
       isBestDist,
       canRevive,
       onRevive: () => this.revive(),
@@ -3650,12 +3839,12 @@ export class Runner {
     this.hungerWarn = false;
     this.nearChain = 0;
     this.stompN = 0;
-    this.turnBufT = 0; this.laneBuf = 0; this.laneBufT = 0; this.pTurns = 0; this.flowSt = 0; this.fovP = 0; this._skipRecap = false;
+    this.turnBufT = 0; this.laneBuf = 0; this.laneBufT = 0; this.pTurns = 0; this.flowSt = 0; this.fovP = 0; this._skipRecap = false; this.pulseT = 0; this.warpT = 0;
     this.jnId = null; this.jnDone = false; this.jnOpen = false; this.jnNear = false; this.juncSlow = false;
     const J = tr.junctionAt ? tr.junctionAt(b.s) : null;
     if (J && b.s >= J.s - Math.max(J.s - J.s0, RCFG.juncMinSecs * b.vs) - 1) { this.jnId = J.id !== undefined ? J.id : J.s; this.jnDone = true; }   // revived inside a turn window: that corner is forgiven
     this.cornerK = 0;
-    this.countT = 0.8;
+    this.countT = 0.6;
     this.countQuiet = true;
     this.hitStop = 0;
     this.state = 'play';
@@ -3831,11 +4020,11 @@ export class Runner {
   // ball over the trail — never on the strip of track the player is reading.
   // ---- first-encounter tips: once ever per mechanic (localStorage), max one per 8 s, never in danger ----
   tip(key, text, slow) {
-    if (this.state !== 'play' || this.tipCd > 0 || this.countT > 0 || this.bannerT > 0 || this.ctx.ui.annBusy?.() || (this.zone && this.zone.announced && this.b.s - this.zone.from < 60) || (this.time - this.floatT < 1.5 && this.floatPri >= 2)) return false;
+    if (this.state !== 'play' || this.tipCd > 0 || this.countT > 0 || this.bannerT > 0 || this.hintOn || this.ctx.ui.annBusy?.() || (this.zone && this.zone.announced && this.b.s - this.zone.from < 60) || (this.time - this.floatT < 1.5 && this.floatPri >= 2)) return false;
     if ((this.ctx.ui._cmN || 0) > 3) return false;     // no tips in a combo / at speed
     let runs = 0; try { runs = this.ctx.meta?.stats?.().runs || 0; } catch (e) { runs = 0; }
     if (runs >= 2 && this.b.s > 400) return false;      // tips are for new players
-    if (this.stumbleT > 0 || this.gap < 9 || this.boss || this.rage || this.hungerWarn || this.zip || this.grind) return false;
+    if (this.stumbleT > 0 || this.gap < 9 || this.boss || this.hungerWarn || this.zip || this.grind) return false;
     let seen = this.tipsSeen;
     if (!seen) {
       try { seen = JSON.parse(localStorage.getItem('patpat.rush.tips') || '{}') || {}; } catch (e) { seen = {}; }
@@ -3844,7 +4033,7 @@ export class Runner {
     if (seen[key]) return false;
     seen[key] = 1;
     try { localStorage.setItem('patpat.rush.tips', JSON.stringify(seen)); } catch (e) { /* ignore */ }
-    this.tipCd = 8;
+    this.tipCd = depthFull(this.depth) ? 8 : 14;       // the first runs: at most one short hint every 14 s
     this.ctx.ui.toastSoft?.(text, { drop: true });
     if (slow) this.tipSlowT = 0.9;
     return true;
@@ -3881,6 +4070,8 @@ export class Runner {
 
   float(text, cls) {
     const pri = FLOAT_PRI[cls] ?? 1;
+    if (this.quietRun && !TEACH_MSG.has(text)) return;
+    if (pri < 3 && this.time < this.tagT) return;    // a skill tag is on screen: one transient message at a time
     if (pri < 2) return;                           // low-value info text (buff ends, +50, KAPI 1/3 ...) is never shown
     if (this.bannerT > 0 && pri < 3) return;      // one big centre text at a time: a banner owns the slot
     const lastSame = this.floatSeen.get(text);
@@ -3920,6 +4111,8 @@ export class Runner {
   // lvl 0..3 = heat (colour), prio: 3 small stuff, 5 skill, 7 multiplier step, 9 milestones.
   skillTag(main, sub, lvl, prio) {
     if (this.state !== 'play' || this.countT > 0 || typeof document === 'undefined') return;
+    if (this.quietRun && !/DÖNÜŞ/.test(main)) return;
+    if (this.time - this.floatT < 0.9 && prio < 7) return;    // a centre float is showing: one transient message at a time
     if (this.time < this.tagT && prio < this.tagPrio) return;
     this.tagT = this.time + (prio >= 5 ? 0.55 : 0.3);
     this.tagPrio = prio;
@@ -3960,6 +4153,7 @@ export class Runner {
     if (audio.roar) audio.roar(quiet ? 0.45 : clamp((9 - this.gap) / 5, 0.5, 1));
     else { audio.bump(1); audio.crash(0.25); }
     platform.haptic('heavy');
+    if (this.yeti) this.yeti.roar = quiet ? 0.7 : 1;
     this.trauma = Math.min(1, this.trauma + (quiet ? 0.15 : 0.3));
   }
 
@@ -3975,14 +4169,32 @@ export class Runner {
     this.avalanche.group.visible = show;
     if (!show) return;
     y.t += dt;
+    // life: the sprint (YETİ KOŞUSU) / a roar / a close chase make it run harder, pulse and glow (all scalars: no allocation, the glow is one emissive colour)
+    y.spr += ((this.pulseT > 0 ? 1 : 0) - y.spr) * Math.min(1, dt * 5);
+    y.roar = Math.max(0, y.roar - dt * 2.2);
+    const heat = Math.max(y.spr * 0.8, y.roar, clamp((9 - this.gap) / 5, 0, 0.6));
+    if (Math.abs(heat - y.heat) > 0.01) { y.heat = heat; y.mat.emissive.setRGB(0.03 + 0.14 * heat, 0.05, 0.12 - 0.05 * heat); }
     if (this.boss) this.avalanche.group.visible = false;
     const gs = this.boss ? b.s + this.boss.off : b.s - Math.max(-0.5, gapV);
     const eat = this.baitT > 0 ? Math.min(1, (3 - this.baitT) * 5, this.baitT * 5) : 0;
     const tr = this.track;
     tr.frame(Math.max(0, gs), _f);
     // The Yeti tracks your lane with a lag and bounds along.
-    y.u += ((this.boss ? this.boss.yu : b.u) - y.u) * Math.min(1, dt * 2.5);
-    const run = Math.abs(Math.sin(y.t * 7)) * (1 - eat);
+    // Close to the camera it must never wall off the screen, the ball or its lane: it slides to the far side of the track and
+    // shrinks so it fills at most ~20% of the view height (threat is the red vignette, the roar and the shake, not a pink wall).
+    // dCam = metres from the camera along the track; the camera sits camUpH above the road.
+    let fit = 1, uT = this.boss ? this.boss.yu : b.u;
+    if (!this.boss) {
+      const dCam = this.camBackS - gapV;
+      const d3 = Math.hypot(dCam, this.camUpH);
+      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, 0.14);   // (14% of the view height at most: the head never fills the bottom corner)
+      const side = b.u > 0.01 ? -1 : 1, hw = (tr.halfWidth(Math.max(0, gs)) || 3.8) - 0.3;
+      uT = clamp(b.u + side * 3.4 * yetiSide(dCam), -hw, hw);
+      if (dCam < 1.5) y.group.visible = false;      // right under / behind the camera: out of the picture anyway (and no draw call)
+      if (dCam < 5) this.avalanche.group.visible = false;   // its powder wall sits 6 m behind the Yeti: behind the camera too (3 draw calls saved while the Yeti is far)
+    }
+    y.u += (uT - y.u) * Math.min(1, dt * 2.5);
+    const hz = 7 + 4 * y.spr, run = Math.abs(Math.sin(y.t * hz)) * (1 - eat) * (1 + 0.5 * y.spr);
     const sf = tr.surfaceAt(gs, y.u);
     tr.toWorld(Math.max(0, gs), y.u, Math.max(0, sf === -Infinity ? 0 : sf) + run * 0.8, _v);
     if (gs < 0) _v.addScaledVector(_f.tan, gs);       // behind the start line: follow the tangent back
@@ -3990,12 +4202,14 @@ export class Runner {
     _m.makeBasis(_x, _f.up, _f.tan);
     _q.setFromRotationMatrix(_m);
     // Lean in and pump: tilt forward with the stride.
-    const lean = 0.25 + Math.sin(y.t * 7) * 0.08 * (1 - eat) + eat * (0.55 + Math.sin(y.t * 16) * 0.12);   // head down, chomp chomp
+    const lean = 0.25 + 0.2 * y.spr + Math.sin(y.t * hz) * (0.08 + 0.05 * y.spr) * (1 - eat) + eat * (0.55 + Math.sin(y.t * 16) * 0.12);   // head down, chomp chomp (more forward at a sprint)
     _q2.setFromAxisAngle(_ax.set(1, 0, 0), lean);
     y.mesh.quaternion.copy(_q).multiply(_q2);
     y.mesh.position.copy(_v);
-    const sc = y.scale * (1 + Math.sin(y.t * 14) * 0.03 + eat * Math.sin(y.t * 16) * 0.06);
-    y.mesh.scale.set(sc, sc * (1 - run * 0.06 - eat * Math.abs(Math.sin(y.t * 8)) * 0.12), sc);
+    const rp = y.roar * (0.12 + 0.06 * Math.sin(y.t * 30));     // roar: a quick swell that rings out
+    y.fit += (fit - y.fit) * Math.min(1, dt * 6);
+    const sc = y.scale * y.fit * (1 + Math.sin(y.t * 14) * 0.03 + eat * Math.sin(y.t * 16) * 0.06 + rp);
+    y.mesh.scale.set(sc, sc * (1 - run * 0.06 - eat * Math.abs(Math.sin(y.t * 8)) * 0.12 + rp * 0.4), sc);
 
     // A wall of powder rolls behind it.
     const av = this.avalanche;
@@ -4128,7 +4342,7 @@ export class Runner {
     if (!dying && lk < 0.5) {
       tr.toWorld(b.s, b.u, 0, _tp);
       const dx = _tp.x - _v.x, dz = _tp.z - _v.z, dl = Math.hypot(dx, dz);
-      if (dl > 0.5) { const e = (dl + this.camLa) / dl, bx = _v.x + dx * e, bz = _v.z + dz * e, w = 0.85 * (1 - 2 * lk); _look.x += (bx - _look.x) * w; _look.z += (bz - _look.z) * w; }
+      if (dl > 0.5) { const e = (dl + this.camLa) / dl, bx = _v.x + dx * e, bz = _v.z + dz * e, w = 0.95 * (1 - 2 * lk); _look.x += (bx - _look.x) * w; _look.z += (bz - _look.z) * w; }
     }
     if (lk > 0.001) _look.lerp(this.ctx.ball.group.position, lk);
     if (dying) {
@@ -4250,15 +4464,27 @@ function makeYeti(scene, lib) {
   const group = new THREE.Group();
   const def = lib.yeti;
   const geo = def ? def.geometry : new THREE.CapsuleGeometry(0.8, 1.6, 4, 8);
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: !!def, color: def ? 0xffffff : 0xdfe9f5, flatShading: true });
+  // dark cool tint (the warm vertex colours x 0x8fa6c8 read baby pink; x this navy they read as a shadowy snow monster against the snow)
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: !!def, color: 0x30508c, emissive: 0x0a1630, flatShading: true });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
   group.add(mesh);
+  // two glowing eyes on the side that faces the camera (one tiny instanced mesh)
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox, hh = bb.max.y - bb.min.y;
+  const eg = new THREE.IcosahedronGeometry(Math.max(0.05, hh * 0.045), 0);
+  const em = new THREE.MeshBasicMaterial({ color: 0xff7a2a, toneMapped: false });
+  const eyes = new THREE.InstancedMesh(eg, em, 2);
+  const ez = bb.min.z + (bb.max.z - bb.min.z) * 0.12, ey = bb.min.y + hh * 0.8, ex = (bb.max.x - bb.min.x) * 0.1;
+  eyes.setMatrixAt(0, new THREE.Matrix4().makeTranslation(-ex, ey, ez));
+  eyes.setMatrixAt(1, new THREE.Matrix4().makeTranslation(ex, ey, ez));
+  eyes.frustumCulled = false;
+  mesh.add(eyes);
   group.visible = false;
   scene.add(group);
   // ~3.3 m tall: big next to the ball, but it must not wall off the chase camera.
   const scale = def ? RCFG.yetiH / Math.max(0.5, def.height) : RCFG.yetiH / 3.2;
-  return { group, mesh, scale, t: 0, u: 0, dispose: () => { mat.dispose(); if (!def) geo.dispose(); } };
+  return { group, mesh, mat, scale, t: 0, u: 0, spr: 0, roar: 0, heat: -1, fit: 1, dispose: () => { mat.dispose(); em.dispose(); eg.dispose(); eyes.dispose(); if (!def) geo.dispose(); } };
 }
 
 function makeAvalanche(scene) {

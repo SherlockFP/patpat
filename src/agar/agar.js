@@ -2,7 +2,8 @@
 // Single player runs entirely here (no network code is loaded). Online (all lazily imported): PeerJS game link (net.js) + Trystero serverless room discovery (lobby.js):
 // the host runs the whole simulation, clients only send input and render snapshots.
 import * as THREE from 'three';
-import { VERSION, MAX_HUMANS } from './proto.js';
+import { VERSION, MAX_HUMANS, NET_LOCAL, pickRival } from './proto.js';
+import { LIM, QUICK_CHAT, cleanText } from './validate.js';
 import { Terrain, NICE, NDEEP, NRAMP } from './terrain.js';
 import { generateNames, BOT_CHAT } from './names.js';
 import { Trails, Snowfall } from './snowfx.js';
@@ -20,11 +21,11 @@ const PERS_THR = [1, 0.8, 1.7, 1, 0.6, 1]; // threat scan range multiplier
 const PERS_PROP = [1.2, 1.3, 1.4, 0.6, 1.2, 1.3]; // lower = prefers props over pellets
 
 // ------------------------------------------------------------------ constants
-const R = 1100; // arena radius (m) - a big agar.io-like map (2.2 km across)
-const CAP = 260; // max live cells
-const NOWN = 52; // owners (players + bots): up to 8 humans, the rest are bots
-const FOOD = 24000, SPARE = 800, FT = FOOD + SPARE; // permanent pellets + slots for boost-trail pellets
-const NVIR = 90, NPUP = 40;
+const R = LIM.R; // arena radius (m) - a big agar.io-like map (2.2 km across)
+const CAP = LIM.CAP; // max live cells
+const NOWN = LIM.NOWN; // owners (players + bots): up to 8 humans, the rest are bots
+const FOOD = LIM.FOOD, SPARE = LIM.SPARE, FT = FOOD + SPARE; // permanent pellets + slots for boost-trail pellets
+const NVIR = LIM.NVIR, NPUP = LIM.NPUP; // shared with validate.js (network message bounds)
 const FR = 26; // kar kalesi radius
 const PAINT_R = 90;
 const FORT_POS = [[0, -520], [450, 260], [-450, 260]];
@@ -33,7 +34,8 @@ const BUR = (() => { const a = []; for (let k = 0; k < NBUR; k++) { const an = 0
 const FLEE_ANG = [0.8, -0.8, 1.6, -1.6];
 const GS = 40, GN = 55; // food grid (GN * GS >= 2 * R)
 const KR = 0.3; // radius = KR * sqrt(mass)
-const MAXM = 60000;
+const MAXM = LIM.MAXM;
+const MATCH_T = 240; // solo match length (s): finish as high as you can when the clock runs out
 // bot personalities: each bot settles at its own share of the dynamic bot cap (0.55x .. 1.6x), so the leaderboard never
 // shows a flat wall of equal masses and there are always a few bigger fish worth hunting
 const capK = (id) => 0.55 + 1.05 * ((((id + 3) * 2654435761) >>> 0) % 997) / 996;
@@ -44,6 +46,7 @@ const VIRR = 3, VIR_MIN = 130; // ice crystal radius / smallest mass that gets s
 const MAXPIECES = 16;
 const TIP_KEY = 'patpat.agar.tip';
 const BEST_KEY = 'patpat.agar.best', XP_KEY = 'patpat.agar.xp', NICK_KEY = 'patpat.agar.nick';
+const NET_OK_KEY = 'patpat.agar.netok'; // first-use online notice acknowledged
 const PUP_TYPES = [
   { id: 'mag', emoji: '🧲', name: 'MIKNATIS', col: 0xff5a5a, t: 9 },
   { id: 'shd', emoji: '🛡️', name: 'KALKAN', col: 0x4aa8ff, t: 7 },
@@ -163,7 +166,7 @@ export class AgarMode {
     this.resultEl = null; this.screenEl = null;
     this._lbCmp = (a, b) => b.mass - a.mass;
 
-    this.sumT = 0; this.prevRank = 99;
+    this.sumT = 0; this.prevRank = 99; this.rival = -1; this.rivalT = 0;
     this.initData();
     this.buildScene();
     this.buildForts();
@@ -186,7 +189,7 @@ export class AgarMode {
     for (let i = 0; i < NOWN; i++) {
       const o = {
         id: i, name: '', col: 0xffffff, cr: 1, cg: 1, cb: 1, bot: true, human: null, alive: false, wasAlive: false, cellN: 0, mass: 0, cx: 0, cz: 0, lx: 0, lz: 0, maxR: 1, maxM: 0, ext: 0,
-        dx: 0, dz: 1, mag: 0, ldx: 0, ldz: 1, boostT: 0, boostCd: 0, trailT: 0, splitCd: 0, shield: 0, magnet: 0, speed: 0, away: false, respawnT: 0, aiT: Math.random(), tx: 0, tz: 0, wanderT: 0,
+        dx: 0, dz: 1, mag: 0, ldx: 0, ldz: 1, boostT: 0, boostCd: 0, trailT: 0, splitCd: 0, shield: 0, magnet: 0, speed: 0, away: false, respawnT: 0, aiT: Math.random(), tx: 0, tz: 0, wanderT: 0, dumbT: 0,
         bc: 0, hideT: 0, burCd: 0, fleeT: 0, bur: -1, kills: 0, xpRun: 0, t0: 0, bestRank: 99, maxMass: 0, seen: 0, killer: -1, sprite: null, tex: null, spriteName: '', pers: 0, emoteAt: -9,
       };
       this.owners.push(o);
@@ -244,7 +247,7 @@ export class AgarMode {
       this.patches = [];
       for (let i = 0; i < 90; i++) {
         const a = pr() * 6.2832, d = Math.sqrt(pr()) * (R - 120), r = 40 + pr() * 90, col = cols[i % cols.length];
-        const m = new THREE.Mesh(new THREE.CircleGeometry(r, 28).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.4, depthWrite: false }));
+        const m = new THREE.Mesh(new THREE.CircleGeometry(r, 28).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.25, depthWrite: false }));
         m.position.set(Math.cos(a) * d, 0.04, Math.sin(a) * d); sc.add(m); this.patches.push([m.position.x, m.position.z, r, col]);
       }
       // coloured fort plazas + paths between the forts
@@ -327,7 +330,7 @@ export class AgarMode {
     const shTex = canvasTex(64, 64, (g, W, H) => { const gr = g.createRadialGradient(W / 2, H / 2, 2, W / 2, H / 2, W / 2); gr.addColorStop(0, 'rgba(25,55,100,0.55)'); gr.addColorStop(0.6, 'rgba(25,55,100,0.28)'); gr.addColorStop(1, 'rgba(25,55,100,0)'); g.fillStyle = gr; g.fillRect(0, 0, W, H); });
     this.shadowMesh = mk(flat(), decal({ map: shTex }), CAP, false);
     this.shadowMesh.position.y = 0.22; this.shadowMesh.renderOrder = 4;
-    this.skinPool = new Map(); this.botPool = ['classic'];
+    this.skinPool = new Map(); this.skinList = []; this.botPool = ['classic'];
     this.foodMesh = mk(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), FT, true);
     this.ejMesh = mk(new THREE.SphereGeometry(1, 9, 7), new THREE.MeshLambertMaterial({ color: 0xffffff }), 160, true);
     this.virMesh = mk(spikyGeometry(), new THREE.MeshLambertMaterial({ color: 0x9fe8ff, flatShading: true, emissive: 0x1a6a8a }), NVIR, false);
@@ -375,7 +378,7 @@ export class AgarMode {
     this.shk = [];
     { const sg = new THREE.RingGeometry(0.9, 1, 48).rotateX(-Math.PI / 2);
       for (let i = 0; i < 3; i++) { const m = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ color: 0xbff4ff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, fog: false })); m.visible = false; m.frustumCulled = false; m.renderOrder = 8; sc.add(m); this.shk.push({ m, t: -1, r: 10 }); } }
-    this.meRing = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 56).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    this.meRing = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 56).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide, fog: false }));
     this.meRing.visible = false; this.meRing.frustumCulled = false; this.meRing.renderOrder = 6; sc.add(this.meRing);
     this.meShadow = new THREE.Mesh(new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x0a2a4a, transparent: true, opacity: 0.28, depthWrite: false, fog: false }));
     this.meShadow.visible = false; this.meShadow.frustumCulled = false; this.meShadow.renderOrder = 5; sc.add(this.meShadow);
@@ -392,6 +395,7 @@ export class AgarMode {
   }
 
   setName(o, name, isMe) {
+    name = cleanText(name, 14, 'Yeti'); // single gate for every displayed name (network, bots, local): control/markup stripped, profanity masked
     if (o.spriteName === name && o.isMeTag === isMe) return;
     o.name = name; o.spriteName = name; o.isMeTag = isMe;
     const cvs = o.tex.image;
@@ -426,7 +430,7 @@ export class AgarMode {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0;
     if (id === 'classic') { mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CAP * 3).fill(1), 3); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage); }
     this._scene.add(mesh);
-    e = { skin, mesh, n: 0 }; this.skinPool.set(id, e);
+    e = { skin, mesh, n: 0 }; this.skinPool.set(id, e); this.skinList.push(e);
     return e;
   }
   /** set a player's skin/trail ids (unknown -> classic) and the colour derived from the skin */
@@ -690,12 +694,13 @@ export class AgarMode {
     this.showTitle();
     this.hud.root.classList.add('ag-menu');
     const inv = takeArenaInvite();
-    if (inv) setTimeout(() => { if (!this.disposed && this.state === 'title') this.doJoin(inv, () => this.openBrowser()); }, 150);
+    if (inv && !NET_LOCAL) setTimeout(() => { if (!this.disposed && this.state === 'title') this.onlineGate(() => this.doJoin(inv, () => this.openBrowser())); }, 150);
   }
 
   playSolo() {
     if (this.mp) return;
     this.deaths = 0; this.bestStreak = 0; this.kStreak = 0;
+    this.startMatch();
     this.state = 'play';
     this.clearScreen();
     this.hud.root.classList.remove('ag-menu');
@@ -706,6 +711,65 @@ export class AgarMode {
     this.lastLevel = lvlOf(this.xp);
     this.audio?.init?.();
     this.audio?.whoosh?.();
+  }
+
+  /** solo match: MATCH_T seconds, the final rank decides the medal and a snowflake bonus */
+  startMatch() {
+    this.match = this.mp ? null : { t: MATCH_T, w1: 0, s: 0 };
+    this.matchDone = false;
+    this.rival = -1; this.rivalT = 0;
+    if (this.match) { this.zn.st = 0; this.zn.r = R; this.zn.next = 1e9; } // online rooms keep their ring; the ring of a solo match belongs to the last minute only
+    if (this.match) this.toast("4 dakikada ilk 3'e gir!", 3500);
+  }
+  /** one named rival: a bit heavier than you, it hunts you (think) and is marked on the leaderboard; eating it pays a bonus */
+  rivalTick(dt) {
+    this.rivalT -= dt;
+    if (this.rivalT > 0) return;
+    this.rivalT = 1;
+    const me = this.owners[this.me], r = this.rival >= 0 ? this.owners[this.rival] : null;
+    if (r && r.alive && !r.away && r.mass > me.mass * 0.6) return;
+    if (!me.alive) return;
+    const id = pickRival(this.owners, this.me, me.mass);
+    if (id < 0 || id === this.rival) return;
+    this.rival = id;
+    this.toast('RAKİP: ' + this.owners[id].name, 2200);
+  }
+  matchTick(dt) {
+    const M = this.match;
+    if (!M || this.matchDone || this.mp || (this.state !== 'play' && this.state !== 'dead')) return;
+    if (this.resultEl) { this.match = null; return; } // final death already showed the result: this match is over
+    M.t -= dt;
+    if (M.t > 0) {
+      this.rivalTick(dt);
+      if (!M.w1 && M.t < 60) { M.w1 = 1; this.toast('SON 1 DAKİKA! Çember daralıyor', 2200); this.audio?.milestone?.(2); this.zoneBegin(); }
+      const s = Math.ceil(M.t);
+      if (M.t < 6 && s !== M.s) { M.s = s; this.toast(String(s), 700); this.snd('tick'); }
+      return;
+    }
+    this.matchEnd();
+  }
+  matchEnd() {
+    const o = this.owners[this.me];
+    this.matchDone = true;
+    if (this.ghost) this.ghostClean(this.ghost);
+    let rank = NOWN; // dead at the final bell = unranked (bestRank would reward a ghost)
+    if (o.alive) {
+      rank = 1;
+      for (let k = 0; k < NOWN; k++) { const q = this.owners[k]; if (q !== o && q.alive && q.mass > o.mass) rank++; }
+      this.bank(o); o.shield = 1e9; o.mag = 0; // frozen and untouchable under the result card
+    }
+    this.inp.mag = 0; this.stickId = null; this.hud.stick.style.display = 'none';
+    this.matchRank = rank;
+    const bonus = rank === 1 ? 100 : rank <= 3 ? 50 : rank <= 10 ? 25 : 0;
+    this.matchBonus = bonus;
+    if (bonus > 0) { this.earned = (this.earned || 0) + bonus; try { if (this.save && typeof this.save.addCoins === 'function') this.save.addCoins(bonus); } catch { /* ignore */ } }
+    this.state = 'dead'; this.deadT = 0;
+    this.audio?.milestone?.(rank <= 3 ? 5 : 2);
+  }
+  /** result screen -> new match: drop the old balls first (the player may still be alive when the clock ran out) */
+  retireMe() {
+    for (let i = 0; i < CAP; i++) { const c = this.cells[i]; if (c.on && c.o === this.me) c.on = false; }
+    const o = this.owners[this.me]; o.alive = false; o.wasAlive = false; o.shield = 0; o.cellN = 0;
   }
 
   respawnMe() {
@@ -721,6 +785,7 @@ export class AgarMode {
 
   exit() {
     this._tok++;
+    this.match = null; clearInterval(this._brT); this._brRender = null;
     if (this.net) { try { this.net.close(); } catch { /* ignore */ } this.net = null; }
     this.stopPresence();
     this.mp = null;
@@ -744,7 +809,7 @@ export class AgarMode {
       if (n.material) { if (n.material.map) n.material.map.dispose(); n.material.dispose(); }
     });
     for (const e of this.skinPool.values()) { try { disposeSkin(e.skin); } catch (er) { /* ignore */ } }
-    this.skinPool.clear();
+    this.skinPool.clear(); this.skinList.length = 0;
     this.groundTex.dispose();
     this._scene.clear();
   }
@@ -1369,19 +1434,24 @@ export class AgarMode {
     const z = this.zn;
     if (z.st === 0) {
       z.next -= dt;
-      if (z.next <= 0 && this.state === 'play' && this.dirOk()) {
-        z.st = 1; z.t = 8; z.rt = R * 0.42; const a = Math.random() * 6.2832, d = Math.random() * R * 0.3; z.cx = Math.cos(a) * d; z.cz = Math.sin(a) * d; z.r = R;
-        this.pushFeed('❄ BUZ ÇEMBERİ! Çember daralıyor'); this.audio?.milestone?.(3);
-      }
+      if (z.next <= 0 && this.state === 'play' && this.dirOk()) this.zoneBegin();
       return;
     }
     const sm = (k) => k * k * (3 - 2 * k);
     if (z.st === 1) { z.t -= dt; z.r = R; if (z.t <= 0) { z.st = 2; z.t = 0; } return; }
     z.t += dt;
+    if (this.match && z.t > 47) z.t = 47; // solo match: the ring holds until the final whistle
     if (z.t < 12) z.r = R - (R - z.rt) * sm(z.t / 12);
     else if (z.t < 48) z.r = z.rt;
     else if (z.t < 60) z.r = z.rt + (R - z.rt) * sm((z.t - 48) / 12);
     else { z.st = 0; z.r = R; z.next = 270 + Math.random() * 60; this.pushFeed('Buz çemberi çözüldü'); }
+  }
+
+  zoneBegin() {
+    const z = this.zn;
+    if (z.st !== 0) return;
+    z.st = 1; z.t = 8; z.rt = R * 0.42; const a = Math.random() * 6.2832, d = Math.random() * R * 0.3; z.cx = Math.cos(a) * d; z.cz = Math.sin(a) * d; z.r = R;
+    this.pushFeed('❄ BUZ ÇEMBERİ! Çember daralıyor'); this.audio?.milestone?.(3);
   }
 
   buildZone() {
@@ -1454,19 +1524,18 @@ export class AgarMode {
   }
   chatAdd(name, col, text) {
     const L = this.chatLog;
-    L.push({ n: name, c: col, x: text, until: this.time + 9 });
+    L.push({ n: name, c: col, x: text, until: this.time + 5 });
     if (L.length > 6) L.shift();
     this.chatDirty = true;
     this.snd('tick');
   }
   /** the local player types / taps a phrase */
-  sendChat(text) {
-    text = this.cleanChat(text);
-    if (!text || !this.mp) return;
+  sendChat(q) { // only the predefined quick phrases exist (no free text, so no user generated text to moderate); the wire carries the index
+    if (!this.mp || !(q >= 0 && q < QUICK_CHAT.length)) return;
     if (this.time - this.lastChat < 1.2) { this.toast('Yavaş yaz!'); return; }
     this.lastChat = this.time;
-    if (this.mp === 'client') this.net && this.net.send({ t: 'chat', x: text });
-    else this.hostChat(this.owners[this.me], text);
+    if (this.mp === 'client') this.net && this.net.send({ t: 'chat', q });
+    else this.hostChat(this.owners[this.me], QUICK_CHAT[q]);
   }
   hostChat(o, text) {
     text = this.cleanChat(text);
@@ -1547,6 +1616,7 @@ export class AgarMode {
     let kb = 0;
     if (this.kingId === prey.o && pred.o !== prey.o && prey.m > po.mass * 0.4) { kb = prey.m * 0.25; this.pushFeed('KRAL DÜŞTÜ! ' + this.owners[pred.o].name + ', ' + po.name + accSuffix(po.name) + ' devirdi'); if (pred.o === this.me) { this.toast('LİDERİ DEVİRDİN! +%25 kütle', 2400); this.audio?.milestone?.(4); this.pulseT = 0; this.camKick = Math.max(this.camKick, 0.2); } this.kingId = -1; this.king = null; }
     if (pred.o === this.me && prey.o !== this.me && (this.earlyEats | 0) < 4) { this.earlyEats = (this.earlyEats | 0) + 1; kb += 5; } // first swallows give a bit extra
+    if (pred.o === this.me && prey.o === this.rival && this.match) { kb += prey.m * 0.5; this.rival = -1; this.rivalT = 0; this.toast('RAKİBİNİ YUTTUN! +bonus', 2200); this.audio?.milestone?.(4); }
     pred.m = Math.min(MAXM, pred.m + prey.m + kb);
     if (pred.o === this.me && prey.o !== this.me && prey.m >= 6) this.floatTxt('+' + Math.round(prey.m + kb), prey.x, prey.z, '#7dffb0');
     { const pw = this.owners[pred.o]; if (pw.prot && pw.shield > 0) { pw.shield = 0; pw.prot = false; if (pred.o === this.me) this.toast('KORUMA BİTTİ'); } }
@@ -1615,11 +1685,13 @@ export class AgarMode {
     const cx = o.lx, cz = o.lz, om = o.maxM, orr = o.maxR;
     const pe = o.pers, pmul = PERS_PREY[pe], tmul = PERS_THR[pe];
     let lurk = null, lurkD = 260;
+    const blind = o.dumbT > this.time; // a mistake: for a second the bot does not notice bigger balls
     for (let i = 0; i < CAP; i++) {
       const c = cells[i];
       if (!c.on || c.o === o.id || this.owners[c.o].hideT > 0) continue;
       const dx = c.x - cx, dz = c.z - cz, d = Math.sqrt(dx * dx + dz * dz);
       if (c.m > om * EAT_K) {
+        if (blind) continue;
         const e = d - c.r;
         if (e < (14 + orr * 2.5 + c.r * 1.5) * tmul && e < thrD) { thrD = e; thr = c; }
         if (pe === 4 && c.m > om * 1.5) { const ld = this.owners[c.o].cellN > 1 ? d * 0.5 : d; if (ld < lurkD) { lurkD = ld; lurk = c; } }
@@ -1628,7 +1700,7 @@ export class AgarMode {
         if (s > preyS) { preyS = s; prey = c; preyD = d; }
       }
     }
-    let tx = 0, tz = 0, mode = 0;
+    let tx = 0, tz = 0, mode = 0, pk = -1;
     if (thr) {
       mode = 1;
       tx = cx - (thr.x - cx); tz = cz - (thr.z - cz);
@@ -1644,6 +1716,10 @@ export class AgarMode {
       }
       if (thrD < orr * 1.5 + 4 && o.boostCd <= 0 && om > 40 && Math.random() < 0.5) this.boost(o);
       if (pe === 2 && Math.random() < 0.3) this.emote(o, 'kaç!');
+    } else if (o.id === this.rival && this.rivalGo(o)) {
+      mode = 2; const me = this.owners[this.me];
+      tx = me.lx + (me.lx - cx) * 0.05; tz = me.lz + (me.lz - cz) * 0.05;
+      if (o.boostCd <= 0 && om > 60 && Math.hypot(me.lx - cx, me.lz - cz) < orr * 3.2 + me.maxR && Math.random() < 0.4) this.boost(o);
     } else if (prey && (o.id % 3 !== 0 || pe === 1 || pe === 5 || preyD < 20 + orr * 2)) {
       mode = 2;
       if ((pe === 1 || pe === 5) && Math.random() < 0.12) this.emote(o, '😈');
@@ -1657,6 +1733,8 @@ export class AgarMode {
       tx = lurk.x + (-(lurk.z - cz) / ld) * st; tz = lurk.z + ((lurk.x - cx) / ld) * st; // circle the big one at a safe distance, wait for a split
     } else if (this.king && this.king.alive && this.king !== o && o.id % 4 === 1 && om > this.king.mass * 0.5 && Math.hypot(this.king.lx - cx, this.king.lz - cz) < 240) {
       mode = 2; tx = this.king.lx; tz = this.king.lz;
+    } else if (o.id % 3 !== 1 && (pk = this.pickupNear(cx, cz, 70 + orr * 2)) >= 0) {
+      mode = 3; tx = this.px[pk]; tz = this.pz[pk]; // contest power-ups with the player
     } else if (om > 50 && o.id % 3 === 0 && this.fortGoal(o)) {
       mode = 3; tx = this.tmpF.x; tz = this.tmpF.z;
     } else {
@@ -1710,6 +1788,17 @@ export class AgarMode {
     const l2 = Math.hypot(dx, dz) + 0.001;
     o.dx = dx / l2; o.dz = dz / l2; o.mag = 1; o.ldx = o.dx; o.ldz = o.dz;
     if (mode === 0 && o.mag) o.mag = 1;
+    if (!blind && !thr && o.cellN === 1 && o.id !== this.rival && Math.random() < 0.012) o.dumbT = this.time + 0.8 + Math.random() * 0.9;
+  }
+  /** the rival hunts the player only while it can eat him (heavier) and he is close and not shielded */
+  rivalGo(o) {
+    const me = this.owners[this.me];
+    return me.alive && me.shield <= 0 && me.hideT <= 0 && me.mass * EAT_K < o.maxM && Math.abs(me.lx - o.lx) + Math.abs(me.lz - o.lz) < 650;
+  }
+  pickupNear(cx, cz, rg) {
+    let bi = -1, bd = rg * rg;
+    for (let i = 0; i < NPUP; i++) { if (!this.pon[i]) continue; const dx = this.px[i] - cx, dz = this.pz[i] - cz, d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; bi = i; } }
+    return bi;
   }
 
   // ------------------------------------------------------------------ accumulate owner stats
@@ -1893,6 +1982,7 @@ export class AgarMode {
   }
 
   onMeDead(killer) {
+    if (this.matchDone) return; // the clock already ended this match
     this.kStreak = 0;
     const o = this.owners[this.me];
     this.state = 'dead';
@@ -1909,7 +1999,6 @@ export class AgarMode {
   ghostStart(o, killer) {
     if (this.hud.btns) this.hud.btns.style.display = 'none';
     this.ghost = { x: o.lx, z: o.lz, t: 10, bonus: 0, n: 0, ct: 0, kl: killer && killer !== o ? killer : null, rev: false };
-    this.bank(o);
     const el = document.createElement('div');
     el.className = 'ag-ghost';
     el.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;font-size:34px;filter:drop-shadow(0 0 8px #bfeaff);opacity:.85;z-index:5';
@@ -2011,15 +2100,17 @@ export class AgarMode {
     const ms = this.owners.filter(q => q.alive && q !== o).map(q => q.mass).sort((x, y) => y - x);
     const gap = Math.max(1, Math.ceil((ms[2] || 0) - o.maxMass + 1));
     const hook = rk > 3 ? `En iyi sıran #${rk} — ilk 3'e ${gap} kütle!` : rk >= 1 ? `En iyi sıran #${rk} — bir üstüne çık!` : 'Bir dahaki sefere sıralamaya gir!';
-    card.innerHTML = '<div class="ag-logo sm">YENDİN: <span class="kn"></span></div>' +
+    const md = this.matchDone;
+    const elim = md && this.matchRank >= NOWN; // dead at the final bell: no placement
+    card.innerHTML = (md ? '<div class="ag-logo sm">MAÇ BİTTİ!</div><div class="ag-earn" style="margin-bottom:4px"><small>' + (elim ? 'durum' : 'sıran') + '</small>' + (elim ? '<b>ELENDİN</b>' : '<b>#' + this.matchRank + (this.matchRank === 1 ? ' 🥇' : this.matchRank === 2 ? ' 🥈' : this.matchRank === 3 ? ' 🥉' : this.matchRank <= 10 ? ' 🏅' : '') + '</b>') + '</div>' : '<div class="ag-logo sm">YENDİN: <span class="kn"></span></div>') +
       `<div class="ag-earn"><small>kazanılan</small><b>+${this.earned || 0} ❄️</b></div>` +
       row('SÜRE', fmtT(this.time - o.t0)) + row('MAX KÜTLE', fmtM(o.maxMass) + (this.newBest ? ' 🏆 REKOR' : '')) + row('EN İYİ SIRA', rk ? '#' + rk : '-') + row('YEDİĞİN', o.kills) + (this.bestStreak >= 2 ? row('EN İYİ SERİ', '🔥 x' + this.bestStreak) : '') +
       '<div class="ag-sub" style="margin:8px 0;font-weight:800;color:#ffd23a"></div>';
-    card.querySelector('.kn').textContent = this.deadKiller || 'Kar Fırtınası';
-    card.querySelector('.ag-sub').textContent = hook;
-    const b1 = document.createElement('button'); b1.type = 'button'; b1.className = 'ag-btn go'; b1.textContent = 'TEKRAR DOĞ';
+    const kn = card.querySelector('.kn'); if (kn) kn.textContent = this.deadKiller || 'Kar Fırtınası';
+    card.querySelector('.ag-sub').textContent = md ? (elim ? 'Süre dolmadan elendin.' : this.matchRank <= 10 ? 'Madalya bonusu: +' + this.matchBonus + ' ❄️' : "İlk 10'a girersen bonus kazanırsın.") : hook;
+    const b1 = document.createElement('button'); b1.type = 'button'; b1.className = 'ag-btn go'; b1.textContent = md ? 'YENİ MAÇ' : 'TEKRAR DOĞ';
     const b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'ag-btn'; b2.textContent = 'MENÜ';
-    b1.addEventListener('click', () => { this.audio?.init?.(); this.audio?.ui?.('confirm'); this.deaths = 0; this.bestStreak = 0; this.respawnMe(); });
+    b1.addEventListener('click', () => { this.audio?.init?.(); this.audio?.ui?.('confirm'); this.deaths = 0; this.bestStreak = 0; if (this.matchDone) this.retireMe(); this.respawnMe(); this.startMatch(); });
     b2.addEventListener('click', () => { this.audio?.ui?.('back'); this.exit(); });
     card.append(b1, b2);
     el.appendChild(card);
@@ -2098,13 +2189,30 @@ export class AgarMode {
     } catch { /* ignore */ }
     ball.style.setProperty('--bc', hex); c.appendChild(ball);
     const s = document.createElement('div'); s.className = 'ag-sub'; s.textContent = 'Büyü, yut, hayatta kal! Rekor kütle: ' + fmtM(this.best) + ' · Seviye ' + lvlOf(this.xp); c.appendChild(s);
+    this.btn(c, '▶ OYNA', () => { this.ensureNick(); this.playSolo(); }, 'go'); // offline vs bots: the one obvious action
+    if (!NET_LOCAL) this.btn(c, '🌐 ÇEVRİMİÇİ', () => this.onlineGate(() => this.onlineScreen()), 'blue');
+  }
+
+  /** every way into the online lobby passes here: ?net=local blocks it, the first use shows a short notice once */
+  onlineGate(next) {
+    if (NET_LOCAL || this.disposed) return;
+    if (lsGet(NET_OK_KEY, '') === '1') { next(); return; }
+    const c = this.card('ÇEVRİMİÇİ OYUN', () => this.showTitle());
+    const s = document.createElement('div'); s.className = 'ag-sub'; s.textContent = 'Çevrimiçi odalarda başka oyuncularla karşılaşırsın. İsimler filtrelenir, sohbet yalnızca hazır cümlelerle yapılır.'; c.appendChild(s);
+    this.btn(c, 'ANLADIM', () => { lsSet(NET_OK_KEY, '1'); next(); }, 'go');
+  }
+
+  onlineScreen() {
+    if (NET_LOCAL) { this.showTitle(); return; } // ?net=local: no online screen is ever reachable
+    this._tok++;
+    this.closedShown = false;
+    const c = this.card('ÇEVRİMİÇİ', () => this.showTitle());
     this.nickInput(c);
     this.btn(c, '⚡ HIZLI OYNA', () => this.quickPlay(), 'go');
     const g = document.createElement('div'); g.className = 'ag-grid'; c.appendChild(g);
     this.btn(g, '🌐 AÇIK ODALAR', () => this.openBrowser(), 'blue');
     this.btn(g, '👥 ODA KUR', () => this.hostScreen(), 'blue');
-    this.btn(g, '🔑 KODLA KATIL', () => this.joinScreen(), 'blue');
-    this.btn(g, '⛄ TEK OYUNCU', () => { this.ensureNick(); this.playSolo(); }, 'blue');
+    this.btn(c, '🔑 KODLA KATIL', () => this.joinScreen(), 'blue');
   }
 
   statusEl(card) { const s = document.createElement('div'); s.className = 'ag-status'; card.appendChild(s); return s; }
@@ -2121,7 +2229,7 @@ export class AgarMode {
     this.hud.root.classList.add('ag-menu');
   }
   async ensurePresence() {
-    if (this.disposed) return null;
+    if (this.disposed || NET_LOCAL) return null; // ?net=local: never touch the public lobby
     if (!this.presence || this.presence.dead) {
       const { Presence } = await import('./lobby.js');
       if (this.disposed) return null;
@@ -2135,7 +2243,8 @@ export class AgarMode {
 
   // ---- host: public (default) or private room, starts playing immediately
   hostScreen() {
-    const c = this.card('ODA KUR', () => this.showTitle());
+    if (NET_LOCAL) { this.showTitle(); return; } // ?net=local: no online screen is ever reachable
+    const c = this.card('ODA KUR', () => this.onlineScreen());
     const s = document.createElement('div'); s.className = 'ag-sub'; s.textContent = 'Oda hemen açılır, oyun başlar. Herkes istediği an katılabilir (en fazla ' + MAX_HUMANS + ' kişi), boşlukları botlar doldurur.'; c.appendChild(s);
     this.nickInput(c);
     const tg = this.btn(c, '', () => { this.privRoom = !this.privRoom; upd(); }, 'blue');
@@ -2149,6 +2258,7 @@ export class AgarMode {
   }
 
   async createRoom(pub) {
+    if (NET_LOCAL) return;
     const nick = this.ensureNick();
     const tok = ++this._tok;
     const c = this.card('ODA KURULUYOR');
@@ -2190,9 +2300,10 @@ export class AgarMode {
 
   // ---- public room browser
   async openBrowser() {
+    if (NET_LOCAL) { this.showTitle(); return; } // ?net=local: no online screen is ever reachable
     this._tok++;
     this.closedShown = false;
-    const c = this.card('AÇIK ODALAR', () => this.showTitle());
+    const c = this.card('AÇIK ODALAR', () => this.onlineScreen());
     const st = this.statusEl(c);
     const list = document.createElement('div');
     list.className = 'ag-list';
@@ -2244,6 +2355,7 @@ export class AgarMode {
 
   // ---- quick play: fullest non-full public room, else create one after ~3 s
   async quickPlay() {
+    if (NET_LOCAL) { this.showTitle(); return; } // ?net=local: no online screen is ever reachable
     this.ensureNick();
     const tok = ++this._tok;
     this.closedShown = false;
@@ -2265,6 +2377,7 @@ export class AgarMode {
 
   // ---- join a room by code (from the browser list, quick play or the code screen)
   async doJoin(code, back) {
+    if (NET_LOCAL) return;
     const nick = this.ensureNick();
     const tok = ++this._tok;
     this.closedShown = false;
@@ -2316,7 +2429,8 @@ export class AgarMode {
   }
 
   joinScreen() {
-    const c = this.card('KODLA KATIL', () => this.showTitle());
+    if (NET_LOCAL) { this.showTitle(); return; } // ?net=local: no online screen is ever reachable
+    const c = this.card('KODLA KATIL', () => this.onlineScreen());
     const inp = document.createElement('input');
     inp.className = 'ag-inp code'; inp.maxLength = 5; inp.placeholder = 'KOD'; inp.autocomplete = 'off'; inp.autocapitalize = 'characters';
     c.appendChild(inp);
@@ -2334,12 +2448,33 @@ export class AgarMode {
     this.closedShown = true;
     this._tok++;
     const inGame = this.mp === 'client';
+    if (inGame) { this.hostGone(); return; }
     const msg = why === 'full' ? 'Oda dolu' : why === 'ver' ? 'Sürüm uyumsuz — oyunu güncelle' : why === 'timeout' ? 'Bağlantı zaman aşımı' : 'Oda kapandı';
     this.resetToMenu();
-    if (!inGame) { this.toast(msg); (back || (() => this.openBrowser()))(); return; }
-    const c = this.card(msg);
-    this.btn(c, '🌐 AÇIK ODALAR', () => this.openBrowser(), 'go');
-    this.btn(c, 'MENÜ', () => this.showTitle());
+    this.toast(msg); (back || (() => this.openBrowser()))();
+  }
+
+  /** host left mid-match: the world stays frozen under a dialog; the player may carry on alone against bots from the last snapshot */
+  hostGone() {
+    this.closeNet(); this.stopPresence(); this.closeResult();
+    this.deadT = 1e9; this.inp.mag = 0; this.stickId = null; this.hud.stick.style.display = 'none';
+    const c = this.card('ODA SAHİBİ AYRILDI');
+    const s = document.createElement('div'); s.className = 'ag-sub'; s.textContent = 'Oda kapandı. Botlarla devam edebilirsin.'; c.appendChild(s);
+    this.btn(c, '🤖 BOTLARLA DEVAM', () => this.continueSolo(), 'go');
+    this.btn(c, 'MENÜ', () => { this.resetToMenu(); this.showTitle(); });
+  }
+  continueSolo() {
+    this.clearScreen();
+    this.closedShown = false; this.mp = null; this.match = null; this.matchDone = false; this.rival = -1;
+    this.boss.id = -1; this.duel.on = false; this.fdn = 0; this.fd.fill(0);
+    for (const o of this.owners) { o.bot = o.id !== this.me; o.human = null; o.boss = false; o.hideT = 0; o.away = false; o.pers = o.bot ? 1 + ((Math.random() * 5) | 0) : 0; o.respawnT = 0; o.killer = -1; }
+    for (const c of this.cells) { c.killer = -1; c.vx = c.vz = 0; c.merge = 0; c.tx = c.x; c.tz = c.z; c.px0 = c.lsx = c.x; c.pz0 = c.lsz = c.z; }
+    const me = this.owners[this.me];
+    this.state = me.alive ? 'play' : 'dead';
+    this.deadT = me.alive ? 0 : 0.3; this.deaths = 2; // no ghost phase for a late death: straight to the result card
+    this.hud.root.classList.remove('ag-menu');
+    if (this.hud.btns) this.hud.btns.style.display = '';
+    this.pushFeed('Botlarla devam ediyorsun');
   }
 
   /** short rising text at a world position (DOM, auto-removed) */
@@ -2457,24 +2592,33 @@ export class AgarMode {
   sendSnapshot() {
     const net = this.net;
     if (!net || net.clients.size === 0) { this.fdn = 0; this.fd.fill(0); this.props.dropDelta(); return; }
-    const pd = this.props.takeDelta();
-    const c = [];
+    // one message object reused for every client and every tick (the send serialises synchronously): no per-tick or per-client allocations
+    const S = this._sn || (this._sn = { t: 's', hn: 0, pn: 0, pd: null, st: [0, 0, 0], pr: [0, 0, 0], wo: [0, 0], du: 0, bs: 0, zn: [0, 0, 0, 0, 0, 0], fk: new Array(this.forts.length * 2).fill(0), hd: [], c: [], fd: [], v: new Array(NVIR * 2).fill(0), p: new Array(NPUP * 3).fill(0), me: [0, 0, 0, 0, 0, 0, 0] });
+    S.pd = this.props.takeDelta();
+    const c = S.c; c.length = 0;
     for (let i = 0; i < CAP; i++) { const q = this.cells[i]; if (q.on) c.push(i, q.o, Math.round(q.x * 10) / 10, Math.round(q.z * 10) / 10, Math.round(q.m * 10) / 10); }
-    const fd = [];
+    const fd = S.fd; fd.length = 0;
     for (let k = 0; k < this.fdn; k++) { const i = this.fdl[k]; fd.push(i, Math.round(this.fx[i] * 10), Math.round(this.fz[i] * 10), this.fv[i], this.fcol[i]); this.fd[i] = 0; }
     this.fdn = 0;
-    const fk = [];
-    for (const f of this.forts) fk.push(f.own, Math.round(f.prog * 100));
-    const hd = [];
+    for (let i = 0; i < this.forts.length; i++) { const f = this.forts[i]; S.fk[i * 2] = f.own; S.fk[i * 2 + 1] = Math.round(f.prog * 100); }
+    const hd = S.hd; hd.length = 0;
     for (let i = 0; i < NOWN; i++) if (this.owners[i].hideT > 0) hd.push(i);
-    const v = [];
-    for (let i = 0; i < NVIR; i++) v.push(this.von[i] ? Math.round(this.vx[i] * 10) : 99999, Math.round(this.vz[i] * 10));
-    const p = [];
-    for (let i = 0; i < NPUP; i++) p.push(this.pon[i] ? Math.round(this.px[i] * 10) : 99999, Math.round(this.pz[i] * 10), this.ptype[i]);
+    const v = S.v;
+    for (let i = 0; i < NVIR; i++) { v[i * 2] = this.von[i] ? Math.round(this.vx[i] * 10) : 99999; v[i * 2 + 1] = Math.round(this.vz[i] * 10); }
+    const p = S.p;
+    for (let i = 0; i < NPUP; i++) { p[i * 3] = this.pon[i] ? Math.round(this.px[i] * 10) : 99999; p[i * 3 + 1] = Math.round(this.pz[i] * 10); p[i * 3 + 2] = this.ptype[i]; }
+    S.hn = net.clients.size + 1; S.pn = this.presentCount();
+    S.st[0] = this.storm.on ? 1 : 0; S.st[1] = Math.round(this.storm.x); S.st[2] = Math.round(this.storm.z);
+    S.pr[0] = this.rain.st; S.pr[1] = Math.round(this.rain.x); S.pr[2] = Math.round(this.rain.z);
+    S.wo[0] = this.wo.st; S.wo[1] = Math.round(this.wo.t * 10) / 10;
+    S.du = this.duel.on ? [this.duel.a, this.duel.b, Math.round(this.duel.cx), Math.round(this.duel.cz), Math.round(this.duel.r), Math.round(this.duel.s * 100) / 100, Math.round(this.duel.t * 10) / 10] : 0; // rare
+    S.bs = this.boss.id >= 0 ? [this.boss.id, this.boss.hp, this.boss.max] : 0; // rare
+    const z = S.zn; z[0] = this.zn.st; z[1] = Math.round(this.zn.cx); z[2] = Math.round(this.zn.cz); z[3] = Math.round(this.zn.r); z[4] = Math.round(this.zn.rt); z[5] = Math.round(this.zn.t * 10) / 10;
     for (const [id, rec] of net.clients) {
       const o = this.owners.find((q) => q.human === id);
       if (!o || !rec.conn.open) continue;
-      net.sendTo(id, { t: 's', hn: net.clients.size + 1, pn: this.presentCount(), pd, st: [this.storm.on ? 1 : 0, Math.round(this.storm.x), Math.round(this.storm.z)], pr: [this.rain.st, Math.round(this.rain.x), Math.round(this.rain.z)], wo: [this.wo.st, Math.round(this.wo.t * 10) / 10], du: this.duel.on ? [this.duel.a, this.duel.b, Math.round(this.duel.cx), Math.round(this.duel.cz), Math.round(this.duel.r), Math.round(this.duel.s * 100) / 100, Math.round(this.duel.t * 10) / 10] : 0, bs: this.boss.id >= 0 ? [this.boss.id, this.boss.hp, this.boss.max] : 0, zn: [this.zn.st, Math.round(this.zn.cx), Math.round(this.zn.cz), Math.round(this.zn.r), Math.round(this.zn.rt), Math.round(this.zn.t * 10) / 10], fk, hd, c, fd, v, p, me: [o.shield, o.magnet, o.speed, o.boostCd, o.kills, o.xpRun, o.maxMass] });
+      const me = S.me; me[0] = o.shield; me[1] = o.magnet; me[2] = o.speed; me[3] = o.boostCd; me[4] = o.kills; me[5] = o.xpRun; me[6] = o.maxMass;
+      net.sendTo(id, S);
     }
   }
 
@@ -2575,7 +2719,7 @@ export class AgarMode {
   pushFeed(text, localOnly) {
     const f = this.feed;
     for (let i = 0; i < 3; i++) { f[i].t = f[i + 1].t; f[i].until = f[i + 1].until; }
-    f[3].t = text; f[3].until = this.time + 6;
+    f[3].t = text; f[3].until = this.time + 5;
     this.feedDirty = true;
     if (!localOnly && this.mp === 'host' && this.net && !text.startsWith('Oda açıldı')) this.net.broadcast({ t: 'k', x: text });
   }
@@ -2589,6 +2733,7 @@ export class AgarMode {
     if (this.mp === 'client') this.clientSmooth(dt);
     else if (this.state === 'play' || this.state === 'dead' || this.state === 'title' || this.state === 'lobby') this.simulate(dt);
     this.props.updatePulls(dt); this.fxTick(dt);
+    if (this.match) this.matchTick(dt);
     this.avTick(dt); this.woTick(dt); this.bossTick(dt); this.bossHud();
     // radii
     const k = Math.min(1, dt * 9);
@@ -2700,7 +2845,7 @@ export class AgarMode {
     this.foodMesh.instanceMatrix.needsUpdate = true; this.foodMesh.instanceColor.needsUpdate = true;
     // snowballs: roll in the movement direction, squash on boost, belt/cap carry the player colour; grooves behind them
     const sa = this.shadowMesh.instanceMatrix.array;
-    for (const e of this.skinPool.values()) e.n = 0;
+    for (let k = 0; k < this.skinList.length; k++) this.skinList[k].n = 0;
     let n = 0;
     for (let i = 0; i < CAP; i++) {
       const c = cells[i];
@@ -2732,7 +2877,7 @@ export class AgarMode {
       if (o.hideT <= 0 && Math.abs(c.x - this.camX) < hx + 60 && c.z > zmin - 60 && c.z < zmax + 60) this.trails.sample(i, c.o, c.x, c.z, r, this.time);
     }
     this.shadowMesh.count = n; this.shadowMesh.instanceMatrix.needsUpdate = true;
-    for (const e of this.skinPool.values()) { // one update() per skin id per frame
+    for (let k = 0; k < this.skinList.length; k++) { const e = this.skinList[k]; // one update() per skin id per frame
       e.mesh.count = e.n; e.mesh.visible = e.n > 0;
       if (e.n > 0) { e.mesh.instanceMatrix.needsUpdate = true; if (e.mesh.instanceColor) e.mesh.instanceColor.needsUpdate = true; if (e.skin.update) { try { e.skin.update(dt, this.time, e.mesh); } catch (er) { e.skin.update = null; } } }
     }
@@ -2819,7 +2964,7 @@ export class AgarMode {
     }
     // local player ring + crown + height caps / occlusion fade
     const mr = this.meRing, pls = 0.5 + 0.5 * Math.sin(this.time * 6);
-    if (me.alive) { mr.visible = true; mr.position.set(me.lx, 0.6, me.lz); mr.scale.setScalar(me.maxR * (1.12 + 0.08 * pls) + 0.8); mr.material.color.setHex(me.col); mr.material.opacity = 0.85 + 0.15 * pls; } else mr.visible = false;
+    if (me.alive) { mr.visible = true; mr.position.set(me.lx, 0.6, me.lz); mr.scale.setScalar(me.maxR * (1.12 + 0.08 * pls) + 0.8); mr.material.opacity = 0.85 + 0.15 * pls; } else mr.visible = false;
     { const sh = this.meShadow; if (me.alive) { sh.visible = true; sh.position.set(me.lx + me.maxR * 0.08, 0.4, me.lz + me.maxR * 0.14); sh.scale.setScalar(me.maxR * 1.32 + 1); } else sh.visible = false;
       const pr = this.pulseRing; if (this.pulseT >= 0 && me.alive) { this.pulseT += 0.016; const q = this.pulseT / 1.1; if (q >= 1) { this.pulseT = -1; pr.visible = false; } else { pr.visible = true; pr.position.set(me.lx, 0.7, me.lz); pr.scale.setScalar(me.maxR * (1.2 + q * 3.5) + 2); pr.material.opacity = 0.9 * (1 - q); } } else pr.visible = false; }
     const cr = this.crown;
@@ -2967,15 +3112,17 @@ export class AgarMode {
     root.id = 'ag-root';
     root.className = 'ag-root';
     root.innerHTML =
-      '<div class="ag-tl"><div class="ag-mass"><div class="r1"><b class="m">0</b><span class="ag-rank"><b>-</b></span></div><small class="tt"></small><small class="rg" style="display:block;font-size:10px;color:#ffe9a8;font-weight:900"></small><div class="ag-lvl"><span class="lv">Sv 1</span><div class="bar"><i></i></div></div></div>' +
+      '<div class="ag-tl"><div class="ag-mass"><div class="r1"><b class="m">0</b><span class="ag-rank"><b>-</b></span></div><small class="tt"></small><div class="rg"><i></i></div><div class="ag-lvl"><span class="lv">Sv 1</span><div class="bar"><i></i></div></div></div>' +
       '<div class="ag-room"></div><div class="ag-feed"></div><div class="ag-chips"></div></div>' +
       '<div class="ag-tr"><div class="ag-lb"><div class="t"><span>LİDERLER</span><span class="ag-online">🟢<span class="on">0</span></span><span class="tg">▾</span></div><div class="rows"></div></div><canvas class="ag-map" width="84" height="84"></canvas></div><div class="ag-zn"></div>' +
-      '<div class="ag-stick"><i></i></div><div class="ag-toast" style="top:calc(env(safe-area-inset-top,0px) + 82px);padding:0 8px;font-size:15px;text-shadow:0 2px 0 #0a2a4a;pointer-events:none"></div><div class="ag-avw" style="position:absolute;left:0;right:0;top:12%;text-align:center;font-size:34px;font-weight:900;color:#ff5a4d;text-shadow:0 3px 0 #3a0a0a,2px 2px 0 #3a0a0a,-2px 2px 0 #3a0a0a;pointer-events:none;opacity:0;transition:opacity .2s"></div><div class="ag-tip" style="position:absolute;left:6%;right:6%;bottom:calc(env(safe-area-inset-bottom,0px) + 190px);text-align:center;font-size:12px;color:#fff;background:rgba(10,42,74,.6);border-radius:12px;padding:5px 10px;pointer-events:none;opacity:0;transition:opacity .4s"></div><div class="ag-arrow" style="position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;opacity:0;transition:opacity .4s"><div style="position:absolute;left:-14px;top:-150px;font-size:34px;color:#ffe066;opacity:.7">▲</div></div>' +
+      '<div class="ag-stick"><i></i></div><div class="ag-toast" style="top:58%;left:8px;right:148px;padding:0;font-size:14px;line-height:1.15;text-shadow:0 2px 0 #0a2a4a;pointer-events:none"></div><div class="ag-avw" style="position:absolute;left:0;right:0;top:12%;text-align:center;font-size:34px;font-weight:900;color:#ff5a4d;text-shadow:0 3px 0 #3a0a0a,2px 2px 0 #3a0a0a,-2px 2px 0 #3a0a0a;pointer-events:none;opacity:0;transition:opacity .2s"></div><div class="ag-tip" style="position:absolute;left:14px;right:14px;bottom:calc(var(--sab,0px) + 260px);text-align:center;font-size:21px;font-weight:900;text-shadow:0 2px 0 #0a2a4a;color:#fff;background:rgba(10,42,74,.78);border-radius:16px;padding:10px 14px;pointer-events:none;opacity:0;transition:opacity .4s"></div><div class="ag-arrow" style="position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;opacity:0;transition:opacity .4s"><div style="position:absolute;left:-14px;top:-150px;font-size:34px;color:#ffe066;opacity:.7">▲</div></div>' +
       '<div class="ag-btns"><button type="button" class="ag-act split"><span>✂️</span><small>BÖL</small></button>' +
       '<button type="button" class="ag-act eject"><span>❄️</span><small>FIRLAT</small></button>' +
       '<button type="button" class="ag-act boost"><span>🚀</span><small>HIZLAN</small><i class="cd"></i></button></div>';
     const st = document.createElement('style');
-    st.textContent = '#ag-root .ag-btns{position:absolute;right:0;bottom:calc(var(--sab,0px) + 18px);width:min(240px,64vw);height:190px;display:block;pointer-events:none}#ag-root .ag-act{position:absolute;margin:0;width:80px;height:80px;font-weight:900}#ag-root .ag-act span{font-size:28px}#ag-root .ag-act small{font-size:12px;letter-spacing:.03em;margin-top:3px}#ag-root .ag-act.boost{right:12px;bottom:0;width:100px;height:100px}#ag-root .ag-act.boost span{font-size:36px}#ag-root .ag-act.boost small{font-size:13px}#ag-root .ag-act.split{right:96px;bottom:104px;background:linear-gradient(180deg,#d28bff,#8a3fe0);box-shadow:0 6px 0 #4a1c8a,inset 0 3px 0 rgba(255,255,255,.4)}#ag-root .ag-act.eject{right:126px;bottom:6px;width:76px;height:76px;background:linear-gradient(180deg,#9fe9ff,#2fa6e8);box-shadow:0 6px 0 #165f93,inset 0 3px 0 rgba(255,255,255,.45)}#ag-root .ag-tl{width:130px}#ag-root .ag-mass{padding:4px 9px 5px}#ag-root .ag-mass .r1{display:flex;align-items:baseline;justify-content:space-between;gap:6px}#ag-root .ag-mass b.m{font-size:26px}#ag-root .ag-rank{background:none;border:0;box-shadow:none;padding:0;font-size:13px;font-weight:900;color:#bfe6ff}#ag-root .ag-rank b{font-size:14px;color:#bfe6ff}#ag-root .ag-mass .tt{display:block;font-size:10px;margin:0}#ag-root .ag-lvl{background:none;border:0;box-shadow:none;padding:0;margin-top:2px;font-size:10px}#ag-root .ag-lb{width:126px;padding:3px 6px}#ag-root .ag-lb .t{display:flex;justify-content:space-between;align-items:center;cursor:pointer;pointer-events:auto;font-size:10px}#ag-root .ag-online{background:none;border:0;box-shadow:none;padding:0;font-size:8px;opacity:.75;letter-spacing:0}#ag-root .ag-lb.col .rows{display:none}#ag-root .ag-map{width:62px;height:62px}#ag-root .ag-zn{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 52px);text-align:center;font:900 16px inherit;font-family:inherit;color:#8ff4ff;text-shadow:0 2px 0 #0a2a4a,1px 1px 0 #0a2a4a,-1px 1px 0 #0a2a4a;pointer-events:none;opacity:0;transition:opacity .3s}';
+    st.textContent = '#ag-root .ag-btns{position:absolute;right:0;bottom:calc(var(--sab,0px) + 18px);width:min(240px,64vw);height:190px;display:block;pointer-events:none}#ag-root .ag-act{position:absolute;margin:0;width:80px;height:80px;font-weight:900}#ag-root .ag-act span{font-size:28px}#ag-root .ag-act small{font-size:12px;letter-spacing:.03em;margin-top:3px}#ag-root .ag-act.boost{right:12px;bottom:0;width:100px;height:100px}#ag-root .ag-act.boost span{font-size:36px}#ag-root .ag-act.boost small{font-size:13px}#ag-root .ag-act.split{right:96px;bottom:104px;background:linear-gradient(180deg,#d28bff,#8a3fe0);box-shadow:0 6px 0 #4a1c8a,inset 0 3px 0 rgba(255,255,255,.4)}#ag-root .ag-act.eject{right:126px;bottom:6px;width:76px;height:76px;background:linear-gradient(180deg,#9fe9ff,#2fa6e8);box-shadow:0 6px 0 #165f93,inset 0 3px 0 rgba(255,255,255,.45)}#ag-root .ag-tl{width:130px}#ag-root .ag-mass{padding:4px 9px 5px}#ag-root .ag-mass .r1{display:flex;align-items:baseline;justify-content:space-between;gap:6px}#ag-root .ag-mass b.m{font-size:26px}#ag-root .ag-rank{background:none;border:0;box-shadow:none;padding:0;font-size:13px;font-weight:900;color:#bfe6ff}#ag-root .ag-rank b{font-size:14px;color:#bfe6ff}#ag-root .ag-mass .tt,#ag-root .ag-lvl{display:none!important}#ag-root .rg{height:6px;margin-top:3px;border-radius:3px;background:rgba(255,255,255,.2);overflow:hidden}#ag-root .rg i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ffe9a8,#ffb21e)}#ag-root .ag-lvl{background:none;border:0;box-shadow:none;padding:0;margin-top:2px;font-size:10px}#ag-root .ag-lb{width:126px;padding:3px 6px}#ag-root .ag-lb .t{display:flex;justify-content:space-between;align-items:center;cursor:pointer;pointer-events:auto;font-size:10px}#ag-root .ag-online{background:none;border:0;box-shadow:none;padding:0;font-size:8px;opacity:.75;letter-spacing:0}#ag-root .ag-lb.col .rows{display:none}#ag-root .ag-map{width:62px;height:62px}#ag-root .ag-zn{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 52px);text-align:center;font:900 16px inherit;font-family:inherit;color:#8ff4ff;text-shadow:0 2px 0 #0a2a4a,1px 1px 0 #0a2a4a,-1px 1px 0 #0a2a4a;pointer-events:none;opacity:0;transition:opacity .3s}' +
+      // small phones: fewer HUD layers (no level bar, online count, extra feed lines; bot chatter only while a room is on)
+      '@media (max-height:640px),(max-width:380px){#ag-root .ag-lvl,#ag-root .ag-online,#ag-root .ag-feed .f:nth-child(n+3){display:none}#ag-root.ag-solo .ag-clog{display:none}}';
     root.appendChild(st);
     this.app.appendChild(root);
     const q = (s) => root.querySelector(s);
@@ -2991,33 +3138,30 @@ export class AgarMode {
     tier.innerHTML = '<div style="font-size:20px;color:#ffe066">YENİ BÖLGE!</div><div style="font-size:48px;font-weight:900"></div><div style="font-size:15px;color:#cfe8ff"></div>';
     root.appendChild(tier);
     this.hud = {
-      tier, root, rows, chips, feeds, mass: q('.m'), tt: q('.tt'), rg: q('.rg'), lv: q('.lv'), bar: q('.bar i'), online: q('.on'), room: q('.ag-room'), rank: q('.ag-rank b'), stick: q('.ag-stick'), knob: q('.ag-stick i'), toast: q('.ag-toast'), av: q('.ag-avw'), zn: q('.ag-zn'), lbBox: q('.ag-lb'), tip: q('.ag-tip'), arrow: q('.ag-arrow'),
+      tier, root, rows, chips, feeds, mass: q('.m'), tt: q('.tt'), rg: q('.rg'), rgBar: q('.rg i'), lv: q('.lv'), bar: q('.bar i'), online: q('.on'), room: q('.ag-room'), rank: q('.ag-rank b'), stick: q('.ag-stick'), knob: q('.ag-stick i'), toast: q('.ag-toast'), av: q('.ag-avw'), zn: q('.ag-zn'), lbBox: q('.ag-lb'), tip: q('.ag-tip'), arrow: q('.ag-arrow'),
       map: q('.ag-map'), mctx: q('.ag-map').getContext('2d'), boost: q('.boost'), cd: q('.cd'), bsplit: q('.split'), beject: q('.eject'), btns: q('.ag-btns'),
     };
     { const w = document.createElement('div'); w.style.cssText = 'position:absolute;inset:0;pointer-events:none;opacity:0;z-index:3;will-change:opacity'; root.appendChild(w); this.hud.wo = w; }
     { const w = document.createElement('div'); w.style.cssText = 'position:absolute;left:50%;top:46px;transform:translateX(-50%);width:min(300px,56vw);pointer-events:none;z-index:4;display:none;text-align:center;font:900 13px "Trebuchet MS",system-ui,sans-serif;color:#ffe9a8;text-shadow:0 1px 3px #000'; w.innerHTML = '<span>BOSS TOPU</span><div style="height:11px;margin-top:3px;border-radius:6px;background:rgba(20,10,40,.7);border:2px solid #ffd35a;overflow:hidden"><i style="display:block;height:100%;width:100%;background:linear-gradient(90deg,#b13cff,#ff4f86)"></i></div>'; root.appendChild(w); this.hud.bb = w; }
+    if (Math.min(window.innerWidth, window.innerHeight) < 400 || window.innerHeight < 640) { this.hud.lbBox.classList.add('col'); q('.ag-lb .tg').textContent = '▸'; } // small phone: leaderboard starts folded
     q('.ag-lb .t').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); const c = this.hud.lbBox.classList.toggle('col'); q('.ag-lb .tg').textContent = c ? '▸' : '▾'; });
     const press = (el, fn) => {
       el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.audio?.init?.(); fn(); });
     };
-    // chat (log is always shown - bots talk too; the input is only offered in online rooms)
+    // chat (log is always shown - bots talk too; online rooms offer quick phrases only, no free text)
     const chat = document.createElement('div');
     chat.className = 'ag-chat';
-    chat.innerHTML = '<div class="ag-clog"></div><div class="ag-cpanel"><div class="ag-cin"><input maxlength="80" placeholder="' + t('Mesaj yaz...') + '" autocomplete="off"><button type="button">➤</button></div><div class="ag-cq"></div></div><button type="button" class="ag-cbtn">💬</button>';
+    chat.innerHTML = '<div class="ag-clog"></div><div class="ag-cpanel"><div class="ag-cq"></div></div><button type="button" class="ag-cbtn">💬</button>';
     root.appendChild(chat);
-    const cl = chat.querySelector('.ag-clog'), cin = chat.querySelector('input'), cpanel = chat.querySelector('.ag-cpanel'), cbtn = chat.querySelector('.ag-cbtn');
+    const cl = chat.querySelector('.ag-clog'), cpanel = chat.querySelector('.ag-cpanel'), cbtn = chat.querySelector('.ag-cbtn');
     const cels = [];
     for (let i = 0; i < 6; i++) { const d = document.createElement('div'); d.className = 'ag-cl'; d.innerHTML = '<b></b><span></span>'; cl.appendChild(d); cels.push(d); }
-    const send = () => { const t = cin.value; cin.value = ''; if (t.trim()) this.sendChat(t); };
-    chat.querySelector('.ag-cin button').addEventListener('click', () => { this.audio?.init?.(); send(); });
-    cin.addEventListener('keydown', (e) => { if (e.key === 'Enter') { send(); e.preventDefault(); } e.stopPropagation(); });
-    cin.addEventListener('keyup', (e) => e.stopPropagation());
-    for (const ph of ['Selam!', 'GG', 'Kaç!', 'Takım?']) {
+    QUICK_CHAT.forEach((ph, qi) => {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = ph;
-      b.addEventListener('click', () => { this.audio?.init?.(); this.sendChat(ph); });
+      b.addEventListener('click', () => { this.audio?.init?.(); this.sendChat(qi); });
       chat.querySelector('.ag-cq').appendChild(b);
-    }
-    cbtn.addEventListener('click', () => { this.audio?.init?.(); this.audio?.ui?.('click'); cpanel.classList.toggle('on'); if (cpanel.classList.contains('on')) { try { cin.focus(); } catch { /* ignore */ } } });
+    });
+    cbtn.addEventListener('click', () => { this.audio?.init?.(); this.audio?.ui?.('click'); cpanel.classList.toggle('on'); });
     this.hud.chat = { root: chat, els: cels, btn: cbtn, panel: cpanel };
     // exit to the main menu: first tap arms, second tap (within 2.5 s) leaves
     const quit = document.createElement('button');
@@ -3065,9 +3209,9 @@ export class AgarMode {
     if (this.state === 'play' && !this.tipDone) {
       if (this.tipT === 0 && (parseInt(lsGet(TIP_KEY, '0'), 10) || 0) >= 2) this.tipDone = true;
       else {
-        if (this.tipT === 0) { h.tip.textContent = 'Sürükle: yön · HIZLAN: atıl · BÖL: ikiye bölün · küçükleri ye, büyüklerden kaç'; lsSet(TIP_KEY, String((parseInt(lsGet(TIP_KEY, '0'), 10) || 0) + 1)); if (lsGet(TIP_KEY + '.v', '') !== '1') { lsSet(TIP_KEY + '.v', '1'); this.toast('❄ Buz dikeni büyükleri böler — arkasına saklan!', 3200); } }
+        if (this.tipT === 0) { h.tip.textContent = 'Sürükle: yön · küçüğü ye, büyükten kaç'; lsSet(TIP_KEY, String((parseInt(lsGet(TIP_KEY, '0'), 10) || 0) + 1)); if (lsGet(TIP_KEY + '.v', '') !== '1') { lsSet(TIP_KEY + '.v', '1'); this.toast('❄ Buz dikeni büyükleri böler', 3200); } }
         this.tipT += dt;
-        h.tip.style.opacity = this.tipT < 4 ? '1' : '0';
+        h.tip.style.opacity = this.tipT < 3 ? '1' : '0';
         if (false) {
           if (this.arrT === undefined || this.time - this.arrT > 0.4) {
             this.arrT = this.time; let sx = 0, sz = 0, n = 0;
@@ -3104,7 +3248,7 @@ export class AgarMode {
       for (let i = 0; i < n; i++) if (this.lb[i] === me) { myRank = i; break; }
       for (let i = 0; i < 5; i++) {
         const r = h.rows[i], o = this.lb[i];
-        if (o) { r.style.display = 'flex'; r.classList.toggle('me', o === me); r.children[0].textContent = (i + 1) + '. ' + o.name; r.children[1].textContent = fmtM(o.mass); } else r.style.display = 'none';
+        if (o) { r.style.display = 'flex'; r.classList.toggle('me', o === me); r.children[0].textContent = (i + 1) + '. ' + (o.id === this.rival ? '⚔ ' : '') + o.name; r.children[1].textContent = fmtM(o.mass); } else r.style.display = 'none';
       }
       const yr = h.rows[5];
       if (myRank >= 5) { yr.style.display = 'flex'; yr.classList.add('me'); yr.children[0].textContent = (myRank + 1) + '. ' + me.name; yr.children[1].textContent = fmtM(me.mass); } else yr.style.display = 'none';
@@ -3115,9 +3259,9 @@ export class AgarMode {
       if (this.state === 'play' && this.lb[0]) { this.sumT += 0.25; if (this.sumT >= 300) { this.sumT = 0; this.toast('En büyük: ' + this.lb[0].name + ' · Sen: ' + (myRank >= 0 ? '#' + (myRank + 1) : '-')); } }
       { const pr = me.alive && me.prot && me.shield > 0;
         h.rank.textContent = pr ? 'KORUMA' : myRank >= 0 ? '#' + (myRank + 1) + '/' + n : '-';
-        let g = '';
-        if (me.alive && this.state === 'play') { if (myRank > 0) g = 'Sonraki sıra: +' + fmtM(Math.max(1, Math.ceil(this.lb[myRank - 1].mass - me.mass))) + ' kütle'; else if (myRank === 0) g = 'Zirvedesin!'; }
-        if (h.rg.textContent !== g) h.rg.textContent = g; }
+        let g = '0%'; // progress bar toward the next rank
+        if (me.alive && this.state === 'play') { if (myRank > 0) g = clampN(me.mass / Math.max(1, this.lb[myRank - 1].mass) * 100, 0, 100).toFixed(0) + '%'; else if (myRank === 0) g = '100%'; }
+        if (h.rgBar.style.width !== g) h.rgBar.style.width = g; }
       h.online.textContent = String(this.mp === 'client' && this.presentN ? this.presentN : this.presentCount());
       if (myRank >= 0 && this.state === 'play' && myRank + 1 < me.bestRank) me.bestRank = myRank + 1;
       if (myRank >= 0 && this.state === 'play' && me.alive) {
@@ -3131,9 +3275,10 @@ export class AgarMode {
       this.hudT = 0.1;
       { const mv = me.alive ? me.mass : 0; if (mv > (this._lm || 0) + 0.9) { h.mass.style.transition = 'none'; h.mass.style.transform = 'scale(1.25)'; h.mass.style.color = '#ffe066'; void h.mass.offsetWidth; h.mass.style.transition = 'transform .35s,color .5s'; h.mass.style.transform = ''; h.mass.style.color = ''; } this._lm = mv; }
       h.mass.textContent = me.alive ? fmtM(me.mass) : '0';
-      h.tt.textContent = TITLES[titleOf(me.alive ? me.mass : 0)][1] + ' · ' + TIER_NAMES[tierOfM(me.alive ? me.mass : 0)];
+      h.tt.textContent = t(TITLES[titleOf(me.alive ? me.mass : 0)][1]) + ' · ' + t(TIER_NAMES[tierOfM(me.alive ? me.mass : 0)]); // each part separately: the joined string has no dictionary entry
       const ch = h.chat;
       ch.btn.style.display = this.mp ? '' : 'none';
+      h.root.classList.toggle('ag-solo', !this.mp);
       if (!this.mp) ch.panel.classList.remove('on');
       if (this.chatDirty) {
         const L = this.chatLog;
@@ -3141,7 +3286,7 @@ export class AgarMode {
         this.chatDirty = false;
       }
       for (let i = 0; i < 6; i++) { const m = this.chatLog[this.chatLog.length - 6 + i]; ch.els[i].style.opacity = m ? clampN((m.until - this.time) / 1.5, 0, 1).toFixed(2) : '0'; }
-      if (this.mp && this.net) { const hn = this.mp === 'host' ? this.net.clients.size + 1 : this.humans; h.room.style.display = ''; h.room.textContent = (this.net.pub === false ? '🔒 ' : this.net.pub ? '🌐 ' : '🏠 ') + 'Oda ' + this.net.code + ' · ' + hn + '/' + MAX_HUMANS + ' oyuncu'; } else { h.room.style.display = ''; h.room.textContent = t('🤖 Botlarla'); }
+      if (this.mp && this.net) { const hn = this.mp === 'host' ? this.net.clients.size + 1 : this.humans; h.room.style.display = ''; h.room.textContent = (this.net.pub === false ? '🔒 ' : this.net.pub ? '🌐 ' : '🏠 ') + 'Oda ' + this.net.code + ' · ' + hn + '/' + MAX_HUMANS + ' oyuncu'; } else { h.room.style.display = ''; h.room.textContent = (this.match && !this.matchDone && this.state !== 'title' ? '⏱ ' + fmtT(Math.ceil(Math.max(0, this.match.t))) + ' · ' : '') + (me.prot && me.shield > 0 ? '🛡 ' + fmtT(Math.ceil(me.shield)) : t('🤖 Botlarla')); }   // timer + shield in ONE pill
       const xp = this.xp + me.xpRun, lv = lvlOf(xp), lo = 60 * (lv - 1) * (lv - 1), hi = 60 * lv * lv;
       h.lv.textContent = 'Sv ' + lv;
       h.bar.style.width = clampN(((xp - lo) / (hi - lo)) * 100, 0, 100).toFixed(0) + '%';
@@ -3152,7 +3297,7 @@ export class AgarMode {
       const eff = [[me.magnet, PUP_TYPES[0]], [me.shield, PUP_TYPES[1]], [me.speed, PUP_TYPES[2]]];
       for (let i = 0; i < 3; i++) {
         const [t, d] = eff[i];
-        if (t > 0) { const c = h.chips[ci++]; c.style.display = 'block'; if (i === 1 && me.prot) { const q = Math.ceil(t); c.textContent = '🛡 KORUMA ' + Math.floor(q / 60) + ':' + ('0' + (q % 60)).slice(-2); c.style.fontSize = '11px'; } else { c.textContent = d.emoji + ' ' + Math.ceil(t) + 's'; c.style.fontSize = ''; } }
+        if (t > 0 && !(i === 1 && me.prot)) { const c = h.chips[ci++]; c.style.display = 'block'; if (i === 1 && me.prot) { const q = Math.ceil(t); c.textContent = '🛡 KORUMA ' + Math.floor(q / 60) + ':' + ('0' + (q % 60)).slice(-2); c.style.fontSize = '11px'; } else { c.textContent = d.emoji + ' ' + Math.ceil(t) + 's'; c.style.fontSize = ''; } }
       }
       for (; ci < 3; ci++) h.chips[ci].style.display = 'none';
       const cd = me.boostCd > 0 ? me.boostCd / 2.4 : 0;
@@ -3161,7 +3306,7 @@ export class AgarMode {
     {
       const z = this.zn; let txt = '', col = '#8ff4ff';
       if (z.st === 1) txt = '❄ BUZ ÇEMBERİ! Çember ' + Math.ceil(z.t) + ' sn sonra daralıyor';
-      else if (z.st === 2) { const out = me.alive && Math.hypot(me.cx - z.cx, me.cz - z.cz) > z.r; if (out) { txt = '⚠ ÇEMBERİN DIŞINDASIN! Kütle eriyor'; col = '#ff6b5e'; } else txt = '❄ Çemberin içinde kal · ' + Math.max(1, Math.ceil(60 - z.t)) + ' sn'; }
+      else if (z.st === 2) { const out = me.alive && Math.hypot(me.cx - z.cx, me.cz - z.cz) > z.r; if (out) { txt = '⚠ ÇEMBERİN DIŞINDASIN! Kütle eriyor'; col = '#ff6b5e'; } else txt = '❄ Çemberin içinde kal · ' + Math.max(1, Math.ceil(this.match ? this.match.t : 60 - z.t)) + ' sn'; }
       if (txt !== h.zn._t) { h.zn._t = txt; h.zn.textContent = txt; h.zn.style.opacity = txt ? '1' : '0'; }
       if (txt && h.zn._c !== col) { h.zn._c = col; h.zn.style.color = col; }
     }

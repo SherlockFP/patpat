@@ -80,7 +80,7 @@ const P_POP = 1, P_UI = 2, P_FX = 2, P_BIG = 3, P_JINGLE = 4;
 /** @type {AudioContext|null} */ let ctx = null;
 /** @type {GainNode|null} */ let master = null;
 /** @type {GainNode|null} */ let bus = null; // sample bus -> master (so mute / compressor apply to samples too)
-let samplesStarted = false;
+let samplesStarted = false, sampleTries = 0;
 let whiteBuf = null, brownBuf = null, crackleBuf = null;
 let muted = loadMuted();
 let paused = false;
@@ -185,7 +185,7 @@ function ready() {
   if (!ctx || !master || muted || paused) return false;
   const st = ctx.state;
   if (st === 'running') return true;
-  if (st === 'closed') return false;
+  if (st === 'closed') { dropCtx(); return false; } // the OS killed it: the next gesture builds a fresh one
   const t = nowMs();
   if (t < graceUntil) return true; // resume() in flight right after a gesture
   // Suspended/interrupted (iOS call, autoplay block): retry quietly, drop this sound
@@ -198,6 +198,21 @@ function ready() {
     } catch (e) { /* ignore */ }
   }
   return false;
+}
+
+/** Forget a closed context and everything built on it (loops, ambient bed, sample bank binding); init() rebuilds on the next gesture. */
+function dropCtx() {
+  voices = [];
+  roll = null;
+  yeti = null;
+  if (ambTimer) { clearInterval(ambTimer); ambTimer = 0; }
+  ambG = ambLp = null;
+  ambOn = false;
+  samplesStarted = false; sampleTries = 0;
+  for (const k in lastAt) lastAt[k] = -99; // these timestamps belonged to the old context's clock
+  gov.fill(-9); streakT = -9; whooshT = -9; selT = -9; arenaChainT = 0;
+  ctx = master = bus = null;
+  whiteBuf = brownBuf = crackleBuf = null;
 }
 
 function throttle(key, gap) {
@@ -411,7 +426,10 @@ function startSamples() {
   samplesStarted = true;
   try {
     const p = sfx.load(ctx, bus);
-    if (p && typeof p.catch === 'function') p.catch(() => {});
+    if (p && typeof p.then === 'function') {
+      // nothing decoded (flaky first fetch): try again a couple of times, the synth covers meanwhile
+      p.then((n) => { if (n) sampleTries = 0; else if (++sampleTries < 3) setTimeout(() => { samplesStarted = false; startSamples(); }, 4000 * sampleTries); }, () => {});
+    }
   } catch (e) { /* ignore */ }
 }
 
@@ -854,6 +872,8 @@ function turn(perfect) { turnOk(perfect); }
  * Near miss: a whoosh that rises and falls (the thing passing your ear) and a crisp tuned tick as it goes by. closeness 0..1 (default
  * 0.6) trims the level. At most ~4 per second.
  */
+const NM_STEPS = [2, 4, 3];
+let nmI = 0;
 function nearMiss(closeness) {
   if (!ready() || !throttle('near', 0.22)) return;
   const v = begin(P_FX, 0.5, MIX.near * (0.75 + 0.25 * clamp01(num(closeness, 0.6))));
@@ -862,7 +882,8 @@ function nearMiss(closeness) {
   swell(v, whiteBuf, t, 'bandpass', 500, 2400, 900, 0.9, 0.6, 0.1, 0.3);
   swell(v, brownBuf, t, 'lowpass', 260, 520, 200, 0.7, 0.35, 0.1, 0.28); // air body
   const tk = t + 0.045;
-  const f = stepHz(2);
+  nmI = (nmI + 1) % NM_STEPS.length; // round-robin tick pitch: three near misses in a row are a little tune, not one repeated blip
+  const f = stepHz(NM_STEPS[nmI]);
   tone(v, 'triangle', tk, f, f * 0.85, 0.03, 0.2, 0.001, 0.07);
   tone(v, 'sine', tk, f * 2, 0, 0, 0.05, 0.001, 0.04);
   nz(v, whiteBuf, tk, 'highpass', 2600, 0, 0.8, 0, 0.22, 0.001, 0.014);
@@ -1338,6 +1359,7 @@ function comboTier(n) {
   const v = begin(P_JINGLE, 1.6, MIX.tier);
   if (!v) return;
   dipMusic(0.16 + 0.02 * tier, 0.5 + 0.06 * tier);
+  try { const b = globalThis.__cigMusicBoost; if (b) b(0.08 + 0.04 * tier); } catch (e) { /* ignore */ } // the music's hook / ghost hats rise with the combo
   const t = ctx.currentTime + 0.004;
   const ch = chord();
   const cnt = Math.min(8, 3 + tier);

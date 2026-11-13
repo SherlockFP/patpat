@@ -80,7 +80,7 @@ export const words = {
   'RİSKLİ · UZUN': 'RISKY · LONG', 'GÜVENLİ': 'SAFE', 'RİSKLİ': 'RISKY', '◀ 🍀 3 KART ▶': '◀ 🍀 3 CARDS ▶',
   'Zaten korunuyorsun': 'You are already protected',
   'Çörek dolu': 'Bread full', 'Yem dolu (2/2)': 'Bait full (2/2)', 'BALIK YEMİ!': 'FISH BAIT!',
-  'AFİYET OLSUN!': 'BON APPETIT!', 'YETİ KOKLUYOR': 'YETI IS SNIFFING', 'SICAK ÇÖREK': 'WARM BREAD',
+  'AFİYET OLSUN!': 'BON APPETIT!', 'AFİYET OLSUN': 'BON APPETIT', 'BALIK YEMİ': 'FISH BAIT', 'KIZAK KIRILDI!': 'SLED BROKEN!', 'YETİ KOKLUYOR': 'YETI IS SNIFFING', 'SICAK ÇÖREK': 'WARM BREAD',
   'ÇİFT SKOR': 'DOUBLE SCORE',
   // floats
   'KAÇ!': 'RUN!', 'ŞERİT AÇILDI!': 'LANE OPENED!', 'KASK GİTTİ': 'HELMET GONE', 'KIZAK BİTTİ': 'SLED OVER',
@@ -88,6 +88,7 @@ export const words = {
   'YETİ ÖFKESİ!': 'YETI RAGE!', 'KIZAK!': 'SLED!', 'KAYDIR!': 'SWIPE!', 'KALKAN KURTARDI!': 'SHIELD SAVED YOU!',
   'DÖN!': 'TURN!', 'ERİYORSUN!': 'YOU ARE MELTING!', 'KURTULDUN!': 'YOU ESCAPED!', 'KURTARILDIN!': 'RESCUED!',
   'KASK KURTARDI!': 'HELMET SAVED YOU!', 'KABUK KIRILDI!': 'SHELL BROKEN!',
+  'AKIŞ SERİSİ': 'FLOW STREAK', 'KIL PAYI SERİSİ': 'CLOSE-CALL STREAK', 'YETİ ARKANDA': 'YETI ON YOUR TAIL', 'EZME SERİSİ': 'SMASH STREAK', 'BÜYÜK TOP': 'BIG BALL',
   'AKIŞ!': 'FLOW!', 'SÜPER AKIŞ!': 'SUPER FLOW!', 'EFSANE AKIŞ!': 'LEGENDARY FLOW!', 'DURDURULAMAZ!': 'UNSTOPPABLE!',
   '◀ ÇIĞ RÜZGÂRI': '◀ AVALANCHE WIND', 'ÇIĞ RÜZGÂRI ▶': 'AVALANCHE WIND ▶',
   'YETİ PES ETTİ!': 'THE YETI GAVE UP!', 'TEMİZ GEÇİŞ!': 'CLEAN PASS!', 'BOSS YENİLDİ!': 'BOSS DEFEATED!',
@@ -101,6 +102,7 @@ export const words = {
   'YETİ TAMAM!': 'YETI COMPLETE!', 'ZAMAN BÜKÜCÜ!': 'TIME BENDER!', 'HAYALET!': 'GHOST!', 'RİSK MODU!': 'RISK MODE!',
   'KASK!': 'HELMET!', 'MIKNATIS!': 'MAGNET!', 'KAR KANONU!': 'SNOW CANNON!', 'ROKET!': 'ROCKET!', 'BİTİŞ!': 'FINISH!',
   // skill callouts (near miss, turns, gaps, smashes, FLOW STATE). 'KIL PAYI' alone is the menus' "CLOSE CALLS" stat, hence the "!".
+  'YETİ KOŞUSU!': 'YETI SPRINT!', 'ÇARPAN +2': 'MULTIPLIER +2', 'KOŞUYU ATLATTIN!': 'SPRINT SURVIVED!',
   'KIL PAYI!': 'CLOSE CALL!', 'DÖNÜŞ': 'TURN', 'SON ANDA!': 'JUST IN TIME!', 'MÜKEMMEL DÖNÜŞ!': 'PERFECT TURN!',
   'ÜSTÜNDEN!': 'OVER IT!', 'BOŞLUĞU GEÇTİN!': 'GAP CLEARED!', 'PARÇALADIN': 'SHATTERED',
   'AKIŞ HALİ!': 'FLOW STATE!', 'AKIŞ HALİ UZADI!': 'FLOW STATE EXTENDED!',
@@ -128,6 +130,20 @@ export const words = {
   // critters
   'Palyaço': 'Clown', 'Lav Boceği': 'Lava Bug', 'Penguen': 'Penguin', 'Kar Tavsani': 'Snow Bunny', 'Sincap': 'Squirrel',
   'Kardan Adamcik': 'Mini Snowman', 'Akrep': 'Scorpion', 'Jole Ayicik': 'Gummy Bear', 'Kutup Tilkisi': 'Arctic Fox', 'Buz Yavrusu': 'Ice Cub',
+  // goal chain, postcards, level types (BİTİR is 'END RUN' in en_ui: not overridden here)
+  'GÖREV:': 'MISSION:', 'KARTPOSTAL:': 'POSTCARD:', 'SET İÇİN 1 GÖREV KALDI': '1 MISSION LEFT FOR THE SET',
+  'TOPLA': 'COLLECT', 'DOKUNULMAZ': 'UNTOUCHABLE', 'KAÇIŞ': 'ESCAPE', 'PATRON': 'BOSS',
+  // Rush chapters (goals.js CHAPTERS): names, the first-entry sentence, pay lines. The strip "BÖLÜM n · NAME" is built in runner.js (en: CHAPTER n · NAME), never via the en_menus ^BÖLÜM catch-all.
+  'YAMAÇ': 'SLOPE', 'ORMAN SLALOMU': 'FOREST SLALOM', 'BUZ TÜNELİ': 'ICE TUNNEL', 'RAY HATTI': 'RAIL LINE', 'ÇIĞ KAÇIŞI': 'AVALANCHE RUN', 'YETİ DÜELLOSU': 'YETI DUEL',
+  'ALTIN DAMAR': 'GOLD VEIN', 'SİS VADİSİ': 'FOG VALLEY', 'KAYAK RAMPALARI': 'SKI RAMPS', 'TERS RÜZGÂR': 'CROSSWIND', 'YAY TARLASI': 'SPRING FIELD', 'BUZ KAYDIRAĞI': 'ICE SLIDE',
+  'Zıpla, eğil, şerit değiştir.': 'Jump, duck, switch lanes.', 'Ağaç kapılarından sağa sola kay.': 'Slide left and right through the tree gates.',
+  'Tünelde duvarlara tırman, sarkıtlardan eğil.': 'Climb the tunnel walls, duck the icicles.', 'Raylara bin, raydan raya atla.': 'Hop on the rails, jump from rail to rail.',
+  'Çığ arkanda: durma, engel az.': 'Avalanche behind you: never stop, few obstacles.', 'Yeti kaya atıyor: 3 kıl payı onu sersemletir.': 'The Yeti throws rocks: 3 close calls stun him.',
+  'Engel yok: kar tanesi yağıyor!': 'No obstacles: it is raining snowflakes!', 'Görüş kısa: kenardaki ışıkları izle.': 'Short sight: follow the lights on the edge.',
+  'Art arda rampalar: havada kal, bonus kap.': 'Ramp after ramp: stay airborne for a bonus.', 'Rüzgâr seni yana iter: şeridini tut.': 'The wind pushes you sideways: hold your lane.',
+  'Yaylara bas, havadaki kar tanelerini topla.': 'Hit the springs and grab the flakes in the air.', 'Buzda hızlan: dönüşler genişler.': 'Speed up on the ice: turns get wide.',
+  'TEMİZ BÖLÜM! x2': 'CLEAN CHAPTER! x2', 'BÖLÜM TAMAM': 'CHAPTER DONE', 'HAVA BONUSU': 'AIR BONUS', 'YETİ SERSEMLEDİ!': 'YETI STUNNED!',
+  'Bitişe ulaş!': 'Reach the finish!', "Yeti Patronu'nu atlat: bitişe ulaş!": 'Dodge the Yeti Boss: reach the finish!',
 };
 
 const W = (n) => words[n] || n;
@@ -141,8 +157,16 @@ const KILL = {
 };
 
 export const patterns = [
+  [/^✔ (\d+) m · TEMİZ KAT! \+(\d+) (.+)$/, '✔ $1 m · CLEAN LAYER! +$2 $3'],
+  [/^([\d.,]+) m · ([\d.,]+) puan$/, '$1 m · $2 points'],      // the pause line (main.js): "90 m · 468 puan"
+  [/^EN İYİYE ([\d.,]+) PUAN$/, 'BEAT YOUR BEST: $1 PTS'],      // death screen: points still missing to the record
+  [/^REKOR'A ([\d.,]+) PUAN$/, '$1 PTS TO RECORD'],      // goal strip (never start with "REKORA " / "REKOR ": en_ui / en_menus catch-alls swallow those)
+  [/^SET İÇİN (\d+) GÖREV KALDI$/, '$1 MISSIONS LEFT FOR THE SET'],
+  [/^az kaldı: %(\d+)$/, 'so close: $1%'],      // failed campaign level: how far the run got
+  [/^SIRADAKİ: ([\d.,]+) PUAN$/, 'NEXT GOAL: $1 PTS'],      // death screen: the next round score once the record is yours
   [/^BU HAFTA: (.+?)(?:\s+\S{1,3})?$/, (m, n) => 'THIS WEEK: ' + W(n)],
   [/^Kızak (\d+) sn sonra hazır$/, 'Sled ready in $1 s'],
+  [/^KIL PAYI (\d)\/3$/, 'CLOSE CALL $1/3'],       // YETİ DÜELLOSU: boulder near-misses
   [/^RİTİM x(\d+)$/, 'RHYTHM x$1'],
   [/^RİTİM BİTTİ$/, 'RHYTHM OVER'],
   [/^RİTİM$/, 'RHYTHM'],

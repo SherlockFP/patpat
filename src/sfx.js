@@ -225,7 +225,16 @@ export const sfx = {
    * promise). Resolves with the number of decoded samples (0 = everything missing).
    */
   load(c, destination, base = './sfx/') {
-    if (!loading) loading = run(c, destination, base).catch(() => 0);
+    if (loading) { // context was rebuilt (the OS closed the old one): point playback at the new one; decoded buffers are context independent
+      if (c && c !== ctx) {
+        ctx = c; dest = destination || c.destination;
+        for (let i = 0; i < MAX_VOICES; i++) slots[i] = null; // voices of a closed context never fire onended
+        active = 0;
+        for (const k in lastStart) delete lastStart[k];
+      }
+      return loading;
+    }
+    loading = run(c, destination, base).catch(() => 0).then((n) => { if (!n) loading = null; return n; }); // 0 decoded: a later load() may retry
     return loading;
   },
   has(name) {

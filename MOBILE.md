@@ -1,7 +1,8 @@
-# ÇIĞ! Mobil (Capacitor 8) Kurulum Rehberi
+# PATPAT: Mobil (Capacitor 8) Kurulum Rehberi
 
-Paket: `com.cigoyunu.kartopu` · Web çıktısı: `dist/` · Ayarlar: `capacitor.config.json`
-Platform katmanı (haptic, pause/resume, geri tuşu, paylaşım): `src/platform.js`
+Paket: `com.patpat.game` · Web çıktısı: `dist/` · Ayarlar: `capacitor.config.json`
+Platform katmanı (haptic, pause/resume, geri tuşu, paylaşım, yerel hata günlüğü): `src/platform.js`
+Durum özeti ve insana kalan işler: `STORE_READINESS.md` §0.
 
 ## Gereksinimler
 - Node 22+ (Capacitor 8 şartı), `npm install` yapılmış olmalı.
@@ -10,7 +11,7 @@ Platform katmanı (haptic, pause/resume, geri tuşu, paylaşım): `src/platform.
 
 ## Android: derle ve çalıştır
 1. `npm run build`  (`dist/` oluşur; `cap add` öncesi `dist/` var olmalı)
-2. `npx cap add android`  (sadece ilk seferde; `android/` klasörü oluşur)
+2. `npx cap add android`  (`android/` bu depoda zaten var: bu adımı ATLA; yalnızca klasör silindiyse çalıştır)
 3. `npx cap sync android`  (web çıktısını ve pluginleri kopyalar)
 4. `npx cap open android`  (Android Studio açılır, Gradle sync bitene kadar bekle)
 5. Telefonda Geliştirici Seçenekleri > USB hata ayıklama aç, kabloyu tak, Android Studio'da cihazı seç, Run.
@@ -37,19 +38,26 @@ iOS, `ios/App/App/Info.plist`:
 - Android 15+ ekranı kenardan kenara zorlar. HUD'u çentik ve jest çubuğundan kaçırmak için
   `env(safe-area-inset-*)` ya da Capacitor'ın eklediği `--safe-area-inset-*` CSS değişkenlerini kullan.
 - Sistem çubukları `plugins.SystemBars.hidden: true` ile açılışta gizlenir; `platform.init()` ayrıca `hide()` çağırır.
+- Android'de ayrıca `MainActivity.java` (`android/app/src/main/java/com/patpat/game/`) immersive tam ekran uygular: pencere odağı geri gelince durum + gezinme çubuklarını gizler, kenardan kaydırma çubukları geçici gösterir (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`). Gerçek cihazda geri jesti / çentik ile dene.
+- Web sürümü: `public/manifest.webmanifest` (`display: fullscreen`, `orientation: portrait`, tek ikon `favicon.svg`), `index.html` içinde `theme-color` ve `apple-mobile-web-app-capable`. PWA olarak yüklenebilir ikon için PNG 192 / 512 eklenmedi (Play paketi için gerekmez).
 
 ## iOS (Mac + Xcode 26)
 1. `npm run build` → `npx cap add ios` (ilk sefer) → `npx cap sync ios` → `npx cap open ios`
-2. Xcode: Signing & Capabilities'te Team seç, bundle id `com.cigoyunu.kartopu`.
+2. Xcode: Signing & Capabilities'te Team seç, bundle id `com.patpat.game` (iOS için kararı sahibi verir).
 3. Gerçek cihaz veya simulatör seç, Run.
 
 ## 2026 yayın kontrol listesi
 Google Play
 - [ ] Target API 36 (Capacitor 8 varsayılanı 36; `android/variables.gradle` kontrol et), minSdk 24.
-- [ ] AAB üret: Android Studio > Build > Generate Signed App Bundle (veya `./gradlew bundleRelease`). `versionCode` her yüklemede artmalı.
+- [ ] Sürüm: `package.json` `version`, `android/app/build.gradle` `versionName` ve oyun içi `VERSION` (`src/menus.js`) hep aynı olmalı (şu an `1.0.0`); `versionCode` her Play yüklemesinde artmalı (şu an 1).
+- [ ] İmza: `android/app/build.gradle` içindeki yorumlu `signingConfigs` bloğu yer tutucudur; upload keystore'u depo DIŞINDA üret, parolaları `~/.gradle/gradle.properties` veya ortam değişkenlerinden (`PATPAT_UPLOAD_*`) ver, sonra yorumu kaldır. Depoya keystore / parola koyma.
+- [ ] AAB üret: Android Studio > Build > Generate Signed App Bundle (veya `./gradlew bundleRelease`). Release derlemesinde R8 (`minifyEnabled` + `shrinkResources`) açık: yayından önce release derlemesini gerçek cihazda dene (bildirim, haptik, paylaşım, geri tuşu).
 - [ ] Upload keystore'u güvenli yere yedekle; Play App Signing'i aç.
 - [ ] Yeni kişisel geliştirici hesabı: Production öncesi kapalı testte en az 12 test kullanıcısı, 14 gün kesintisiz.
-- [ ] Data Safety formu (haptic/localStorage dışında veri toplamıyorsak "toplanmıyor"; reklam eklenince güncelle).
+- [ ] Data Safety formu: geliştirici sunucusu yok, ama IP adresi üçüncü taraflara gidiyor (Google Fonts menü yazı tipi, Arena için PeerJS / Nostr röleleri / STUN-TURN). "Hiçbir veri toplanmıyor" demek riskli: `STORE_READINESS.md` §5'teki cevap taslağını kullan. Reklam eklenirse güncelle.
+- [ ] `capacitor.config.json` içinde `loggingBehavior` üç yerde de `"none"` (yapıldı); `SCHEDULE_EXACT_ALARM` izni manifest'ten `tools:node="remove"` ile çıkarıldı (yapıldı; hatırlatmaların yaklaşık zamanlı çalıştığını cihazda doğrula).
+- [ ] `android:allowBackup="false"` (bilinçli karar, manifest'te açıklandı): yeni telefonda ilerleme sıfırdan başlar; istersen `true` yap ve `dataExtractionRules` ekle. Gizlilik politikası her iki durumda da doğru.
+- [ ] Ana ekran düzeni gerçek cihazda: OYNA, altında MACERA + ÇIĞ yan yana (her biri iki satır: ad + `Bölüm N · ⭐ n/300` / `KASABA AVI · n/40`), en altta 4 küçük düğme. 320x568, 360x640, 430x932 ve çentikli ekranda taşma / kesilme / alt jest çubuğu çakışması yok mu bak (TR ve EN; EN etiketler daha uzun).
 - [ ] Gizlilik politikası URL'i, içerik derecelendirme anketi, hedef kitle, mağaza görselleri (ikon 512, feature graphic 1024x500, telefon ekran görüntüleri).
 
 App Store
@@ -69,3 +77,7 @@ App Store
 - UMP (User Messaging Platform) onay formu: AB/Birleşik Krallık/İsviçre kullanıcıları için reklamdan önce göster.
 - iOS için ATT: `NSUserTrackingUsageDescription` metni + izin penceresi (UMP'den sonra).
 - Reklam eklenince Data Safety, App Privacy ve gizlilik politikasını güncelle; `app-ads.txt` yayınla.
+
+## Hata günlüğü ve değerlendirme isteği
+- `window.onerror` ve `unhandledrejection` son 20 kaydı `localStorage` (`patpat.errlog`) içinde tutar; ağ yok. Ayarlar > "Hata bildir" günlüğü panoya kopyalar (kullanıcı e-postayla gönderir).
+- Mağaza değerlendirme isteği: 3. kişisel rekorda `platform.requestReview()` çağrılır. Şimdilik BOŞ bir kanca (yeni bağımlılık eklenmedi); yayın için `@capacitor-community/in-app-review` kurup `src/platform.js` içindeki `requestReview()` gövdesini doldur.

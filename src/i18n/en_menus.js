@@ -59,7 +59,7 @@ export const words = {
   'İSTATİSTİKLER': 'STATS', 'SEVİYE': 'LEVEL', 'TOPLAM KOŞU': 'TOTAL RUNS', 'EN UZUN KOŞU': 'LONGEST RUN', 'TOPLAM MESAFE': 'TOTAL DISTANCE',
   'YUTULAN': 'SWALLOWED', 'SONSUZ REKORU': 'ENDLESS RECORD', 'KIRILAN ENGEL': 'OBSTACLES SMASHED', 'KIL PAYI': 'CLOSE CALLS',
   'TOPLANAN TON': 'TONS COLLECTED', 'YILDIZ': 'STARS', 'BAŞARIM': 'ACHIEVEMENTS', 'SIRLAR': 'SECRETS', 'ÇARPAN': 'MULTIPLIER',
-  'GÖREV SETİ': 'MISSION SETS', 'BÖLÜM': 'LEVEL', 'ÇIĞ DAĞ': 'AVALANCHE PEAKS', 'ÇIĞ ⭐': 'AVALANCHE ⭐',
+  'GÖREV SETİ': 'MISSION SETS', 'BÖLÜM': 'LEVEL', 'ÇIĞ DAĞ': 'AVALANCHE PEAKS', 'KOSTÜM': 'COSTUMES', 'KARTPOSTAL': 'POSTCARDS', 'ÇIĞ ⭐': 'AVALANCHE ⭐',
   '3D modeller: Kenney (kenney.nl) — CC0 · Ses efektleri: Kenney, rubberduck (OpenGameArt) — CC0 · Müzik ve kod: PATPAT ekibi':
     '3D models: Kenney (kenney.nl) — CC0 · Sound effects: Kenney, rubberduck (OpenGameArt) — CC0 · Music and code: the PATPAT team',
   'REKORLAR': 'RECORDS', '❄️ YETİ RUSH': '❄️ YETI RUSH', 'EN UZUN MESAFE': 'LONGEST DISTANCE', 'EN YÜKSEK SKOR': 'HIGH SCORE',
@@ -100,7 +100,7 @@ export const words = {
   '↻ TEKRAR DENE': '↻ TRY AGAIN', 'BAŞLA!': 'GO!', 'PATRON!': 'BOSS!', 'SON DAĞ ▶': 'FINAL MOUNTAIN ▶',
   'KARTOPU · YETİ · ÇIĞ': 'SNOWBALL · YETI · AVALANCHE', 'HAPŞUU!': 'ACHOO!', 'Yeti seni bekliyor!': 'The yeti is waiting for you!',
   'YETİ RUSH REKORU': 'YETI RUSH RECORD', '✖️ ×1 ÇARPAN': '✖️ ×1 MULTIPLIER', '📅 GÜNLÜK GÖREVLER': '📅 DAILY MISSIONS',
-  'Kartopu Arena': 'Snowball Arena', 'KARTOPU ARENA': 'SNOWBALL ARENA', 'Dev harita · botlar · arkadaşlarınla oda kur': 'Giant map · bots · make a room with friends',
+  'Kartopu Arena': 'Snowball Arena', 'KARTOPU ARENA': 'SNOWBALL ARENA', 'Dev harita · botlar · arkadaşlarınla oda kur': 'Giant map · bots · make a room with friends', 'Dev harita · botlar': 'Giant map · bots',
   'İLK KOŞU?': 'FIRST RUN?', "RUSH'I DENE!": 'TRY RUSH!',
   'Büyük düğme: Yeti Rush koşusu. Kaydır, zıpla, kar topla!': 'Big button: a Yeti Rush run. Swipe, jump, collect snow!',
   'Botlara karşı dev haritada büyü, arkadaşlarınla oda kur.': 'Grow on a giant map against bots, or make a room with friends.',
@@ -210,17 +210,66 @@ export const words = {
   'Kaya Tarlası': 'Boulder Field', 'Kayaların arasında zıplayan kar topu tek başına kaldı. Yeti yolu temizlemek için koca bir kayayı itti. "Hep birlikte," dedi gülümseyerek.': 'The snowball bouncing between the rocks was left on its own. The Yeti pushed a huge boulder to clear the way. "All together," he said with a smile.',
   'Yıldızlı Yamaç': 'Starry Slope', 'Gökyüzü yıldızlarla doldu. Kar topu bir dilek tuttu: "Hiç küçülmeyeyim." Yeti de gizlice dilekte bulundu: "Hep yanımda olsun."': 'The sky filled with stars. The snowball made a wish: "May I never shrink." The Yeti secretly made one too: "May it always stay by my side."',
   'Kış Şenliği': 'Winter Festival', 'Son dağ da aşıldı! Tüm dağ halkı şenlik yaptı. Yeti ve kar topu el ele, yani el ve top, dans etti. Artık rakip değil, en iyi arkadaştılar. SON': 'The last mountain is conquered! The whole mountain folk threw a festival. The Yeti and the snowball danced hand in hand, well, hand and ball. No longer rivals, they were best friends. THE END',
+  // ---- 1.0 sweep: main menu, settings, shop, share
+  'Kapat': 'Close', 'AL': 'CLAIM', 'AL!': 'CLAIM!', 'AÇ': 'OPEN', 'Oyuncu': 'Player', 'Vitrin': 'Showcase',
+  'TOPLAR': 'BALLS', 'PAZAR': 'MARKET', 'HAFTALIK PAKET': 'WEEKLY PACK', 'Her pazartesi yeni teklifler gelir.': 'New offers arrive every Monday.',
+  'Hata bildir': 'Report a bug', 'KOPYALA': 'COPY', 'Hata kaydı kopyalandı': 'Error log copied', 'Kopyalanamadı': 'Could not copy',
+  'Geliştiriciye gönderebilirsin': 'You can send it to the developer', 'Açık kaynak lisansları': 'Open-source licences',
+  'Al': 'Get', '❄️ Al': '❄️ Get', '💎 Al': '💎 Get', 'SONRA': 'LATER', 'SONRAKİ ▶': 'NEXT ▶', 'DOLABA GİT!': 'GO TO WARDROBE!', 'YENİ AÇILDI!': 'NEW UNLOCK!',
+  'Macera': 'Adventure', 'Yeti Postası': 'Yeti Mail', 'Pasaport': 'Passport', 'Kar Küresi': 'Snow Globe',
+  '↻ Tekrar oyna: YETİ RUSH': '↻ Play again: YETI RUSH', '↻ Tekrar oyna: ÇIĞ SONSUZ': '↻ Play again: ENDLESS AVALANCHE', '↻ Tekrar oyna: KARTOPU ARENA': '↻ Play again: SNOWBALL ARENA',
+  // ---- hybrid-casual meta: GÜÇ screen, level-up screen, KARAKTER levels, rewarded gate, BUGÜN / SEZON, English leaks (wardrobe, achievements)
+  'GÜÇ': 'POWER', 'KALICI GÜÇLENME': 'PERMANENT UPGRADES', 'TOP': 'BALL', 'GÜÇLER': 'POWERS', 'KAZANÇLAR': 'GAINS',
+  'Başlangıç Boyu': 'Start Size', 'Daha büyük başla': 'Start bigger', 'Erime Direnci': 'Melt Resistance', 'Kar daha yavaş erir': 'Snow melts slower',
+  'Mıknatıs Menzili': 'Magnet Range', 'Mıknatıs daha uzaktan çeker': 'The magnet pulls from farther', 'Kar Çarpanı': 'Snowflake Multiplier',
+  'Koşu sonu daha çok kar tanesi': 'More snowflakes at the end of a run', 'XP Çarpanı': 'XP Multiplier', 'Koşular daha çok XP verir': 'Runs give more XP',
+  'Sandık Şansı': 'Chest Chance', 'Koşu sonunda sandık düşme şansı': 'Chance of a chest drop at the end of a run',
+  'SEVİYE ATLADIN!': 'LEVEL UP!', 'Seviye atladın': 'Level up', 'MACERA AÇILDI!': 'ADVENTURE UNLOCKED!', 'ÇIĞ AÇILDI!': 'AVALANCHE UNLOCKED!',
+  'GÜNLÜK ÖDÜL AÇILDI!': 'DAILY REWARD UNLOCKED!', 'ARENA AÇILDI!': 'ARENA UNLOCKED!', 'SEZON AÇILDI!': 'SEASON UNLOCKED!',
+  'Bölüm bölüm haritada ilerle, yıldız topla.': 'Move along the map level by level and collect stars.', 'Büyü ve dağın dibindeki kasabayı yık.': 'Grow and flatten the town at the foot of the mountain.',
+  'Her gün gir, seri yaptıkça ödül büyür.': 'Log in every day: the longer your streak, the bigger the reward.', 'Botlara karşı dev haritada büyü.': 'Grow on a giant map against bots.',
+  'Haftalık Rush ve sezon ödülleri burada.': 'The weekly Rush and season rewards live here.',
+  'BEDAVA SANDIK': 'FREE CHEST', 'Kısa bir reklam izle, bir sandık kazan.': 'Watch a short ad and win a chest.', '📺 İZLE': '📺 WATCH',
+  'EK ÇEVİRME': 'EXTRA SPIN', 'Reklam izle, bir kez daha çevir': 'Watch an ad and spin once more',
+  'HEDEF': 'GOAL', 'GÜNÜN KOŞULARI': "TODAY'S RUNS", "Günün Rush'ı": "Today's Rush", 'Herkese aynı pist: bugün dene': 'Same track for everyone: try it today', 'Her gün yeni bir dağ': 'A new mountain every day',
+  'Çam Topu': 'Pine Ball', 'Balon Topu': 'Balloon Ball', 'Kiremit': 'Roof Tile', 'Kaktüs': 'Cactus', 'Obur': 'Glutton', 'Efsane': 'Legend', 'Roket': 'Rocket',
+  'Penguen takipçisiyle başla (x1)': 'Start with a penguin follower (x1)', '🐧 Penguen takipçisiyle başla (x1)': '🐧 Start with a penguin follower (x1)',
 };
 
+const unit = (x) => x.replace(' sn', ' s').replace(',', '.');
+// reward chips ("❄️ 200  👕 Kaktüs") are joined by two spaces; item names translate through the dictionary above
+const chips = (str) => str.split('  ').map((c) => { const m = c.match(/^(\S+) (.+)$/); return m && /^(👕|✨)/u.test(m[1]) ? m[1] + ' ' + (words[m[2]] || m[2]) : c; }).join('  ');
 const P = (re, rep) => [re, rep];
 export const patterns = [
+  P(/^(\S+) SIRADAKİ HEDEF: (.*)$/, '$1 NEXT GOAL: $2'),   // (first: the wardrobe's item-name function pattern below would swallow it)
+  // ---- hybrid-casual meta (kept first: the first match wins, and en_ui has broad catch-alls such as REKOR (.+) and (.+)'[yn]?[ae])
+  P(/^([\d.,]+ sn|[+×][\d.,]+%?) → ([\d.,]+ sn|[+×][\d.,]+%?)$/, (m, a, c) => unit(a) + ' → ' + unit(c)), P(/^([\d.,]+ sn|[+×][\d.,]+%?) \(en yüksek\)$/, (m, a) => unit(a) + ' (max)'),
+  P(/^\+([\d.]+) kademe$/, '+$1 tier'), P(/^★ Sv (\d)\/5 · 🧩 (\d+)\/(\d+)$/, '★ Lv $1/5 · 🧩 $2/$3'), P(/^★ Sv (\d)\/5 · MAKS$/, '★ Lv $1/5 · MAX'),
+  P(/^🧩 \+(\d+) parça$/, (m, n) => '🧩 +' + n + (n === '1' ? ' shard' : ' shards')),
+  P(/^Ödül: (.+) · seri (\d)\/7$/, (m, a, b) => 'Reward: ' + chips(a) + ' · streak ' + b + '/7'), P(/^Gün (\d+): (.+)$/, (m, a, b) => 'Day ' + a + ': ' + chips(b)),
+  // specific rules BEFORE the emoji-chip catch-all below (it would swallow them)
+  P(/^💎 Kristal: Yeti seni yakalayınca devam etmek için kullanılır \(her seferinde iki katı\)\. Şu an: (\d+)$/, '💎 Crystals: used to continue when the Yeti catches you (double cost each time). You have: $1'),
+  P(/^(\S+) (.*): HAZIR!$/, '$1 $2: READY!'), P(/^(\S+) (.*): (\S+) ❄️ kaldı$/, '$1 $2: $3 ❄️ left'),
+  P(/^(Ödül: |SET ÖDÜLÜ: )?([❄💎🎁🛷👕✨]\uFE0F? [^ ·]+(?: [^ ·]+)*(?:  [❄💎🎁🛷👕✨]\uFE0F? [^ ·]+(?: [^ ·]+)*)*)$/u, (m, pre, c) => (pre ? (pre === 'Ödül: ' ? 'Reward: ' : 'SET REWARD: ') : '') + chips(c)),
+  // ---- menu modes / SIRADAKİ HEDEF (stage B)
+  P(/^(\d+)\. koşu$/, 'Run $1'), P(/^KASABA AVI · (.*)$/, 'TOWN HUNT · $1'), P(/^Görev seti → ×(\d+)$/, 'Mission set → ×$1'), P(/^MACERA Act (\d+)$/, 'ADVENTURE Act $1'), P(/^Kasaba (\d+)$/, 'Town $1'), P(/^Kasaba (\d+)\/(\d+)$/, 'Towns $1/$2'),
+  // ---- 1.0 sweep (specific patterns first: the first match wins)
+  P(/^REKOR (\S+) PUAN$/, 'RECORD $1 PTS'), P(/^(\S+) puan$/, '$1 pts'), P(/^BUGÜN REKOR! (\S+) puan$/, 'NEW BEST TODAY! $1 pts'), P(/^Bugün (\S+) puan · rekora (\S+)$/, 'Today $1 pts · $2 to your record'), P(/^Rekoru geç: (\S+) puan$/, 'Beat it: $1 pts'),
+  P(/^BUGÜN REKOR! (\S+) m$/, 'NEW BEST TODAY! $1 m'), P(/^Bugün (\S+) m · rekora (\S+) m$/, 'Today $1 m · $2 m to your record'), P(/^\+(\S+) ❄️ hediye!$/, '+$1 ❄️ gift!'),
+  P(/^Pazar (\d+)g$/, 'Market $1d'), P(/^↻ Tekrar oyna: ÇIĞ Sv (\d+)$/, '↻ Play again: AVALANCHE Lv $1'), P(/^↻ Tekrar oyna: MACERA (\d+)$/, '↻ Play again: ADVENTURE $1'),
+  P(/^Bölüm (\d+): (.*), (\d+) yıldız$/, 'Level $1: $2, $3 stars'), P(/^Bölüm (\d+): (.*), kilitli$/, 'Level $1: $2, locked'), P(/^(?!Dağ \d)(.*), (\d+) yıldız$/, '$1, $2 stars'),
+  P(/^(\S+) ACT TAMAM! SANDIK(: .*)?$/, '$1 ACT COMPLETE! CHEST$2'), P(/^Act (\d+)'\S* bitir: (.*)$/, 'Finish Act $1: $2'), P(/^(\d+)\. koşu · (.*)$/, 'Run $1 · $2'),
+  P(/^🔒 MACERA (\d+)\. Dağı'nı bitirince açılır\.$/, '🔒 Unlocks after finishing ADVENTURE mountain $1.'),
+  P(/^([\d.,]+) ❄️ Paketi$/, '$1 ❄️ Pack'), P(/^⭐ (\d+) gerekli$/, '⭐ $1 needed'),
+  P(/^(❄️ [\d.,]+) · %(\d+)$/, '$1 · $2%'), P(/^HAFTALIK PAKET · 💎 (\d+) karşılığı$/, 'WEEKLY PACK · for 💎 $1'), P(/^%(\d+) İNDİRİM · eski fiyat ❄️ (.*)$/, '$1% OFF · was ❄️ $2'),
   // mountains / levels
+  P(/^DAĞ (\d+) · PATRON · (\d+) ETAP$/, 'MOUNTAIN $1 · BOSS · $2 STAGES'), P(/^DAĞ (\d+) · (\d+) ETAP$/, 'MOUNTAIN $1 · $2 STAGES'),
   P(/^DAĞ (\d+)$/, 'MOUNTAIN $1'), P(/^Dağ (\d+) · (.*)$/, 'Mountain $1 · $2'), P(/^Dağ (\d+) yıldız$/, 'Mountain $1 stars'), P(/^Dağ (\d+)$/, 'Mountain $1'),
   P(/^DAĞ (\d+) · PATRON$/, 'MOUNTAIN $1 · BOSS'), P(/^Önce DAĞ (\d+)'i bitir$/, 'Finish MOUNTAIN $1 first'),
   P(/^GÜNÜN DAĞI #(\d+)$/, 'MOUNTAIN OF THE DAY #$1'), P(/^Günün Dağı #(\d+)$/, 'Mountain of the Day #$1'),
   P(/^(\d+) ETAP$/, 'STAGE $1'), P(/^ÇIĞ: DAĞ (\d+) · (.*)$/, 'AVALANCHE: PEAK $1 · $2'),
   P(/^ÇIĞ: ([\d.,]+) ton$/, 'AVALANCHE: $1 tons'), P(/^ÇIĞ Sv (\d+)$/, 'AVALANCHE Lv $1'), P(/^MACERA (\d+)$/, 'ADVENTURE $1'),
-  P(/^BÖLÜM (\d+)(.*)$/, 'LEVEL $1$2'), P(/^Bölüm (\d+) · (.*)$/, 'Level $1 · $2'), P(/^Bölüm (\d+): (.*)$/, 'Level $1: $2'),
+  P(/^BÖLÜM (\d+)(.*)$/, 'LEVEL $1$2'), P(/^Bölüm (\d+) · (.*)$/, 'Stage $1 · $2'), P(/^Bölüm (\d+): (.*)$/, 'Level $1: $2'),
   P(/^✨ GİZLİ ROTA (\d+) · (.*)$/, '✨ SECRET ROUTE $1 · $2'), P(/^Gizli Rota (\d+)$/, 'Secret Route $1'),
   P(/^(\d+)\/(\d+) ★ → Gizli Rota (\d+)$/, '$1/$2 ★ → Secret Route $3'), P(/^✨ Tüm Gizli Rotalar açık \((.*)\)$/, '✨ All Secret Routes unlocked ($1)'),
   P(/^🔒 (\d+) ⭐ topla \((.*)\)$/, '🔒 Collect $1 ⭐ ($2)'), P(/^🔒 Önce (\d+)\. bölümü bitir$/, '🔒 Finish level $1 first'),
@@ -253,14 +302,12 @@ export const patterns = [
   P(/^ÇARPAN x(\d+)!$/, 'MULTIPLIER x$1!'), P(/^✖️ ×(\d+) ÇARPAN$/, '✖️ ×$1 MULTIPLIER'),
   P(/^(\d+) sn → (\d+) sn$/, '$1 s → $2 s'), P(/^(\d+) sn \(en yüksek\)$/, '$1 s (max)'),
   P(/^Stok: (.*)$/, 'Stock: $1'), P(/^(\d+)'L[Üİ] ❄️ (.*)$/, 'PACK OF $1 ❄️ $2'),
-  P(/^💎 Kristal: Yeti seni yakalayınca devam etmek için kullanılır \(her seferinde iki katı\)\. Şu an: (\d+)$/, '💎 Crystals: used to continue when the Yeti catches you (double cost each time). You have: $1'),
   P(/^(\d+)\/(\d+) HARF$/, '$1/$2 LETTERS'), P(/^(\d+)\/(\d+) harf$/, '$1/$2 letters'), P(/^(\d+)\/(\d+) harf · koşarken harfleri topla$/, '$1/$2 letters · collect letters while running'),
   P(/^Koşu sırasında (.*) harfleri sırayla belirir\. Bir günde hepsini topla! Sıradaki harf: (.*)$/, 'During runs the letters $1 appear in order. Collect them all in one day! Next letter: $2'),
   P(/^Ödül: (.*) · seri (\d+)\/7$/, 'Reward: $1 · streak $2/7'),
   P(/^Her gün tamamla, ödül büyüsün\. Seri günü: (\d+)\/7$/, 'Finish it every day and the reward grows. Streak day: $1/7'),
   P(/^\+(\d+) KRİSTAL$/, '+$1 CRYSTALS'), P(/^\+(\d+) KIZAK$/, '+$1 SLEDS'), P(/^Kutu x(\d+)$/, 'Box x$1'),
   P(/^Kupon: \+(\d+) ❄️$/, 'Coupon: +$1 ❄️'), P(/^🎟️ KUPON: \+(\d+) ❄️$/, '🎟️ COUPON: +$1 ❄️'),
-  P(/^(\S+) (.*): HAZIR!$/, '$1 $2: READY!'), P(/^(\S+) (.*): (\S+) ❄️ kaldı$/, '$1 $2: $3 ❄️ left'),
   P(/^SEVİYE (\d+)$/, 'LEVEL $1'), P(/^%(\d+) tamamlandı · bitişe (\S+) m kaldı!$/, '$1% done · $2 m to the finish!'),
   P(/^⭐ (\d+)\. yıldız: (.*)$/, '⭐ Star $1: $2'),
   P(/^(.*) modunu oyna\. (.*)$/, 'Play $1 mode. $2'),

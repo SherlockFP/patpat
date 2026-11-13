@@ -4,12 +4,12 @@
   "webDir": "dist",
   "backgroundColor": "#bfe3ff",
   "zoomEnabled": false,
-  "loggingBehavior": "debug",
+  "loggingBehavior": "none",
   "android": {
     "backgroundColor": "#bfe3ff",
     "allowMixedContent": false,
     "zoomEnabled": false,
-    "loggingBehavior": "debug"
+    "loggingBehavior": "none"
   },
   "ios": {
     "backgroundColor": "#bfe3ff",
@@ -18,7 +18,7 @@
     "allowsLinkPreview": false,
     "zoomEnabled": false,
     "preferredContentMode": "mobile",
-    "loggingBehavior": "debug"
+    "loggingBehavior": "none"
   },
   "plugins": {
     "SystemBars": {

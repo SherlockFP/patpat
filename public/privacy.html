@@ -51,7 +51,7 @@
 
   <h2>1. Cihazında saklanan veriler</h2>
   <p>Oyun verileri uygulamanın yerel depolama alanında (<code>localStorage</code>) tutar: ❄️ kar tanesi ve 💎 kristal sayıları, açtığın kostümler ve izler, rekorlar ve bölüm yıldızları, görev / başarım / günlük seri / sezon ilerlemesi, ayarlar (dil, ses, müzik, titreşim, görünüm), Arena takma adın ve Arena rekorların, öğretici ve ilk kullanım işaretleri, bildirim izninin sorulup sorulmadığı.</p>
-  <p>Bu veriler cihazından dışarı gönderilmez. Uygulamayı kaldırdığında (web sürümünde tarayıcının site verilerini temizlediğinde) silinir. Android'in otomatik yedekleme özelliği açıksa işletim sistemi bu verileri senin Google hesabına yedekleyebilir; bu bizim kontrolümüzde değildir.</p>
+  <p>Bu veriler cihazından dışarı gönderilmez. Uygulamayı kaldırdığında (web sürümünde tarayıcının site verilerini temizlediğinde) silinir. Android otomatik yedekleme bu uygulamada kapalıdır; verilerin Google hesabına yedeklenmez ve yeni bir telefona aktarılmaz. Oyun, hata ayıklama için son 20 hata kaydını yalnızca cihazında tutar (ağ yok); Ayarlar > "Hata bildir" ile bunu sen kopyalayıp istersen bize gönderebilirsin.</p>
 
   <h2>2. İnternete bağlanılan durumlar</h2>
   <p><b>a) Menü yazı tipi.</b> Menü başlıkları için "Lilita One" yazı tipi, internet varsa Google Fonts'tan (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>) yüklenir. Bu istekte IP adresin ve tarayıcı / cihaz bilgin Google'a ulaşır; Google'ın kendi gizlilik politikası geçerlidir. İnternet yoksa sistem yazı tipi kullanılır ve oyun aynen çalışır.</p>
@@ -101,7 +101,7 @@
 
   <h2>1. Data stored on your device</h2>
   <p>The game keeps its data in the app's local storage (<code>localStorage</code>): ❄️ snowflake and 💎 crystal counts, unlocked costumes and trails, records and level stars, quest / achievement / daily-streak / season progress, settings (language, sound, music, vibration, look), your Arena nickname and Arena records, tutorial and first-run flags, and whether the notification permission was asked.</p>
-  <p>This data is never sent off your device. It is deleted when you uninstall the app (on the web version: when you clear the browser's site data). If Android's automatic backup is on, the operating system may back this data up to your Google account; that is outside our control.</p>
+  <p>This data is never sent off your device. It is deleted when you uninstall the app (on the web version: when you clear the browser's site data). Android automatic backup is disabled for this app; your data is not backed up to your Google account and does not transfer to a new device. For debugging the game keeps the last 20 error messages on your device only (no network); you can copy them via Settings > "Report a bug" and send them to us if you wish.</p>
 
   <h2>2. When the game connects to the internet</h2>
   <p><b>a) Menu font.</b> For the menu headings, the "Lilita One" font is loaded from Google Fonts (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>) when you are online. That request lets Google see your IP address and browser / device information; Google's own privacy policy applies. Offline, a system font is used and the game works the same.</p>

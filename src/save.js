@@ -1,10 +1,15 @@
+import { platform } from './platform.js';
+
 const KEY = 'cig.save.v1';
-export const PERM_COSTS = [200, 450, 900, 1600, 2600];
+// first level 120 (60 with the welcome 50% coupon): the 60 welcome + 100 wheel ❄️ of session 1 always buy one permanent upgrade
+export const PERM_COSTS = [120, 350, 800, 1500, 2500];
 const RUNNER_DEF = () => ({ best: 0, bestDist: 0, runs: 0, tut: false, turnHints: 0, lipHints: 0, seen: { boulder: false, slidewall: false, train: false } });
-const CIG_DEF = () => ({ ch: {}, tut: 0, dailyCh: {}, endless: { tons: 0, dist: 0, runs: 0 }, lv: { stars: {}, best: {}, intro: {}, fails: {}, cleared: 0 } });
-export const CIG_LEVELS = 30;
+const CIG_DEF = () => ({ ch: {}, tut: 0, dailyCh: {}, endless: { tons: 0, dist: 0, runs: 0 }, lv: { stars: {}, best: {}, intro: {}, fails: {}, pct: {}, cleared: 0 } });
+export const CIG_LEVELS = 40;
+const SCHEMA = 1;   // bump + add a step in migrate() when the saved shape changes
 
 const fresh = () => ({
+  v: SCHEMA,
   level: 1, stars: {}, best: {}, daily: {},
   coins: 0,                                   // ❄️ kar tanesi — shop currency
   owned: { skin: ['classic'], trail: ['classic'] },
@@ -14,16 +19,28 @@ const fresh = () => ({
   cig: CIG_DEF(),
 });
 
+const localDay = () => { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
+const COIN_CAP = 999999999;   // keeps the wallet a safe integer, ASCII-sortable and far below any float precision issue
+// Old saves have no `v`: they are schema 0 and already match the shape below (the loader fills every missing field). Future steps go here.
+function migrate(p) {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return p;
+  if (!Number.isFinite(p.v)) p.v = 0;
+  // if (p.v < 2) { ...reshape...; p.v = 2; }
+  return p;
+}
+
 let data = fresh();
 try {
   const raw = localStorage.getItem(KEY);
   if (raw) {
-    const parsed = JSON.parse(raw);
+    const parsed = migrate(JSON.parse(raw));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('bad save');
     const base = fresh();
     data = { ...base, ...parsed, owned: { ...base.owned, ...parsed.owned }, selected: { ...base.selected, ...parsed.selected } };
     // Corrupted storage must never turn into NaN seeds or crashes.
+    data.v = SCHEMA;
     if (!Number.isFinite(data.level) || data.level < 1) data.level = 1;
-    if (!Number.isFinite(data.coins) || data.coins < 0) data.coins = 0;
+    data.coins = Number.isFinite(data.coins) ? Math.min(COIN_CAP, Math.max(0, Math.floor(data.coins))) : 0;
     for (const k of ['stars', 'best', 'daily']) if (!data[k] || typeof data[k] !== 'object') data[k] = {};
     for (const k of ['skin', 'trail']) {
       if (!Array.isArray(data.owned[k])) data.owned[k] = base.owned[k].slice();
@@ -55,8 +72,9 @@ try {
       const d = CIG_DEF().lv, l = data.cig.lv;
       if (!l || typeof l !== 'object') data.cig.lv = d;
       else {
-        for (const k of ['stars', 'best', 'intro', 'fails']) if (!l[k] || typeof l[k] !== 'object' || Array.isArray(l[k])) l[k] = {};
+        for (const k of ['stars', 'best', 'intro', 'fails', 'pct']) if (!l[k] || typeof l[k] !== 'object' || Array.isArray(l[k])) l[k] = {};
         for (const k in l.stars) { const v = l.stars[k]; if (!(Number.isFinite(v) && v >= 0)) delete l.stars[k]; else l.stars[k] = Math.min(3, Math.floor(v)); }
+        for (const k in l.pct) { const v = l.pct[k]; if (!(Number.isFinite(v) && v > 0)) delete l.pct[k]; else l.pct[k] = Math.min(100, Math.round(v)); }
         for (const k in l.fails) { const v = l.fails[k]; if (!(Number.isFinite(v) && v > 0)) delete l.fails[k]; }
         for (const k in l.best) {
           const b = l.best[k];
@@ -72,12 +90,26 @@ try {
     if (data.coupon && (typeof data.coupon !== 'object' || !Number.isFinite(data.coupon.pct))) data.coupon = { pct: 50, used: true };
     if (data.wheel && typeof data.wheel !== 'object') data.wheel = {};
   }
-} catch { /* private mode / blocked storage: play without saving */ }
+} catch {
+  // Corrupted / unreadable blob: keep a copy of the raw text (never lose it silently), then boot on defaults. Never throws.
+  try { const raw = localStorage.getItem(KEY); if (raw && !localStorage.getItem(KEY + '.corrupt')) localStorage.setItem(KEY + '.corrupt', raw); } catch { /* ignore */ }
+  data = fresh();
+}
 
 // Crystals 💎 live in meta.js (one source of truth); meta.init() binds them here. Until then a local counter is used.
 let crystalStore = null;
 // Optional listeners (meta.js registers them) so recording a result can feed missions without save.js importing meta.
 const hooks = { cigEnd: null };
+
+// Rate-the-game prompt: once, after the player's 3rd personal record, a few seconds later so it never covers the result screen.
+// platform.requestReview() is a no-op on web (and a stub until a review plugin is added there, see platform.js).
+function askReview() {
+  try {
+    if (localStorage.getItem('patpat.rated')) return;
+    localStorage.setItem('patpat.rated', '1');
+  } catch { return; }
+  setTimeout(() => { try { platform.requestReview().catch(() => { /* ignore */ }); } catch { /* ignore */ } }, 4000);
+}
 
 function persist() {
   try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* ignore */ }
@@ -113,17 +145,28 @@ export const save = {
   // ---- endless mode ----
   // all modes: Macera/Arena/ÇIĞ levels (data.runs), Rush, ÇIĞ endless; cleared mountains / level >1 act as a floor for old saves
   runsTotal: () => Math.max((data.runs || 0) + (data.runner?.runs || 0) + (data.cig?.endless?.runs || 0), (data.cig?.lv?.cleared | 0), (data.level || 1) > 1 ? 4 : 0),
+  rushRuns: () => data.runner?.runs | 0,
   runnerBest: () => data.runner?.best || 0,
   runnerBestDist: () => data.runner?.bestDist || 0,
+  runnerBestChapter: () => data.runner?.bestCh | 0,
+  setRunnerBestChapter(n) { n = Math.max(0, Math.min(9999, n | 0)); if (n > (data.runner.bestCh | 0)) { data.runner.bestCh = n; persist(); } },
+  // best Rush distance of today's local date (0 when none yet): the menu's "beat your best" hook
+  runnerTodayBestScore: () => { const d = data.runner?.day; return d && d.k === localDay() && Number.isFinite(d.s) ? d.s : 0; },
+  runnerTodayBest: () => { const d = data.runner?.day; return d && d.k === localDay() && Number.isFinite(d.d) ? d.d : 0; },
   // Returns this run's rank among the player's top-10 runs (1-based), or 0 if it didn't make the list.
   recordRunner(score, dist) {
     score = Number.isFinite(score) ? Math.max(0, score) : 0;
     dist = Number.isFinite(dist) ? Math.max(0, dist) : 0;
     if (!data.runner) data.runner = RUNNER_DEF();
     const r = data.runner;
+    const beat = r.bestDist > 0 && (dist > r.bestDist || score > r.best);   // a real record (the very first run is not one)
     r.best = Math.max(r.best, score);
     r.bestDist = Math.max(r.bestDist, dist);
     r.runs++;
+    if (!r.day || r.day.k !== localDay()) r.day = { k: localDay(), d: 0, s: 0 };
+    r.day.d = Math.max(r.day.d, dist);
+    r.day.s = Math.max(r.day.s | 0, score);
+    if (beat) { r.recs = (r.recs | 0) + 1; if (r.recs === 3) askReview(); }
     if (!Array.isArray(r.top)) r.top = [];
     const entry = { score, dist, t: Date.now() };
     r.top.push(entry);
@@ -235,6 +278,15 @@ export const save = {
   cigNext() { return Math.min(CIG_LEVELS, (data.cig.lv.cleared | 0) + 1); },
   cigLvStars: (n) => data.cig.lv.stars[n] || 0,
   cigLvBest: (n) => data.cig.lv.best[n] || null,
+  // best destruction percent of town n (0-100; the town below mountain n). Keeps the best, ignores garbage.
+  cigTownPct: (n) => data.cig.lv.pct[n] | 0,
+  cigSetTownPct(n, pct) {
+    n = n | 0;
+    if (n < 1 || n > CIG_LEVELS || !Number.isFinite(pct)) return save.cigTownPct(n);
+    const v = Math.max(0, Math.min(100, Math.round(pct)));
+    if (v > (data.cig.lv.pct[n] | 0)) { data.cig.lv.pct[n] = v; persist(); }
+    return data.cig.lv.pct[n] | 0;
+  },
   cigLvTotalStars() {
     let t = 0;
     const s = data.cig.lv.stars;
@@ -258,6 +310,7 @@ export const save = {
     b.time = b.time > 0 ? (time > 0 ? Math.min(b.time, time) : b.time) : time;
     lv.best[n] = b;
     lv.stars[n] = Math.max(prev, stars);
+    if (r && Number.isFinite(r.pct)) { const v = Math.max(0, Math.min(100, Math.round(r.pct))); if (v > (lv.pct[n] | 0)) lv.pct[n] = v; }
     if (firstClear) lv.cleared = n;
     persist();
     return { firstClear, newStars: Math.max(0, stars - prev), prevStars: prev, stars: lv.stars[n], isBest };
@@ -295,10 +348,10 @@ export const save = {
   // ---- economy / customization ----
   get coins() { return data.coins; },
   // (garbage in -> nothing happens: a NaN must never reach the wallet, the loader would reset the whole balance to 0)
-  addCoins(n) { n = Math.floor(Number.isFinite(n) ? n : 0); if (n <= 0) return; data.coins += n; persist(); },
+  addCoins(n) { n = Math.floor(Number.isFinite(n) ? n : 0); if (n <= 0) return; data.coins = Math.min(COIN_CAP, data.coins + n); persist(); },
   spend(n) {
     if (!Number.isFinite(n) || n < 0 || data.coins < n) return false;
-    data.coins -= n;
+    data.coins = Math.max(0, data.coins - Math.floor(n));
     persist();
     return true;
   },

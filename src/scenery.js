@@ -1209,8 +1209,7 @@ export class Scenery {
     const acc = new Accum(1 << 12);
     this.ridgeGrid(acc, this.ridgeOuterL, rows, false);
     this.ridgeGrid(acc, this.ridgeOuterR, rows, false);
-    const mesh = new THREE.Mesh(acc.build(true), this.ridgeMat);
-    mesh.frustumCulled = false;
+    const mesh = new THREE.Mesh(acc.build(true), this.ridgeMat);   // (frustum culled: the chunks behind the camera cost no draw call)
     this.group.add(mesh);
     return mesh;
   }
@@ -1230,7 +1229,8 @@ export class Scenery {
         }
       }
     }
-    const kMin = Math.max(-1, Math.floor((ball.d - 160) / CHK)), kMax = Math.floor((ball.d + 520) / CHK);
+    const fog = this.scene.fog, reach = fog ? Math.min(520, fog.far + 60) : 520;   // (a ridge past the fog's far plane is the horizon colour: no chunk there)
+    const kMin = Math.max(-1, Math.floor((ball.d - 160) / CHK)), kMax = Math.floor((ball.d + reach) / CHK);
     for (const [k, mesh] of this.ridgeChunks) {
       if (k < kMin - 1 || k > kMax + 1) {
         this.group.remove(mesh);

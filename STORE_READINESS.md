@@ -4,6 +4,41 @@ Tarih: 19 Ekim 2026 · Kapsam: bu depo (Capacitor 8 + Vite 8 + Three.js 0.186), 
 
 ---
 
+## 0. Güncel durum (Tur 3, 13 Kasım 2026): bu bölüm geçerli, §1-§10 19 Ekim anlık görüntüsüdür
+
+Kod ve yapılandırma tarafı Play'e hazır. Aşağıda kalan her madde İNSAN işidir (hesap, imza anahtarı, görsel, cihaz); ajanlar yapamaz. Hiçbiri cihazda doğrulanmadı.
+
+**Yapıldı (kanıt dosyada)**
+- B1 loglama: `capacitor.config.json` üç yerde `"none"`.
+- B3 sürüm: `package.json`, `android/app/build.gradle` `versionName`, `src/menus.js` `VERSION` hepsi `1.0.0`; `versionCode 1`. R8 (`minifyEnabled` + `shrinkResources`) açık. İmza bloğu yorumlu yer tutucu (anahtar insanda).
+- B4 politika metni: `public/privacy.html` + `PRIVACY.md` kodla uyumlu, Ayarlar'dan bağlantı var. İletişim alanı hâlâ yer tutucu (aşağıda).
+- B5 sohbet: çevrim içi odalarda serbest metin yok, yalnızca 8 hazır cümle (`src/agar/agar.js`); `.ag-cin` ölü CSS silindi, hazır cümle paneli 320 px'e sığıyor. Şikayet / engelleme düğmesi YOK: karar insanda (hedef kitle 13+ ise yeterli olabilir).
+- S2 hata günlüğü: `src/platform.js` (`patpat.errlog`, son 20 kayıt, ağ yok) + Ayarlar > "Hata bildir" kopyalar.
+- S3 paylaşım bağlantısı: `shareUrl()` (`src/sharecard.js`), arena daveti de bunu kullanıyor (`src/agar/invite.js`). Paylaşım metni artık skor + meydan okuma + bağlantı, TR/EN.
+- S4 lisans ekranı: Ayarlar > "Açık kaynak lisansları" (`src/menus.js` `LICENSES`).
+- S5 / S11: `allowBackup="false"` (bilinçli), `SCHEDULE_EXACT_ALARM` manifestten kaldırıldı.
+- Kayıt: `src/save.js` şema sürümü + `migrate()` iskeleti; saat geri alma koruması (`meta.today()`, günlük ödül / çark / görevler).
+- Tam ekran (immersive): `android/app/src/main/java/com/patpat/game/MainActivity.java` durum ve gezinme çubuklarını gizler (kenardan kaydırınca geçici görünür); `plugins.SystemBars.hidden` ve `platform.init()` aynı yönde. Web sürümü: `public/manifest.webmanifest` `display: fullscreen`, `orientation: portrait`, ikon yalnızca `favicon.svg` (SVG; yüklenebilir PWA ikonu için PNG 192/512 eksik, Play paketini etkilemez).
+- Viral kabuk (Tur 2): yeni oyuncuda ana ekran tek OYNA düğmesi; sistemler koşu sayısıyla açılır (tablo: `src/meta.js` `UNLOCKS`): 1. koşu Dolap + günlük ödül; 2. koşu Görevler + iki büyük mod düğmesi (MACERA · Bölüm N · ⭐ n/300 ve ÇIĞ · KASABA AVI · n/40; OYNA'nın altında, alttaki küçük sıra yalnızca Dolap / Görevler / Pasaport / Ayarlar); 3. koşu 💎, BUGÜN / sezon kısayolları, Kar Küresi, Yeti Postası; 4. koşu Pasaport + KARTOPU ARENA; 5. koşuda kilit tamamen kalkar. Eski kayıtlar hepsini baştan görür. Rekor / bugünün en iyisi / "rekora N m" satırı ana ekranda.
+
+- Tur 3 menü (`src/menus.js`, `src/meta.js`, `src/save.js`): tek "SIRADAKİ HEDEF" satırı üç sütundan en yakın hedefi seçer (görev seti → çarpan, MACERA act'i, ÇIĞ kasabası); koleksiyon sayaçları profilde (kostüm N/toplam, kartpostal N/18, kasaba N/40, yıldız N/300). Yeni yerel kayıt alanları: `cig.lv.pct` (kasaba başına en iyi yıkım %), `sets.cards` (görülen biyom kartpostalları, `meta.track('biome_seen', {id})`). Hepsi cihazda kalır: yeni izin, ağ çağrısı veya veri türü YOK, Data Safety cevabı değişmez. İlk kalıcı yükseltme ucuzlatıldı (`PERM_COSTS[0]` 120, ilk alımda %50 kuponla 60; güç yükseltmelerinin ilk kademesi 100 ❄️). Cihazda doğrulanmadı: 320 / 360 / 430 px genişlikte iki büyük düğmenin sığması.
+
+- Tur 4 hybrid-casual meta (`src/meta.js`, `src/menus.js`, `src/platform.js`): GÜÇ ekranı (TOP / GÜÇLER / KAZANÇLAR, 5 kademe), oyuncu seviyesi ödül ekranı, açılımlar oyuncu seviyesine bağlı (MACERA sv 2, ÇIĞ 3, Günlük 4, Arena 5, Sezon 6; eski kayıtlar `ug` ile erişimini korur), KARAKTER seviyesi 1-5 (parçalar). **Ödüllü reklam kapısı:** `platform.rewarded(placement)` her zaman `false` döner ve `platform.rewardedAvailable()` `false` kalır; ödüllü reklam düğmeleri (BENİ KURTAR, 2x ❄️, bedava sandık, ek çark) yalnızca `rewardedAvailable()` doğruyken oluşturulur, yani bu sürümde hiçbiri görünmez. **Data Safety cevabı bu turda DEĞİŞMEZ:** reklam / IAP SDK'sı eklenmedi, yeni bağımlılık yok, yeni veri toplanmıyor. AdMob (veya başka SDK) bağlanınca (N6): UMP onayı, Data Safety (reklam kimliği, kullanım verisi), gizlilik metni ve Families kuralları güncellenir; kablolama yeri `src/platform.js` `rewarded()` içindeki `shortcut:` yorumudur.
+
+**Hâlâ açık, sahibi insan**
+1. İkon + açılış ekranı: `android/app/src/main/res/mipmap-*` ve `drawable*/splash.png` büyük olasılıkla varsayılan Capacitor görselleri (bu turda doğrulanmadı, Android Studio'da bak). `npx @capacitor/assets generate`.
+2. Upload keystore (depo DIŞINDA), `build.gradle` `signingConfigs` yorumunu aç, imzalı AAB üret, Play App Signing.
+3. Gizlilik iletişimi: `public/privacy.html` içindeki `[GELİŞTİRİCİ ADI]` ve `[İLETİŞİM E-POSTASI]` ile `PRIVACY.md`'yi gerçek bilgiyle doldur, politikayı yayınla (URL formlara gerekli).
+4. Mağaza varlıkları (§6.3): ikon 512, feature graphic 1024x500, 2-8 telefon ekran görüntüsü; TR + EN metin (§6.4).
+5. Data Safety + içerik derecelendirme + hedef kitle formları (§5-§6).
+6. Gerçek cihaz testi (düşük / orta Android 2-3 GB RAM): FPS, ısınma, geri tuşu sırası, immersive mod, paylaşım kartı, çevrimdışı açılış, arka plana alıp dönme.
+7. Kişisel hesapsa kapalı test: ≥12 test kullanıcısı, 14 gün (Console'da güncel kuralı doğrula).
+8. Menü yazı tipi hâlâ Google Fonts'tan (`src/menus.js` `injectStyle()`, S1): gömmek dosya indirme gerektirir; gömülmezse Data Safety cevabında IP paylaşımı kalır.
+9. `@capacitor-community/in-app-review` yok: `platform.requestReview()` boş kanca (S-isteğe bağlı).
+10. iOS: `ios/` yok (B8), Mac + Xcode gerekir. Google Play için gerekmez.
+
+---
+
 ## 1. Kısa cevap
 
 **Hazır değil. Oyun teknik olarak oynanabilir ve büyük ölçüde çevrimdışı çalışıyor; ama bugün gönderilirse reddedilme veya kötü ilk izlenim riski yüksek.**
@@ -38,7 +73,7 @@ Durum: ✅ tamam · ⚠️ kısmen / dikkat · ❌ eksik
 | Android sürüm | ❌ | `versionCode 1`, `versionName "1.0"`; `package.json` `0.1.0`; oyun içi sürüm (`menus.js` `VERSION`) `0.3.0`. Üçü de farklı. |
 | Android imzalama | ❌ | `android/app/build.gradle` içinde `signingConfigs` / release imzası yok; `minifyEnabled false`. |
 | Android ikon / açılış | ❌ | `mipmap-*/ic_launcher*.png` ve `drawable*/splash.png` varsayılan Capacitor görselleri (mavi çarpı). |
-| Android yedekleme | ⚠️ | `allowBackup="true"`, `dataExtractionRules` yok: localStorage verisi Google yedeğine girebilir. Karar verilmeli (bilinçli bırakmak da olur; gizlilik metninde belirtildi). |
+| Android yedekleme | ✅ | `allowBackup="false"`: yedekleme kapalı; gizlilik metni (PRIVACY.md, privacy.html) buna göre güncellendi. |
 | iOS projesi | ❌ | `ios/` klasörü yok (`@capacitor/ios` devDependency var, `npx cap add ios` yapılmamış). Mac + Xcode 26 gerekir. |
 | Capacitor loglama | ❌ | `loggingBehavior: "debug"` hem kökte hem `android` hem `ios` altında. Yayında `"none"`. |
 | Çevrimdışı | ✅ | Modeller (`public/models`, ~1,1 MB) ve sesler (`public/sfx`, ~0,7 MB) pakete giriyor; `fetch` yolları göreli. Toplam `dist/` ~4,1 MB. |

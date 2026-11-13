@@ -20,7 +20,7 @@ import { patchMaterial } from './shaders.js';
 let lastInputAt = performance.now();
 if (typeof window !== 'undefined') for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'keydown']) window.addEventListener(ev, () => { lastInputAt = performance.now(); }, { passive: true, capture: true });
 import { MOVE_ARMY, MOVE_NONE, clamp } from './world.js';
-import { RAMP_AIR_K } from './cigplan.js';
+import { RAMP_AIR_K, ROLL_EVERY, fmtD } from './cigplan.js';
 
 const TAU = Math.PI * 2;
 const MOM_T = 7;   // seconds of clean rolling for full momentum (+35% top speed)
@@ -333,7 +333,7 @@ export class CigPlus {
     this.mods = { speedMul: 1, accelMul: 1, steerMul: 1, eatMul: 1, gravityMul: 1, magnetR: 0, ghost: false, shield: false, tonMul: 1, flying: false, noMelt: false, plow: false, magnet: false };
 
     this.pickups = []; this.mush = []; this.armies = []; this.shots = []; this.bossFx = null;
-    this.strips = []; this.cannons = []; this.bridges = []; this.hazards = [];
+    this.strips = []; this.cannons = []; this.bridges = []; this.hazards = []; this.rollSets = [];
     this._stT = 0;
     this.flip = { on: false, t: 0, dur: 1, landed: false, roll: 0 };
     this.sizeF = 1;
@@ -437,6 +437,7 @@ export class CigPlus {
       case 'strip': this._addStrip(s.at, s.xf); break;
       case 'puddle': case 'salt': this._addHazard(s); break;
       case 'cannon': this._addCannon(s); break;
+      case 'rollers': this.rollSets.push({ d0: s.start, len: s.len, rolls: s.rolls, i: 0, t: 0 }); break;
       case 'bridge': this._addBridge(s); break;
       default: break;
     }
@@ -600,6 +601,7 @@ export class CigPlus {
     fresh(this.hazards, (h) => h.d + h.rd > cut);
     fresh(this.cannons, (c) => c.d1 > cut);
     fresh(this.bridges, (q) => q.d1 > cut);
+    fresh(this.rollSets, (q) => q.i < q.rolls.length && q.d0 + 2000 > cut);
   }
 
   // ------------------------------------------------------------------ HUD (only when the page has no ui.buff* API)
@@ -715,7 +717,7 @@ export class CigPlus {
     m.noMelt = false; m.plow = T.rocket > 0; m.magnet = T.magnet > 0;
     m.shield = T.shield > 0; m.flying = false;
     if (T.rocket > 0) { m.speedMul *= 1 + 0.8 * clamp(T.rocket / 0.6, 0, 1); m.accelMul = 4; }
-    if (T.magnet > 0 && b) m.magnetR = (7 + b.r * 3.2) * clamp(T.magnet / 0.8, 0.3, 1);
+    if (T.magnet > 0 && b) m.magnetR = (7 + b.r * 3.2 + (this.game ? this.game._topMagnet : 0)) * clamp(T.magnet / 0.8, 0.3, 1);
     if (T.rainbow > 0) m.tonMul = 3;
     if (b) m.noMelt = T.freeze > 0 || this.lift(b.x, b.d) > 0.15 || this._onKicker(b);
   }
@@ -752,7 +754,7 @@ export class CigPlus {
       this._timers(dt, b);
       this._freeze(dt, b);
       this._effects(dt, b);
-      if (this.L) { this._strips(dt, b, G); this._hazards(dt, b, G); this._cannons(dt, b); this._bridges(dt, b); }
+      if (this.L) { this._strips(dt, b, G); this._hazards(dt, b, G); this._cannons(dt, b); this._bridges(dt, b); this._rollers(dt, b); }
     }
     this._armyUpdate(dt, b, active);
     this._rollUpdate(dt);
@@ -1027,6 +1029,37 @@ export class CigPlus {
       c.d = dS;
       c.tele = { t: 1.0, x0: c.x, d0: dS, x1: c.x + vx * tc, d1: dS + vd * tc, red, r, vx, vd };
       c.left--;
+    }
+  }
+
+  // ---- BOWLİNG (plan item 'rollers'): from the start of the stretch one ball starts rolling down the slope ahead of you every ROLL_EVERY s,
+  // slower than you (white = small, eat it; red = big, steer around it). Time-paced (a distance pace would be 4x denser on the fast late mountains);
+  // the sizes / lanes / order are plan data, so a retry is the same.
+  _rollers(dt, b) {
+    const RS = this.rollSets;
+    for (let q = 0; q < RS.length; q++) {
+      const S = RS[q], n = S.rolls.length;
+      if (S.i >= n || b.d < S.d0) continue;
+      if (b.d > S.d0 + 2000) { S.i = n; continue; }   // (warped far past it: no stale balls)
+      S.t -= dt;
+      if (S.t > 0) break;   // (one stretch at a time: a late stretch starts when the one before it has rolled all its balls)
+      let live = 0;
+      const en = this.world.enemies;
+      for (let k = 0; k < en.length; k++) if (en[k].alive && en[k].enemy.roll) live++;
+      if (live >= 5) { S.t = 0.4; break; }
+      S.t = ROLL_EVERY;
+      const R0 = S.rolls[S.i++];
+      const gs = this.world.gates;
+      let nearGate = false;   // (never start a ball beyond the next gate: it would roll through the wall)
+      for (let k = 0; k < gs.length; k++) if (!gs[k].broken && gs[k].d > b.d && gs[k].d < b.d + 140) { nearGate = true; break; }
+      if (nearGate) break;
+      // (3.5 s of warning at any speed; a red ball is capped so that 2.2 ball diameters of track stay free beside it, but is always a bit bigger than you)
+      const dS = b.d + clamp(1.6 * b.speed, 70, 135), hw = this.world.halfWidth(dS) - 1;
+      const r = R0.big ? Math.max(b.r * 1.08, Math.min(b.r * R0.k, hw - 2.2 * b.r)) : b.r * R0.k, lim = Math.max(0, hw - r * 0.5);
+      const x = clamp(R0.xf * hw, -lim, lim);
+      const p = this.world.spawnRoller(x, dS, r, R0.xf > 0 ? -1.2 : 1.2, 0.55 * Math.max(b.speed, 12));
+      if (p) { this._burst(x, p.y + r, dS, 10, 0xffffff, 6, 0.2, 3); this._call('sfx', 'rumble'); }
+      break;
     }
   }
 
@@ -1309,8 +1342,10 @@ export class CigGame {
   //   text(str, atObj, cls)  toast(str)  shake(v)  hitStop(sec)  flash(kind)  kick(zoom, fov)  track(ev, data)
   //   tier(name, tierIdx)  hud(info)  hunger(frac, warn)  combo(n)  tons(t)  end(cause)  stickPos(q) [unused]
   // level = a plan from cigplan.js (ÇIĞ DAĞLAR); without it this is the endless avalanche, exactly as before
-  constructor({ world, ball, plus, G, host = {}, level = null }) {
+  constructor({ world, ball, plus, G, host = {}, level = null, ctx = null }) {
     this.L = level || null;
+    this.ctx = ctx;   // { meta } (main.js may also set game.ctx later): meta.upgradeValue(id) feeds the GÜÇ upgrades; missing = no effect
+    this._meltK = 1; this._topMagnet = 0;
     this._afkAcc = 0;
     this._next = null;
     this.world = world; this.ball = ball; this.plus = plus; if (plus) plus.game = this; this.G = G; this.host = host;
@@ -1334,16 +1369,23 @@ export class CigGame {
   reset() {
     this._starNudge = null;
     const G = this.G, b = this.ball, w = this.world;
-    if (this.loot) { try { this.plus.group.remove(this.loot.grp); } catch { /* optional */ } this._lootHud(this.loot, false); this.loot = null; }
-    const r0 = this.L ? this.L.r0 : CFG.startR;
+    this._clearLoot();
+    let r0 = this.L ? this.L.r0 : CFG.startR;
+    // GÜÇ upgrades (meta.upgradeValue): topSize = tiers added at the start (0..0.75, same unit as the Rush), topMelt = fraction of the melt removed, topMagnet = metres on an active magnet
+    const up = (a, c) => { const v = Number(this.ctx?.meta?.upgradeValue?.(a) || this.ctx?.meta?.upgradeValue?.(c)); return v > 0 && v < 1e3 ? v : 0; };
+    const us = Math.min(0.75, up('topSize', 'startSize'));
+    if (us > 0) { const edge = CFG.tierEdges[Math.min(tierOf(r0), CFG.tierEdges.length - 1)]; if (edge > r0) r0 *= (edge / r0) ** (0.5 * us); }   // (half the tier: a full 0.75 tier would be x2.1 on a 0.55 m ball and skip the first gates)
+    this._meltK = 1 - Math.min(0.5, up('topMelt', 'meltRes'));
+    this._topMagnet = Math.min(4, up('topMagnet', 'magnet'));
     Object.assign(G, {
       state: 'play', targetX: 0, combo: 0, comboT: 0, swallowed: 0, townTons: 0, destroyed: 0,
       bumpCd: 0, recoverT: 0, momentumT: 0, timeScale: 1, hitStop: 0, hitStopCd: 0, shake: 0,
       onRamp: false, lastRamp: 0, tier: tierOf(r0), peakR: r0, slowT: 0, t: 0, endT: 0, cause: '', result: null,
-      goldenTons: 0, bonusTons: 0, gatesBroken: 0, gateSlow: 0, comboUiT: 0, sprayT: 0, finalized: false, avl: tierOf(r0),
+      townGot: 0, townPct: 0, town70: 0, goldenTons: 0, bonusTons: 0, gatesBroken: 0, gateSlow: 0, comboUiT: 0, sprayT: 0, finalized: false, avl: tierOf(r0),
       // ÇIĞ DAĞLAR
       mom: 0, momT: 0, hitT: 0, hitPending: false, dn: 0, momMsg: false, hazFloor: 0, hazMsg: null, hazSeen: {}, chain: 0, chainT: 0, chainMul: 1, stripT: 0, stripNew: false, surgeT: 0, knockT: 0, knockV: 0, gateIdx: 0, tersDone: false, finalBroken: false, finalR: 0, bossFail: null, win: false, lastBounce: null, gateLog: [],
     });
+    this._startR = r0;
     b.reset(r0);
     b.y = w.groundY(0, 0) + b.r * 0.92;
     b.speed = CFG.startSpeed * (this.L ? this.L.speedK * 1.2 : 1);
@@ -1677,12 +1719,13 @@ export class CigGame {
     b.punch(Math.min(0.09, 0.45 * q.r / Math.max(0.2, rb)));
     if (!chunk) {
       _stickPos.set(q.x, q.y, -q.d);
-      b.stick(q.def, _stickPos, q.s0, 0.6);
+      if (b.stuck[q.def.name] || stuckTypes(b) < STUCK_MAX) b.stick(q.def, _stickPos, q.s0, 0.6);   // every stuck type is a draw call: only the first STUCK_MAX types show on the ball
     } else this.stats.chunksEaten++;
     G.combo = G.comboT > 0 ? G.combo + 1 : 1;
     if (G.combo === 1) this.fevAt = 40;   // a fresh chain: the first frenzy comes at x40
     const rid = b.riderN();   // EKİP TOPU: each rider = +10% combo time and score
     G.comboT = CFG.comboWindow * (1 + 0.1 * rid);
+    if (q.twn) this._townHit(q);
     G.swallowed += q.mass * M.tonMul * (q.tonK || 1) * (1 + 0.02 * Math.min(G.combo, 50)) * this._cm() * (1 + 0.1 * rid) * (this.feverT > 0 ? 1.5 : 1);
     if (!chunk && /snowman/i.test(q.type)) this._crew(); // a long chain is worth up to double
     if (G.combo > this.stats.maxCombo) this.stats.maxCombo = G.combo;
@@ -1725,6 +1768,22 @@ export class CigGame {
     this._msg(2, was ? `ÇILGINLIK UZADI! x${n}` : `🌪️ ÇIĞ ÇILGINLIĞI! x${n}`);
   }
 
+  // KASABA: a finale-town prop was swallowed or smashed. townPct = destroyed footprint (r^2) / placed footprint (stars: L.town.need; the result's headline number)
+  _townHit(p) {
+    const G = this.G, L = this.L, b = this.ball, tv = this.world.townVol;
+    if (!L || !L.town || !tv) return;
+    G.townGot += p.r * p.r;
+    const pct = this.stats.townPct = Math.min(1, G.townGot / tv);
+    G.townPct = 100 * pct;   // 0..100, the town gauge (only changes when a town prop is swallowed / smashed, so it is always current)
+    if (p.r > 0.8 * b.r) { this._h('hitStop', 0.05); this._h('kick', 0.3, 8); }   // (the tower / big houses: a beat of weight)
+    if (!G.town70 && pct >= L.town.need) {
+      G.town70 = 1;
+      this._msg(2, '⭐ KASABANIN %' + Math.round(100 * L.town.need) + ' YIKILDI!');
+      this._h('sfx', 'milestone', 3); this._h('flash', 'gold'); this._h('haptic', 'success');
+      this._h('debris', b.x, b.y, b.d, 14); this._h('dust', b.x, b.y, b.d, 4 + b.r); this._h('shake', 0.5); this._h('photoFlash');
+    }
+  }
+
   // EKİP TOPU: 3+ snowmen swallowed within 3 s -> a mini snowman climbs on top of the ball (max 3)
   _crew() {
     const G = this.G, b = this.ball, a = this._snowT || (this._snowT = []);
@@ -1764,6 +1823,7 @@ export class CigGame {
     const w = this.world, b = this.ball, G = this.G;
     w.kill(p);
     G.destroyed++;
+    if (p.twn) this._townHit(p);
     this.stats.smashes++;
     G.townTons += p.mass * this.plus.mods.tonMul * 0.5 * this._cm();
     if (this.L && grow) this._chainHit(1);
@@ -1952,7 +2012,7 @@ export class CigGame {
       this._h('hitStop', 0.09); G.shake += 0.8;
       this._h('sfx', 'crash', 0.7); this._h('sfx', 'milestone', 2); this._h('haptic', 'success'); this._h('flash', 'gold');
       this._text(e.roll ? 'TOP YUTULDU!' : 'RAKİP YUTULDU!', p, 'big', true);
-      if (!e.roll) { this._msg(1, '+' + fmtTonsShort(xp) + ' XP'); this.stats.rivalEaten++; }
+      if (!e.roll) { this._msg(1, '+' + fmtTonsShort(xp) + ' XP'); this.stats.rivalEaten++; } else this.stats.rolls++;
       if (this.L) this._chainHit(2);
       this._tierCheck();
       return;
@@ -2347,14 +2407,17 @@ export class CigGame {
     if (mini) return;
     G.gateLog.push({ i: g.i, r: b.r, need: g.minR, ok: true });
     this._h('flash', 'milestone');
-    this._text(fin ? 'DAĞ TAMAM!' : 'KAPI KIRILDI!', b, 'big', true);
+    this._text(fin ? (L.town ? 'KASABAYI YIK!' : 'DAĞ TAMAM!') : 'KAPI KIRILDI!', b, 'big', true);
     this._h('track', 'gate', { ok: true });
     this._power();
     G.gateIdx = g.i + 1;
     if (fin) {
       G.finalBroken = true; G.finalR = b.r;
       G.timeScale = 0.55;
-    } else this._msg(1, '✓ ETAP ' + (g.i + 1));   // short and small; the HUD chip is the source of truth
+      // finale payoff: a gold flash, a camera punch and a rising chime on top of the slow-mo (the win burst follows at the line)
+      this._h('flash', 'gold'); this._h('kick', 0.5, 10); this._h('sfx', 'milestone', 4);
+      this._msg(2, L.town ? '🏘️ ' + L.town.name : '⚪ ' + fmtD(2 * b.r) + ' m');
+    } else this._msg(1, '✓ ETAP ' + (g.i + 1) + ' · ⚪ ' + fmtD(2 * b.r) + ' m');   // growth readout at every gate; short and small, the HUD chip is the source of truth
     this._tierCheck();
   }
 
@@ -2589,7 +2652,7 @@ export class CigGame {
       e.seen = true;
       if (g.locked) continue;   // the boss has its own bar
       const need = fmtD(g.minR * 2), ok = this._readyOf(g) === 2;
-      this._msg(1, (g.kind === 'final' ? 'FİNAL KAPISI' : 'ETAP ' + (g.i + 1) + '/' + L.S) + ' · ⛔ ' + need + ' m ' + (ok ? 'kırabilirsin' : 'gerekli'));
+      this._msg(1, (g.kind === 'final' ? 'FİNAL KAPISI · ' : '') + '⛔ ' + need + ' m ' + (ok ? 'kırabilirsin' : 'gerekli'));
       this._h('haptic', 'light');
     }
   }
@@ -2625,6 +2688,18 @@ export class CigGame {
     this.loot = { grp, halo, hud, d: b.d + 30, x: b.x, v: Math.max(9, b.speed * 0.8), t: 0, got: false, lost: false, boss: L.bossId };
     this._msg(3, '✨ GANİMET!');
   }
+  // remove the loot orb (mesh + its geometries / materials) and its DOM chip; safe to call twice
+  _dropLootGfx(o) {
+    if (!o) return;
+    this._lootHud(o, false);
+    if (!o.grp) return;
+    try { this.plus.group.remove(o.grp); } catch { /* optional */ }
+    o.grp.traverse((m) => { if (m.isMesh) { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); } });
+    o.grp = null;
+  }
+  _clearLoot() { this._dropLootGfx(this.loot); this.loot = null; }
+  // called by the page before this game is replaced (retry / quit mid-loot): no DOM chip or GPU buffers left behind
+  dispose() { this._clearLoot(); }
   _lootHud(o, on) {
     if (!o.hud) return;
     if (!on) { try { o.hud.remove(); } catch { /* optional */ } o.hud = null; return; }
@@ -2644,12 +2719,12 @@ export class CigGame {
     o.halo.scale.setScalar(1.9 + Math.sin(o.t * 6) * 0.25);
     this._lootHud(o, true);
     if (Math.abs(o.d - b.d) < b.r + r + 1.2 && Math.abs(o.x - b.x) < b.r + r + 1.6) {
-      o.got = true; this.G.lootGot = o.boss; this.plus.group.remove(o.grp); this._lootHud(o, false);
+      o.got = true; this.G.lootGot = o.boss; this._dropLootGfx(o);
       this.G.bonusTons += Math.max(30, 0.5 * this.snowTons()) * this._cm();
       this._h('burst', o.x, y, o.d, 22, 0xffe27a, 9, 0.35, 8); this._h('flash', 'gold'); this._h('sfx', 'milestone', 2); this._h('haptic', 'success');
       this._msg(2, '✨ GANİMET ALINDI!');
     } else if (b.d > o.d + 8 || (b.d >= L.length - 6 && o.d >= L.length - 5)) {
-      o.lost = true; this.plus.group.remove(o.grp); this._lootHud(o, false); this._msg(1, 'Ganimet kayboldu...');
+      o.lost = true; this._dropLootGfx(o); this._msg(1, 'Ganimet kayboldu...');
     }
   }
 
@@ -2722,7 +2797,7 @@ export class CigGame {
       this._bossWarnT -= dt;
       if (b.r < 0.7 * this._bossR0 && this._bossWarnT <= 0) { this._bossWarnT = 4; this._msg(3, 'ERİYORSUN — KAR TOPLA!'); this._h('haptic', 'warning'); }
     } else if (this._bossR0 && !this._inArena()) this._bossR0 = 0;
-    if (b.airborne || M.noMelt) rate = 0;
+    if (b.airborne || M.noMelt || G.finalBroken) rate = 0;   // (past the final gate: the town run, nothing melts)
     let onPatch = false;
     if (!b.airborne && !M.noMelt && w.inPatch(b.x, b.d)) { rate += CFG.patchMelt; onPatch = true; }
     const hz = !b.airborne && !M.noMelt && w.inHeat ? w.inHeat(b.x, b.d) : null;
@@ -2732,6 +2807,7 @@ export class CigGame {
       this._heatFx = (this._heatFx || 0) - dt;
       if (this._heatFx <= 0) { this._heatFx = 0.14; this._h('burst', b.x, b.y + b.r * 0.2, b.d, 2, 0xff8a2a, 3, 0.12 + b.r * 0.05, 3); }
     } else this._inHeat = false;
+    rate *= this._meltK;
     this.melting = rate;
     if (rate > 0) {
       b.setRadius(Math.cbrt(b.r ** 3 * (1 - rate * dt)));
@@ -2754,7 +2830,7 @@ export class CigGame {
   // or a stall eats the gap; it freezes while the boss arena is on. Same data contract as _wave (wave.on / d / v) so the visuals work.
   _chase(dt, target) {
     const G = this.G, b = this.ball, W = this.wave, C = this.L.chase;
-    if (G.state !== 'play' || !C || G.t < C.t0) return;
+    if (G.state !== 'play' || !C || G.t < C.t0 || G.finalBroken) return;   // (the avalanche stops at the final gate: the town is yours)
     if (C.ters) { this._tersChase(dt, target); return; }
     if (!W.on) {
       if (this._gateNear(120)) return;   // wait: one message at a time, the gate sign goes first
@@ -2989,14 +3065,21 @@ export class CigGame {
     const I = this._hudInfo || (this._hudInfo = {});
     I.tons = this.totalTons(); I.dist = b.d; I.tierName = CFG.tierNames[T]; I.frac = frac; I.best = this.bestTons || 0;
     I.size = b.r * 2; I.tier = T + 1; I.speed = b.speed; I.hunger = hf; I.wave = this.wave.on && !(this.L && this.L.ters);
+    const e = CFG.tierEdges[T];   // ÇIĞ SONSUZ: the ladder is the goal (next tier's name and the snow tons still missing)
+    I.nextName = e ? CFG.tierNames[T + 1] : ''; I.nextTons = e ? Math.max(0, 4.18879 * (e ** 3 - b.r ** 3) * CFG.snowDensity) : 0;
+    I.townPct = this.G.townPct || 0;   // destroyed share of the finale town, 0..100 (mountains; 0 elsewhere)
     if (this.L) this._fillLv(I);
     this._h('hud', I);
   }
 
   // the level HUD payload (one reused object, read synchronously by main.js)
   _fillLv(I) {
-    const L = this.L, G = this.G, b = this.ball, g = this._next;
-    const V = I.lv || (I.lv = { n: 0, label: '', S: 0, gateI: 0, gateD: 0, left: 0, need: 0, have: 0, ready: 0, kmh: 0, chainMul: 1, chain: 0, prog: 0, gap: 999, ters: 0, final: false, boss: false, locked: false, finalBroken: false });
+    const L = this.L, G = this.G, b = this.ball;
+    let g = this._next, fb = false;
+    // the world streams gates lazily: until the next one exists, read it from the plan (never "ETAP 6/6" / a missing size at the very start)
+    if (!g && !G.finalBroken) { const pg = L.gates; for (let i = 0; i < pg.length; i++) if (pg[i].d + 4 >= b.d) { g = pg[i]; fb = true; break; } }
+    const V = I.lv || (I.lv = { n: 0, label: '', S: 0, gateI: 0, gateD: 0, left: 0, need: 0, have: 0, ready: 0, kmh: 0, chainMul: 1, chain: 0, prog: 0, gap: 999, ters: 0, townNeed: 0, pct: -1, final: false, boss: false, locked: false, finalBroken: false,
+      gaugeFrom: 0, gaugeTo: 0, gauge: 0, notches: [], notchF: [], nN: 0, townPct: 0, townGoal: 0, townName: '', _L: null });
     V.n = L.n; V.label = L.label; V.S = L.S;
     V.gateI = g ? g.i : L.S - 1;
     V.gateD = g ? g.d : L.length;
@@ -3011,7 +3094,21 @@ export class CigGame {
     V.gap = this.wave.on && !L.ters ? b.d - this.wave.d : 999;
     V.ters = L.chase && L.chase.ters && this.wave.on ? Math.max(0, this.wave.d - b.d) : 0;
     V.final = !!g && (g.kind === 'final' || g.kind === 'boss');
-    V.boss = L.boss; V.locked = !!g && g.locked; V.finalBroken = G.finalBroken;
+    V.townNeed = L.town ? 2 * L.town.min : 0; V.pct = L.town ? Math.round(100 * this.stats.townPct) : -1;
+    // town gauge (PLAN_V3 5): ball diameter -> town size, the stage gates as notches on the same bar (diameters in m, fractions 0..1 along the bar)
+    if (V._L !== L) {
+      V._L = L; V.gaugeTo = 2 * L.finale.minR; V.townGoal = L.town ? Math.round(100 * L.town.need) : 0; V.townName = L.town ? L.town.name : '';
+      V.notches.length = 0; V.notchF.length = 0;
+    }
+    V.gaugeFrom = 2 * (this._startR || L.r0);
+    if (!V.notches.length) {
+      const span = Math.max(0.1, V.gaugeTo - V.gaugeFrom);
+      for (let i = 0; i < L.gates.length - 1; i++) { const gt = L.gates[i]; const dm = 2 * gt.minR; if (dm > V.gaugeFrom && dm < V.gaugeTo) { V.notches.push(dm); V.notchF.push((dm - V.gaugeFrom) / span); } }
+      V.nN = V.notches.length;
+    }
+    V.gauge = clamp((V.have - V.gaugeFrom) / Math.max(0.1, V.gaugeTo - V.gaugeFrom), 0, 1);
+    V.townPct = G.townPct || 0;
+    V.boss = L.boss; V.locked = !!g && (g.locked || (fb && g.kind === 'boss')); V.finalBroken = G.finalBroken;
   }
 
   // ---- end of run
@@ -3163,9 +3260,12 @@ export class CigGame {
   }
 }
 
+const STUCK_MAX = 5;
+function stuckTypes(b) { let n = 0; for (const k in b.stuck) n++; return n; }
+
 function newStats() {
   return { eats: 0, bumps: 0, gates: 0, gatesBroken: 0, maxCombo: 0, goldens: 0, waves: 0, tierT: [], stalls: 0, chunksEaten: 0, kills: 0, bosses: 0, smashes: 0,
-    bounces: 0, hits: 0, crates: 0, gold: 0, maxChain: 0, maxMul: 1, rivalEaten: 0, time: 0, statues: 0, secret: 0, throne: 0 };
+    bounces: 0, hits: 0, crates: 0, gold: 0, maxChain: 0, maxMul: 1, rivalEaten: 0, time: 0, statues: 0, secret: 0, throne: 0, rolls: 0, townPct: 0 };
 }
 
 const _stickPos = new THREE.Vector3();
@@ -3179,16 +3279,12 @@ const TIPS = {
   throne: 'Kardan adam tahtına çarp: bloklar devrilsin, tacı yık!',
   domino: 'İlk ağaca çarp: domino gibi devrilsin!',
   riders: 'Art arda 3 kardan adam ye: EKİP TOPU üstüne biner!',
+  rollers: 'Yokuştan toplar yuvarlanıyor: beyazları ye, kırmızılardan kaç!',
 };
 const RIVAL_RED = [1, 0.45, 0.45], RIVAL_BLUE = [0.7, 0.95, 1], RIVAL_WHITE = [1, 1, 1];
 
-function fmtD(d) {
-  if (d >= 10) return String(Math.round(d));
-  return (Math.round(d * 10) / 10).toFixed(1).replace('.', ',').replace(/,0$/, '');
-}
-
 function fmtTonsShort(t) {
-  if (t < 10) return `${t.toFixed(1).replace('.', ',')} ton`;
+  if (t < 10) return `${fmtD(t)} ton`;
   if (t < 1000) return `${Math.round(t)} ton`;
-  return `${(t / 1000).toFixed(1).replace('.', ',')} bin ton`;
+  return `${fmtD(t / 1000)} bin ton`;
 }

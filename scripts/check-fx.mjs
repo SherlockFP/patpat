@@ -121,5 +121,111 @@ let fullRate;
   ok(out.n - n0 <= 3, 'at most 3 puffs per frame, got ' + (out.n - n0));
 }
 
+{ // pickup / hit burst: chunks + a flash and halo, all finite; dispose frees everything and empties the scene
+  const { fx, out } = rig();
+  fx.burst(0, 1, 5, 8, 0xffcc33);
+  ok(out.n === 7 && fx.n === 8, 'a burst of 8 emits 8 chunks, a flash, a halo and a 5-spark ring, got ' + fx.n + ' / ' + out.n);
+  ok(fx.mKeep.reduce((a, b) => a + b, 0) === 7, 'every flash puff is exempt from the near-ball thinning');
+  fx.burst(0, 1, 5, 2, new THREE.Color(1, 0, 0));
+  ok(out.n === 7, 'a tiny burst emits no glow');
+  { // the flash stays bright next to the ball (the powder thinning must not touch it)
+    const f = rig().fx, b = { group: new THREE.Group(), r: 0.8, x: 0, y: 1, d: 5, airborne: false };
+    b.group.position.set(0, 1, -5);
+    f.burst(0, 1, 5, 6, 0xffcc33); for (let k = 0; k < 3; k++) f.updateMist(0.02, b);
+    ok(Math.max(...f.mAlpha) > 0.7, 'pickup flash keeps its alpha at the ball, got ' + Math.max(...f.mAlpha).toFixed(2));
+    f.puff(0, 1, -5, 0, 0, 0, 1, 1, 0xffffff, 0.8); for (let k = 0; k < 3; k++) f.updateMist(0.1, b);
+    ok(f.mAlpha[f.mHead - 1] < 0.4, 'ordinary powder at the ball is still thinned, got ' + f.mAlpha[f.mHead - 1].toFixed(2));
+  }
+  SU.uLite.value = 1;
+  { const g = rig(); g.fx.burst(0, 1, 5, 8, 0xffcc33); ok(g.out.n === 2, 'lite rung: flash + halo only, no ring, got ' + g.out.n); }
+  SU.uLite.value = 0;
+  ok(finite(fx.px) && finite(fx.pv), 'burst state is finite');
+  let freed = 0;
+  const track = (o) => { const d = o.dispose.bind(o); o.dispose = () => { freed++; d(); }; };
+  track(fx.parts.geometry); track(fx.trail.geometry); track(fx.mist.geometry); track(fx.streaks.geometry); track(fx.shadow.geometry);
+  fx.dispose();
+  ok(freed === 5 && !fx.scene.children.includes(fx.parts) && !fx.scene.children.includes(fx.streaks), 'dispose frees every geometry and leaves the scene');
+}
+
+{ // town destruction: debris joins the shared chunk pool, dust the mist pool, shake decays to exactly 0; all dead in the lite rung
+  const { fx, step } = rig();
+  const P = { x: 2, y: 1, z: -30 };
+  fx.debris(P, 0xb08a5a, 999);
+  ok(fx.n === 24, 'debris: one call throws at most 24 chunks, got ' + fx.n);
+  ok(fx.parts.count <= 700 && finite(fx.px) && finite(fx.pv), 'debris state finite');
+  step(0, 0, 0, 2);
+  ok(fx.n === 0, 'debris chunks expire (<= 1.5 s), left ' + fx.n);
+  const live = () => { let c = 0; for (let i = 0; i < fx.mN; i++) if (fx.mLife[i] > 0) c++; return c; };
+  fx.dust(P, 4);
+  ok(live() === 11, 'dust: 8 ring + 3 rising puffs, got ' + live());
+  fx.shake(9); ok(fx._shk === 1.2, 'shake is capped at 1.2');
+  step(0, 0, 0, 0.1); ok(fx.shakeOff.x !== 0 || fx.shakeOff.y !== 0, 'shake offsets the camera hook');
+  step(0, 0, 0, 2); ok(fx.shakeOff.x === 0 && fx.shakeOff.y === 0, 'shake decays to exactly 0');
+  fx.photoFlash(); ok(SU.uFlash.value.w === 0.9, 'photoFlash is a full white flash');
+  fx.reset(); SU.uLite.value = 1;
+  fx.debris(P, 0xffffff, 8); fx.dust(P, 4); fx.shake(1);
+  ok(fx.n === 0 && live() === 0 && fx._shk === 0, 'lite rung: debris, dust and shake are off');
+  SU.uLite.value = 0; fx.dispose();
+}
+
+{ // hit flash: sets the shared uniform, never lowers a stronger one, eases out to exactly 0, dispose clears it
+  const { fx, ball, step } = rig();
+  const fl = SU.uFlash.value;
+  fx.hitFlash(0.5);
+  ok(fl.w === 0.5 && fl.x === 1 && fl.y === 1 && fl.z === 1, 'hitFlash(0.5) is a white 0.5 flash');
+  fx.hitFlash(0.2);
+  ok(fl.w === 0.5, 'a weaker flash does not lower a stronger one');
+  fx.hitFlash(5, 1, 0.2, 0.2);
+  ok(fl.w === 0.9 && fl.y === 0.2, 'strength is capped at 0.9 and takes the new colour');
+  step(0, 0, 0, 0.35);
+  ok(fl.w > 0 && fl.w < 0.1, 'flash eases out (~0.3 s), got ' + fl.w.toFixed(3));
+  step(0, 0, 0, 1.5);
+  ok(fl.w === 0, 'flash reaches exactly 0');
+  fx.hitFlash(0.5); fx.dispose();
+  ok(fl.w === 0, 'dispose clears a running flash');
+}
+
+{ // score floaters, score pop, level-up burst, prewarm, level badge
+  const { fx, ball } = rig();
+  fx.floater('+5', 10, 10);   // (the stub document has no body: a no-op, never a throw)
+  ok(fx._fl === null, 'floater without a DOM is a no-op');
+  const kids = [], mk = () => ({ style: {}, setAttribute() {}, remove() { this.gone = true; }, className: '' });
+  const doc0 = globalThis.document, cv = doc0.createElement('canvas');
+  globalThis.document = { createElement: (t) => (t === 'canvas' ? cv : mk()), body: { appendChild: (e) => kids.push(e) }, head: { appendChild: (e) => kids.push(e) } };
+  for (let i = 0; i < 25; i++) fx.floater('+' + i, 100 + i, 200, i & 1 ? 0xffd23a : '#fff');
+  ok(fx._fl.length === 10 && kids.length === 11, 'floater pool is built once: 10 labels + 1 style, got ' + kids.length);
+  ok(fx._fl[4].textContent === '+24' && fx._fl[4].style.left === '124px' && fx._fl[4].style.color === '#fff' && fx._fl[3].style.color === '#ffd23a', 'oldest label is reused with the new text / position / colour');
+  ok(fx._fl[0].style.animationName !== fx._fl[1].style.animationName, 'consecutive floaters alternate keyframes so each restarts');
+  const el = mk(); fx.scorePop(el); const a1 = el.style.animationName; fx.scorePop(el);
+  ok(a1 && el.style.animationName !== a1 && el.style.animationDuration === '0.18s', 'scorePop alternates keyframes (restarts) and runs 0.18 s');
+  fx.scorePop(null); fx.scorePop({});   // no throw
+  const live = () => { let c = 0; for (let i = 0; i < fx.mN; i++) if (fx.mLife[i] > 0) c++; return c; };
+  fx.levelUp(null); ok(live() === 0, 'levelUp(null) is a no-op');
+  fx.levelUp({ x: 0, y: 1, z: -20 });
+  ok(live() === 15 && SU.uFlash.value.w === 0.3, 'levelUp: 12 ring + 3 column puffs and a gold flash, got ' + live());
+  fx.reset(); SU.uFlash.value.w = 0; SU.uLite.value = 1; fx.levelUp({ x: 0, y: 1, z: -20 });
+  ok(live() === 9, 'levelUp is lighter in the lite rung, got ' + live()); SU.uLite.value = 0;
+  let seen = null;
+  fx.prewarm({ compile: () => { seen = fx.streaks.visible; } });   // (no scene / camera given: uses its own)
+  ok(seen === true && fx.streaks.visible === false, 'prewarm shows the streaks while compiling and restores them');
+  fx.prewarm({ compile: () => { throw new Error('x'); } }); ok(!fx.streaks.visible, 'a throwing compile is swallowed and state restored');
+  fx.prewarm(null);
+  fx.dispose(); ok(kids.every((k) => k.gone) && fx._fl === null, 'dispose removes the floater DOM');
+  globalThis.document = doc0;
+  const { Ball } = await import('../src/ball.js');
+  const sc = new THREE.Scene(), b = new Ball(sc, null, null);
+  b.tick(1 / 60); ok(!b.badge.visible, 'no level = no ring');
+  const arc = [];
+  for (let lv = 1; lv <= 5; lv++) { b.snow.material.userData.level = lv; b.tick(1 / 60); arc.push(b.badge.geometry.parameters.thetaLength); ok(b.badge.visible, 'level ' + lv + ' shows the ring'); }
+  ok(arc.every((t, i) => i === 0 || t > arc[i - 1]) && Math.abs(arc[4] - Math.PI * 2) < 1e-9, 'ring arc grows with the level up to a full turn');
+  b.snow.material.userData.level = 9; b.tick(1 / 60); ok(b.badge.geometry.parameters.thetaLength === arc[4], 'level is capped at 5');
+  b.snow.material.userData.level = 0; b.tick(1 / 60); ok(!b.badge.visible, 'level 0 hides the ring');
+  b.dispose();
+  const { makeSkin, disposeSkin } = await import('../src/skins.js');
+  const k = makeSkin('kofte', 3), c = makeSkin('classic', 3);
+  ok(k.material.userData.level === 3 && c.material.userData.level === undefined, 'makeSkin(id, level): only KARAKTER skins carry a level');
+  disposeSkin(k); disposeSkin(c);
+}
+
 console.log(fails ? `${fails} check(s) failed` : 'fx: all checks passed');
 process.exit(fails ? 1 : 0);

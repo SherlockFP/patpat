@@ -23,7 +23,7 @@ import * as THREE from 'three';
 import { CFG, MASS, fallbackMass, tierOf, foodRelAt, expectedRAt } from './config.js';
 import { planAt, planSlope, crateRadius, RAMP_AIR_K } from './cigplan.js';
 import { makeRng } from './rng.js';
-import { t } from './i18n.js';
+import { t, getLang } from './i18n.js';
 import { patchMaterial } from './shaders.js';
 
 // Movement modes for props.
@@ -43,8 +43,8 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const smooth01 = (t) => { t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); };
 
 // ---- terrain chunk layout ----
-const CH = 64;                 // chunk length (m)
-const NR = 16;                 // rows per chunk
+const CH = 128;                // chunk length (m): one draw call each, so long
+const NR = 32;                 // rows per chunk
 const ROW = CH / NR;           // 4 m
 const NCI = 10;                // cells across the track
 const BANK_F = [1.0, 0.88, 0.72, 0.56, 0.42, 0.3, 0.2, 0.12, 0.06, 0.02]; // bank columns as fractions of (edge - hw), outermost first
@@ -54,6 +54,11 @@ const EDGE = 100;              // minimum terrain half-extent (it grows with the
 const edgeFor = (hw) => Math.max(EDGE, hw * 1.7 + 50);
 const segLen = (gr) => clamp(5 + 3.2 * gr, 9, 320);
 const MESH_CAP = 700;          // instances per prop type
+const CULL_K = 200;            // a prop farther than CULL_K * radius is under ~7 px tall: not drawn
+const SPARSE_N = 8, SPARSE_D = 95;   // <= 8 instances all farther than 95 m: the type is skipped this frame
+const LABEL_D = 140;           // label sprites (gate sizes, fork / statue tags) show only within this range ahead
+const THIN_D = 85;             // beyond this, non-colliding decor thins out with distance (the fog hides it): keeps triangles and prop types per frame down
+function thinOut(p, dd) { const h = (Math.imul((p.d * 64) | 0, 2654435761) ^ Math.imul((p.x * 64) | 0, 40503)) >>> 30; return dd < 170 ? h < 2 : h !== 0; }   // (stable per prop: 1/2 kept past 85 m, 1/4 past 170 m)
 
 // Content size mix per tier: [weight, qLo, qHi] with q = prop radius / ball radius (food is always < 0.9).
 // Later tiers are made of MANY smaller things (a field of people and cars for a ball the size of a house).
@@ -118,7 +123,7 @@ export class World {
     // Size tint (readability): the game sets the ball radius and its eat ratio every frame; props near the ball that are too
     // big to swallow are painted amber (almost) / red (no way) through per-instance colours. 0 = off (lobby).
     this.tintR = 0; this.tintEat = CFG.eatRatio;
-    this.finalGate = null; this.bossProp = null; this.cratesLeft = 0;
+    this.finalGate = null; this.bossProp = null; this.cratesLeft = 0; this.townVol = 0;   // townVol: total footprint (r^2) of the finale town's props (KASABA %)
     if (level) this.initLevel(level);
 
     this.buildCatalog();
@@ -955,12 +960,13 @@ export class World {
       case 'ramp': return this.placeRamp(d, gr, T, hw);
       case 'patch': return this.placePatch(d, gr, T, hw);
       case 'town': return this.placeTown(d, gr, T, hw);
+      case 'townrun': return this.placeFinaleTown(it);
       case 'golden': return this.placeGolden(d, gr, T, hw);
       case 'rival': return this.placeRival(d, gr, T, hw, 1.1);
       case 'arena': return this.placeArena(it, gr, T, hw);
       case 'fork': return this.placeFork(it, gr, T, hw);
       case 'finish': this.addFinish(it.at); return 4;
-      case 'army': case 'mush': case 'strip': case 'cannon': case 'bridge': case 'pickup': case 'puddle': case 'salt':
+      case 'army': case 'mush': case 'strip': case 'cannon': case 'bridge': case 'pickup': case 'puddle': case 'salt': case 'rollers':
         // CigPlus builds these (it owns the meshes); it receives a plain copy of the plan item
         this.specialQueue.push({ ...it });
         this.zones.push({ d0: it.start - 6, d1: it.start + it.len + 6, kind: it.kind === 'strip' || it.kind === 'pickup' ? 'plus' : it.kind });
@@ -1363,6 +1369,41 @@ export class World {
     return len;
   }
 
+  // KASABA (PLAN_V3 5): the last stretch of a mountain. 4 lanes of houses (swallowed or smashed, by your size), a clock tower now and then, cars
+  // between. Sized from the plan (R = the final gate's size), never from the live ball: a fair retry. Every prop gets p.twn = 1 and its
+  // footprint (r^2: a tower counts about 2.5 houses, not 4) goes on this.townVol; CigGame counts what you swallow or smash against it (the KASABA % number).
+  placeFinaleTown(it) {
+    const P = this.lvl, R = P.town.R, Rg = this.rng, d0 = it.start;
+    const hw = this.halfWidth(d0 + it.len * 0.5), W = Math.min(hw - 1.5, 3 * R);
+    const rows = clamp(Math.round(it.len / (1.9 * R)), 8, 16), pitch = (it.len - 12) / rows;
+    const cars = this.food.filter((e) => e.kind === 'car'), small = cars.length ? cars : this.town;
+    const tw = this.lib.clocktower;
+    this.zones.push({ d0: d0 - 6, d1: d0 + it.len + 6, kind: 'town' });
+    for (let i = 0; i < rows; i++) {
+      for (let k = 0; k < 4; k++) {
+        const roll = Rg.next(), tower = tw && (i * 4 + k) % 13 === 6;
+        const tr = (tower ? Rg.range(1, 1.2) : roll < 0.55 ? Rg.range(0.5, 0.85) : Rg.range(0.18, 0.38)) * R;
+        const e = tower ? { type: 'clocktower', r: tw.radius } : this.pick(roll < 0.55 ? this.houses : small, tr, 0.5, 1.8);
+        if (!e) continue;
+        const s = clamp(tr / e.r, 0.2, 24);
+        if (e.r * s > 1.3 * R) continue;   // (every building stays smashable by a ball that cracked the final gate)
+        const x = clamp(-W + (2 * W * (k + 0.5 + Rg.range(-0.25, 0.25))) / 4, -hw + 1, hw - 1);
+        const p = this.place(e.type, x, d0 + 6 + i * pitch + (k % 2) * pitch * 0.5 + Rg.range(-1, 1), hw, { s, rot: x > 0 ? -Math.PI / 2 : Math.PI / 2, tonK: 1.5, pad: 0.1 });
+        if (!p) continue;
+        p.twn = 1;
+        this.townVol += p.r * p.r;
+      }
+    }
+    const l = this.makeLabel('🏘️ ' + P.town.name, '#ffb347');
+    if (l) {
+      const lw = clamp(R * 3, 14, 40);
+      l.scale.set(lw, lw * 0.3, 1);
+      l.position.set(0, this.groundY(0, d0) + 2.5 * R + lw * 0.3, -d0);
+      this.group.add(l);
+    }
+    return it.len;
+  }
+
   placeGolden(d, gr, T, hw) {
     const R = this.rng;
     const x = R.range(-hw * 0.5, hw * 0.5);
@@ -1623,28 +1664,23 @@ export class World {
     if (top) {
       // visual dressing (hidden by CigPlus._throneStart when the tower topples): blue/white outlines, faces, gold crown, glow + light pillar
       const deco = new THREE.Group(); tw.deco = deco;
-      const gold = new THREE.MeshBasicMaterial({ color: 0xffc933, fog: false });
-      const dark = new THREE.MeshBasicMaterial({ color: 0x14202e });
-      const orange = new THREE.MeshBasicMaterial({ color: 0xff7a1a });
+      const faces = [], outs = [];   // (merged below: 2 meshes instead of 4 per snowman + 7 for the crown)
       for (let i = 0; i < tw.blocks.length; i++) {
         const p = tw.blocks[i], cy = p.y + p.h * 0.5, R = p.r || p.h * 0.5;
-        const ol = new THREE.Mesh(new THREE.SphereGeometry(R * 1.07, 14, 10), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x4aa8ff : 0xffffff, side: THREE.BackSide }));
-        ol.position.set(p.x, cy, -p.d); deco.add(ol);
+        outs.push({ g: new THREE.SphereGeometry(R * 1.07, 14, 10), x: p.x, y: cy, z: -p.d, c: i % 2 ? 0x4aa8ff : 0xffffff });
         const fz = -p.d + R * 0.92;
-        for (const sx of [-1, 1]) {
-          const eye = new THREE.Mesh(new THREE.SphereGeometry(R * 0.09, 8, 6), dark);
-          eye.position.set(p.x + sx * R * 0.26, cy + R * 0.2, fz - R * 0.1); deco.add(eye);
-        }
-        const nose = new THREE.Mesh(new THREE.ConeGeometry(R * 0.08, R * 0.38, 8), orange);
-        nose.rotation.x = Math.PI / 2; nose.position.set(p.x, cy + R * 0.02, fz + R * 0.1); deco.add(nose);
+        for (const sx of [-1, 1]) faces.push({ g: new THREE.SphereGeometry(R * 0.09, 8, 6), x: p.x + sx * R * 0.26, y: cy + R * 0.2, z: fz - R * 0.1, c: 0x14202e });
+        faces.push({ g: new THREE.ConeGeometry(R * 0.08, R * 0.38, 8), x: p.x, y: cy + R * 0.02, z: fz + R * 0.1, rx: Math.PI / 2, c: 0xff7a1a });
       }
-      const R = top.r || top.h * 0.5, ty = top.y + top.h;
-      const crown = new THREE.Group(); crown.position.set(top.x, ty + R * 0.12, -top.d);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.55, R * 0.5, R * 0.3, 12), gold); band.position.y = R * 0.15; crown.add(band);
+      const R = top.r || top.h * 0.5, ty = top.y + top.h, cx = top.x, cz = -top.d, cyy = ty + R * 0.12;
+      faces.push({ g: new THREE.CylinderGeometry(R * 0.55, R * 0.5, R * 0.3, 12), x: cx, y: cyy + R * 0.15, z: cz, c: 0xffc933 });
       for (let k = 0; k < 5; k++) {
-        const a = (k / 5) * 6.283, sp = new THREE.Mesh(new THREE.ConeGeometry(R * 0.13, R * 0.4, 6), gold);
-        sp.position.set(Math.cos(a) * R * 0.45, R * 0.5, Math.sin(a) * R * 0.45); crown.add(sp);
+        const a = (k / 5) * 6.283;
+        faces.push({ g: new THREE.ConeGeometry(R * 0.13, R * 0.4, 6), x: cx + Math.cos(a) * R * 0.45, y: cyy + R * 0.5, z: cz + Math.sin(a) * R * 0.45, c: 0xffc933 });
       }
+      deco.add(mergeParts(outs, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+      deco.add(mergeParts(faces, new THREE.MeshBasicMaterial({ vertexColors: true })));
+      const crown = new THREE.Group(); crown.position.set(cx, cyy, cz);
       const glowM = new THREE.MeshBasicMaterial({ color: 0xffd860, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
       const glow = new THREE.Mesh(new THREE.SphereGeometry(R * 1.4, 12, 8), glowM); glow.position.y = R * 0.3; crown.add(glow);
       deco.add(crown);
@@ -1979,8 +2015,7 @@ export class World {
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3).setUsage(THREE.DynamicDrawUsage));
     geo.setIndex(this.terrIndex);
-    const mesh = new THREE.Mesh(geo, this.snowMat);
-    mesh.frustumCulled = false;
+    const mesh = new THREE.Mesh(geo, this.snowMat);   // (frustum culled: fillChunk refreshes its bounding sphere)
     this.group.add(mesh);
     return { mesh, geo, pos, col, k: -9999, stale: false };
   }
@@ -2039,7 +2074,7 @@ export class World {
       const k = ch.k;
       if (k < kMin || k > kMax) { this.chunks.delete(k); this.chunkPool.push(ch); ch.mesh.visible = false; }
     }
-    let budget = unlimited ? 99 : 2;
+    let budget = unlimited ? 99 : 1;   // (a chunk is 128 m now: one per frame costs what two 64 m ones did)
     for (let k = kMin; k <= kMax && budget > 0; k++) {
       let ch = this.chunks.get(k);
       if (!ch) {
@@ -2202,7 +2237,7 @@ export class World {
   pull(p, ball, dur) {
     if (this.pulls.length >= CFG.maxPulls) return false;
     const q = this.pullPool.pop() || { def: null };
-    q.type = p.type; q.def = p.def; q.kind = p.kind; q.tier = p.tier; q.mass = p.mass; q.tonK = p.tonK || 1;
+    q.type = p.type; q.def = p.def; q.kind = p.kind; q.tier = p.tier; q.mass = p.mass; q.tonK = p.tonK || 1; q.twn = p.twn | 0;
     q.s0 = p.s; q.s = p.s; q.r = p.r; q.h = p.h;
     q.x = p.x; q.y = p.y + p.h * 0.3; q.d = p.d; q.rot = p.rot;
     q.sx = p.x; q.sy = q.y; q.sd = p.d;
@@ -2290,8 +2325,8 @@ export class World {
   render(ballD) {
     if (this.camBack === undefined) { this.camBack = 12; this.camXlo = -2; this.camXhi = 2; }
     const meshes = this.meshList;
-    for (let i = 0; i < meshes.length; i++) { meshes[i].userData.prev = meshes[i].count; meshes[i].count = 0; }
-    const d0 = ballD - this.behind, d1 = ballD + this.ahead;
+    for (let i = 0; i < meshes.length; i++) { meshes[i].userData.prev = meshes[i].count; meshes[i].count = 0; meshes[i].userData.nd = 0; }
+    const d0 = ballD - Math.min(this.behind, Math.max(this.camBack + 8, 26)), d1 = ballD + this.ahead;   // (the camera trails the ball by camBack: what is further behind is out of view)
     const tR = this.tintR, tE = this.tintEat;
     const st = this.statics;
     for (let i = lbD(st, d0), n = lbD(st, d1); i < n; i++) {
@@ -2299,8 +2334,11 @@ export class World {
       if (!p.alive) continue;
       // keep decor out of the camera corridor (between camera and ball / bottom of the view)
       if (p.d < ballD - 0.3 && p.d > ballD - this.camBack * 1.7 - 3 && p.r > 0.5 && p.x > this.camXlo - 4 - p.r && p.x < this.camXhi + 4 + p.r) continue;
+      const dd = p.d - ballD;
+      if (dd > CULL_K * p.r) continue;   // a few pixels at this range: no instance (and no draw call for a type that only has these)
       const mesh = this.getMesh(p.type);
       if (mesh.count >= MESH_CAP) continue;
+      if (!mesh.count || dd < mesh.userData.nd) mesh.userData.nd = dd;
       mesh.instanceMatrix.array.set(p.m, mesh.count * 16);
       this.paintTint(mesh, mesh.count, p, ballD, tR, tE);
       mesh.count++;
@@ -2309,8 +2347,11 @@ export class World {
     for (let i = lbD(dc, d0), n = lbD(dc, d1); i < n; i++) {
       const p = dc[i];
       if (!p.alive) continue;
+      const dd = p.d - ballD;
+      if (dd > CULL_K * p.r || (dd > THIN_D && thinOut(p, dd))) continue;
       const mesh = this.getMesh(p.type);
       if (mesh.count >= MESH_CAP) continue;
+      if (!mesh.count || dd < mesh.userData.nd) mesh.userData.nd = dd;
       mesh.instanceMatrix.array.set(p.m, mesh.count * 16);
       this.paintTint(mesh, mesh.count, p, ballD, 0, tE);
       mesh.count++;
@@ -2321,6 +2362,7 @@ export class World {
       if (!p.alive || p.d < d0 || p.d > d1) continue;
       const mesh = this.getMesh(p.type);
       if (mesh.count >= MESH_CAP) continue;
+      mesh.userData.nd = 0;
       _p.set(p.x, p.y, -p.d);
       _q.setFromAxisAngle(_up, p.rot);
       _s.setScalar(p.s);
@@ -2334,6 +2376,7 @@ export class World {
       const p = pl[i];
       const mesh = this.getMesh(p.type);
       if (mesh.count >= MESH_CAP) continue;
+      mesh.userData.nd = 0;
       _p.set(p.x, p.y, -p.d);
       _q.setFromAxisAngle(_up, p.rot);
       _s.setScalar(p.s);
@@ -2348,6 +2391,7 @@ export class World {
       if (p.d < d0 || p.d > d1) continue;
       const mesh = this.getMesh(p.type);
       if (mesh.count >= MESH_CAP) continue;
+      mesh.userData.nd = 0;
       const u = clamp((p.t - p.delay) / p.dur, 0, 1);
       const ang = p.fired ? (Math.PI / 2 - 0.12) * u * u * (3 - 2 * u) : 0;
       const sink = p.t > p.delay + p.dur + 2.5 ? (p.t - p.delay - p.dur - 2.5) * 0.8 : 0;
@@ -2363,6 +2407,7 @@ export class World {
     }
     for (let i = 0; i < meshes.length; i++) {
       const mesh = meshes[i];
+      if (mesh.count <= SPARSE_N && mesh.userData.nd > SPARSE_D) mesh.count = 0;   // a type with only a few far stragglers: not worth a draw call
       mesh.visible = mesh.count > 0; // empty types cost no draw call
       if (!mesh.count && !mesh.userData.prev) continue;
       const k = Math.max(1, mesh.count);
@@ -2377,6 +2422,10 @@ export class World {
     }
     this.renderBoxes(d0, d1);
     this.renderPoles(ballD);
+    // gate / fork / statue label sprites: one draw call each, so only the ones in a readable range
+    const gs = this.gates, lb = this.labels;
+    for (let i = 0; i < gs.length; i++) { const g = gs[i]; if (g.label && !g.broken) g.label.visible = g.d - ballD < LABEL_D && g.d - ballD > -25; }
+    for (let i = 0; i < lb.length; i++) { const p = lb[i]; if (p.tag) p.tag.visible = p.d - ballD < LABEL_D && p.d - ballD > -25; }
   }
 
   renderBoxes(d0, d1) {
@@ -2526,11 +2575,33 @@ function drawLabel(spr, text, color) {
 
 function fmtDiam(d) {
   if (d >= 10) return String(Math.round(d));
-  return (Math.round(d * 10) / 10).toFixed(1).replace('.', ',').replace(/,0$/, '');
+  const r = (Math.round(d * 10) / 10).toFixed(1).replace(/\.0$/, '');
+  return getLang() === 'en' ? r : r.replace('.', ',');
 }
 export { fmtDiam };
 
 // First index whose d >= v in a d-sorted array.
+// Static decoration parts -> ONE mesh (vertex colours): every Mesh is a draw call, and a throne used to be 28 of them.
+// parts: [{ g: geometry, x, y, z (position), rx (rotation about X), c (hex) }]; build-time only (allocates).
+function mergeParts(parts, mat) {
+  const pos = [], col = [], c = new THREE.Color(), m = new THREE.Matrix4(), e = new THREE.Euler();
+  for (const q of parts) {
+    const g = q.g.index ? q.g.toNonIndexed() : q.g.clone();
+    m.compose(_p.set(q.x, q.y, q.z), _q.setFromEuler(e.set(q.rx || 0, 0, 0)), _s.set(1, 1, 1));
+    g.applyMatrix4(m);
+    const a = g.attributes.position.array;
+    c.setHex(q.c);
+    for (let i = 0; i < a.length; i += 3) { pos.push(a[i], a[i + 1], a[i + 2]); col.push(c.r, c.g, c.b); }
+    g.dispose(); q.g.dispose();
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 function lbD(a, v) {
   let lo = 0, hi = a.length;
   while (lo < hi) {

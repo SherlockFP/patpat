@@ -1,3 +1,4 @@
+import { shareUrl } from '../sharecard.js';
 // Arena invite links: <page url>#arena=CODE or ?arena=CODE. Parsed once at module load, then stripped from the URL.
 let pending = null;
 try {
@@ -13,7 +14,8 @@ try {
 export const hasArenaInvite = () => !!pending;
 export function takeArenaInvite() { const c = pending; pending = null; return c; }
 
-/** shareable link: deployed page URL (works under a GitHub Pages subpath), no hash/search of the current page */
+/** shareable link: the public site address (shareUrl() maps the native app's https://localhost to the real site) */
 export function arenaInviteUrl(code) {
-  return location.origin + location.pathname + '?arena=' + encodeURIComponent(code);
+  const base = shareUrl();
+  return base + (base.includes('?') ? '&' : '?') + 'arena=' + encodeURIComponent(code);
 }

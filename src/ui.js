@@ -6,20 +6,22 @@
 //   cigHud({tons, dist, tierName, frac, best}) · cigTier(name) · toastSoft(text)
 // Everything lives at the top / bottom edge of the screen: the middle strip (the reaction zone) stays empty.
 import { meta } from './meta.js';
-import { t as tr } from './i18n.js';
+import { t as tr, getLang } from './i18n.js';
 import { save } from './save.js';
 import { nextGoal } from './shop.js';
 import { shareCard } from './sharecard.js';
 
 const $ = (id) => document.getElementById(id);
 
-const NF = new Intl.NumberFormat('tr-TR');
+const EN = getLang() === 'en';   // the language is fixed per page load (setLang reloads)
+const NF = new Intl.NumberFormat(EN ? 'en-US' : 'tr-TR');
+const DEC = EN ? '.' : ',';
 export const fmtN = (n) => NF.format(Math.max(0, Math.round(Number.isFinite(n) ? n : 0)));
 export function fmtTons(t) {
   const kg = Math.round(t * 1000);
   if (kg < 1000) return `${kg} kg`;
   const t1 = Math.round(t * 10) / 10;
-  if (t1 < 10) return `${t1.toFixed(1).replace('.', ',')} ton`;
+  if (t1 < 10) return `${t1.toFixed(1).replace('.', DEC)} ton`;
   return `${NF.format(Math.round(t))} ton`;
 }
 const clamp01 = (x) => (x > 0 ? (x < 1 ? x : 1) : 0);
@@ -51,6 +53,21 @@ export function seasonBar(pre, tok, needs) {
 // Which records did a run break? dist: farthest ever; score: most points ever (a first-ever score is not a "record").
 export const recKind = (isDist, score, prevScore) => ({ dist: !!isDist, score: prevScore > 0 && score > prevScore });
 export const recTitle = (k) => (k.dist && k.score ? '★ ÇİFT REKOR! ★' : k.dist ? 'YENİ REKOR!' : k.score ? 'YENİ SKOR REKORU!' : '');
+
+// Rush result read-out (Turkish strings, the caller translates): ONE signed gap to the best + ONE next goal. p = the runner payload,
+// prevBest = score record at the START of the run. deltaBest / nextGoal / nextGoalText / isRecord may be missing.
+export function runnerResultLines(p, prevBest) {
+  const score = Number(p.score) || 0, pb = prevBest > 0 ? prevBest : 0;
+  const rec = p.isRecord !== undefined ? !!p.isRecord : pb > 0 && score > pb;
+  const ngt = p.nextGoalText || '', ngk = p.nextGoal && p.nextGoal.k;
+  if (rec) {
+    const dB = Number.isFinite(p.deltaBest) ? p.deltaBest : score - pb;
+    return { rec, delta: dB > 0 ? '+' + fmtN(dB) : '', goal: ngk === 'next' ? ngt : '' };
+  }
+  if (pb > 0) return { rec, delta: ngk === 'rec' && ngt ? ngt : 'EN İYİYE ' + fmtN(Math.max(1, pb - score + 1)) + ' PUAN', goal: 'EN İYİ ' + fmtN(pb) };
+  return { rec, delta: '', goal: ngt };
+}
+const UP = (x) => String(x || '').toLocaleUpperCase(EN ? 'en-US' : 'tr-TR');   // the active language decides the dotted/dotless i
 
 // Respect the OS "reduce motion" setting (JS-driven pops; style.css handles the CSS animations).
 const _mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -126,6 +143,40 @@ export class UI {
       toastSoft: $('toast-soft'), tutor: $('tutor'), revive: $('revive-panel'), rvTitle: $('rv-title'), rvDist: $('rv-dist'), btnRevive: $('btn-revive'), btnReviveEnd: $('btn-revive-end'),
     };
     this.floatCount = 0;
+    if (typeof document !== 'undefined' && document.head && !$('hc-css')) {
+      const st = document.createElement('style'); st.id = 'hc-css';
+      st.textContent = [
+        '#hud.hc-new .mut-chip,#hud.hc-new .perk-ico{display:none!important}',
+        // Rush HUD: the score is the hero (thick outline), the multiplier sits right beside it, the chips form one right-hand stack that fades after 2 s
+        '#hud.rush.rush.rush .hud-tons{font-size:48px;line-height:1;top:calc(var(--sat) + 10px);-webkit-text-stroke:7px var(--ink);paint-order:stroke fill;transform-origin:center}',
+        '#hud.rush.rush.rush .cmb{top:calc(var(--sat) + 20px);left:calc(50% + var(--sw,4)*13.5px + 10px);width:auto;text-align:left;transform-origin:left center}',
+        '#hud.rush.rush.rush .cmb .ch.k em{font-size:32px}',
+        '#hud.rush.rush.rush .hud-coins{top:calc(var(--sat) + 58px)}',   // under the score row: a 5-digit score + multiplier never runs into the coin chip
+        '#hud.rush.rush.rush .buffs{top:calc(var(--sat) + 98px)}',
+        '#hud.rush.rush.rush .perk-ico{top:calc(var(--sat) + 98px);right:38px}',
+        '#rcol{top:calc(var(--sat) + 128px)!important}',
+        '#hud.rush .hud-coins,#hud.rush .buffs,#hud.rush .perk-ico,#hud.rush .mut-chip{transition:opacity .5s}',
+        '#hud.rush.chips-dim .buffs,#hud.rush.chips-dim .perk-ico,#hud.rush.chips-dim .mut-chip{opacity:.3}#hud.rush.chips-dim .hud-coins{opacity:.8}#hud.rush.rush.rush .hud-coins{font-size:17px}',
+        // perk pick: opaque cards, readable text
+        '.perk-pick .buff-card.perk-card{opacity:1!important;animation:none!important;background:#eef6ff;color:#10264a}',
+        '.perk-pick .perk-card .bc-n{color:#10264a}.perk-pick .perk-card .bc-s{color:#2c4a78;font-weight:800}',
+        // Rush result: score hero, signed gap + goal, TEKRAR first and biggest, revive smaller below it, one compact chip row
+        '#result.rr #btn-retry{order:-3;font-size:34px;padding:18px 0}',
+        '#result.rr #btn-next.revive{order:-2;font-size:17px;padding:8px 0}',
+        '#result.rr #btn-card{order:1;align-self:center;width:auto;font-size:14px;padding:5px 18px;border-width:2px;border-radius:14px;box-shadow:0 3px 0 var(--ink)}',
+        '.res-extra .rx-up{margin:0 auto 6px;padding:6px 12px;border-radius:12px;background:rgba(23,52,92,.85);border:2px solid #ffcf3a;color:#fff;font-weight:900;font-size:15px;text-align:center;cursor:pointer}',
+        '.res-extra .rx-up.ok{background:linear-gradient(180deg,#ffd45a,#ff9a1a);color:#3a1c00;border-color:var(--ink)}',
+        '.res-extra .rx-up small{font-size:12px;font-weight:800;opacity:.85}',
+        '#result.rr .res-tons.dl,#result.rr .res-tons{font-size:20px}',
+        '#result.rr .res-sub{font-size:15px;color:#cfe6ff}',
+        '#result.rr.rec .res-title{color:#ffe066}',
+        '.res-extra .rx-row{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}',
+        '.res-extra .rx-c{background:rgba(23,52,92,.7);border:2px solid var(--ink);border-radius:12px;padding:3px 9px;font-weight:900;font-size:15px;color:#fff;white-space:nowrap}',
+        '.res-extra .rx-c.gold{color:var(--gold)}',
+        '@media (max-height:640px){#result.rr #btn-retry{font-size:28px;padding:12px 0}#result.rr #btn-next.revive{font-size:15px;padding:5px 0}}',
+      ].join('');
+      document.head.appendChild(st);
+    }
     try { meta.onStamp((d) => this.toastSoft(`Yeni damga: ${d.name}!`, { icon: d.icon })); } catch { /* ignore */ }
     this.lastTonsText = '';
     this.pulseT = 0;
@@ -135,7 +186,7 @@ export class UI {
     this._lastFloat = 0;
     this._banAt = 0; this._banLv = 0;
     this._tcDir = 0; this._tcU = -1; this._hgOn = false; this._hgQ = -1; this._hgHue = -1; this._hgWarn = false;
-    this._stompAt = 0; this._cg = { kg: -1, tnRaw: null, fill: -1, dm: -1, bk: -1 };
+    this._stompAt = 0; this._cg = { kg: -1, tnRaw: null, fill: -1, dm: -1, bk: -1, nx: null };
     this._tsLast = ''; this._tsAt = 0;
     this._ms = 0; this._tkAt = 0; this._noTick = 0; this._pre = null; this._best = 0; this._bestD = 0; this._hc = null;
     this._tutorTap = null;
@@ -158,7 +209,7 @@ export class UI {
     this.el.pause.classList.add('hidden');
     this.el.hud.classList.add('hidden');
     this.resetHud();
-    this.el.menuLevel.textContent = theme ? `DAĞ ${level} · ${theme.toLocaleUpperCase('tr-TR')}` : `DAĞ ${level}`;
+    this.el.menuLevel.textContent = theme ? `DAĞ ${level} · ${UP(theme)}` : `DAĞ ${level}`;
     this.el.menuStars.innerHTML = [0, 1, 2].map((i) => `<span class="${i < stars ? '' : 'off'}">★</span>`).join('');
     this.el.daily.textContent = dailyBest ? `🏔️ GÜNÜN DAĞI #${dailyNum} · ${fmtTons(dailyBest)}` : `🏔️ GÜNÜN DAĞI #${dailyNum}`;
   }
@@ -168,7 +219,7 @@ export class UI {
     this._sc = this._co = this._di = this._mu = null; this._rg = 0; // HUD number caches: the next frame rewrites everything
     this._prog = -1;
     this.lastVitals = '';
-    this.el.hud.classList.remove('rush');
+    this.el.hud.classList.remove('rush', 'hc-new', 'chips-dim');
     this.buffClear();
     this.turnCue(0);
     this.hungerHide();
@@ -193,6 +244,7 @@ export class UI {
     this.el.result.classList.add('hidden');
     this.el.result.classList.toggle('runner', on);
     this.el.hud.classList.toggle('hidden', !on);
+    if (on) this._chipsTouch(); else clearTimeout(this._chipT);
     this.el.hud.classList.remove('cig-endless');
     this.el.coins.classList.toggle('hidden', !on);
     this.el.vitals.classList.toggle('hidden', !on);
@@ -200,8 +252,11 @@ export class UI {
     this.el.flow.classList.toggle('hidden', !on);
     this.resetHud();
     this.el.hud.classList.toggle('rush', on);
+    this.el.hud.classList.toggle('hc-new', on && this._firstRuns());
     if (!on) this.runnerDanger(0, 0, 0);
     this.runnerGoal(null); // the runner switches it on once it knows the next goal (endless only)
+    if (this.el.chapBar) this.el.chapBar.hidden = true;
+    this._chK = -1;
     this.runnerSurge(false);
     this.el.record.classList.toggle('hidden', !on);
     this.lastFlow = this.lastRec = null;
@@ -209,7 +264,7 @@ export class UI {
     if (!on) return;
     this.el.banner.classList.add('runner');
     this._annReset();
-    this.el.level.textContent = String(biomeName || '').toLocaleUpperCase('tr-TR');
+    this.el.level.textContent = UP(biomeName || '');
     this.el.floats.innerHTML = '';
     this.floatCount = 0;
     this._annReset();
@@ -224,6 +279,11 @@ export class UI {
     this.lastBiome = biomeName;
   }
 
+  // first runs of a new player: the HUD shows less (hc-new hides the weekly chip and the perk icon, the ÇIĞ record line)
+  _firstRuns() {
+    try { return (meta.stats().runs || 0) < 3; } catch { return false; }
+  }
+
   // Persistent nodes (coins | metres | record gap): only the part that changed is rewritten, and a coin pickup pops the coin number.
   _coinsRender() {
     const el = this.el.coins;
@@ -236,27 +296,48 @@ export class UI {
     }
     if (h.co !== this._co) {
       const up = h.co !== null && this._co > h.co;
-      h.co = this._co; h.c.textContent = `❄️ ${this._co}`;
+      h.co = this._co; h.c.textContent = `❄️ ${this._co}`; this._chipsTouch();
       if (up) { const t = performance.now(); if (t - h.pt > 90) { h.pt = t; pop(h.c, 1.22, 170); } }   // a flake stream pops ~10x a second at most
     }
     if (h.di !== this._di) { h.di = this._di; h.d.textContent = `${this._di} m`; }
     const rg = this._rg > 0 ? this._rg : 0;
-    if (h.rg !== rg) { h.rg = rg; h.g.textContent = rg ? `\nREKOR −${rg} m` : ''; }
+    if (h.rg !== rg) { const flip = !h.rg !== !rg; h.rg = rg; if (flip) this._chipsTouch(); h.g.textContent = rg ? `\nREKOR −${rg} m` : ''; }
   }
 
-  runnerStats(score, coins, mult, biomeT, dist, biomeName) {
+  runnerStats(score, coins, mult, biomeT, dist, biomeName, info) {
     // numbers are compared first: no string building / Intl formatting on frames where nothing visible changed
     const sc = Math.round(score);
     if (sc !== this._sc) this.scoreTo(sc);
     if (coins !== this._co || dist !== this._di) { this._co = coins; this._di = dist; this._coinsRender(); }
-    if (biomeName && biomeName !== this.lastBiome) { this.el.level.textContent = String(biomeName).toLocaleUpperCase('tr-TR'); this.lastBiome = biomeName; }
+    if (biomeName && biomeName !== this.lastBiome) { this.el.level.textContent = UP(biomeName); this.lastBiome = biomeName; }
     const mm = mult > 1 ? mult : 0;
-    if (mm !== (this._mu || 0)) { const up = Math.floor(mm) > Math.floor(this._mu || 0); this._mu = mm; this._cmRender(); if (up) pop(this._cmKu, 1.3, 260); }   // pop when the multiplier reaches a new whole step (x2 -> x3 ...)
+    if (mm !== (this._mu || 0)) { const up = Math.floor(mm) > Math.floor(this._mu || 0); this._mu = mm; this._cmRender(); if (up) { pop(this._cmK, 1.35, 300); const el = this.el.tons; el.classList.remove('gold1', 'gold2', 'gold3'); void el.offsetWidth; el.classList.add('gold1'); } }   // pop when the multiplier reaches a new whole step (x2 -> x3 ...)
     if (dist >= MILESTONE_STEP) {
       const k = milestoneIdx(dist, this._ms);
       if (k) { this._ms = k; if (!/^\d+-\d+ · /.test(this.lastBiome || '')) this.runnerMilestone(k); }   // campaign levels have their own finish line
     }
     this.setProgress(biomeT);
+    if (info) this._chapBar(info);
+  }
+
+  // Chapter strip: a 1.3 s name pill on entry (runnerChapter) and a 3 px progress line under the goal strip (green = clean so far, gold = bonus).
+  runnerChapter(line, n, bonus) {
+    let e = this.el.chapPill;
+    if (!e) { e = this.el.chapPill = document.createElement('div'); e.className = 'chap-pill'; this.el.hud.appendChild(e); }
+    e.textContent = line;
+    e.classList.toggle('bonus', !!bonus);
+    e.classList.remove('on'); void e.offsetWidth; e.classList.add('on');   // (event, not per frame)
+    clearTimeout(this._chapT); this._chapT = setTimeout(() => e.classList.remove('on'), 1400);
+  }
+  _chapBar(i) {
+    let e = this.el.chapBar;
+    if (!i.chapterId && !i.chapter) { if (e && !e.hidden) e.hidden = true; return; }
+    if (!e) { e = this.el.chapBar = document.createElement('div'); e.className = 'chap-bar'; e.appendChild(document.createElement('i')); this.el.hud.appendChild(e); }
+    const pct = Math.round(clamp01(i.chapterFrac) * 100), k = pct * 4 + (i.chapterBonus ? 1 : 0) + (i.chapterClean ? 2 : 0);
+    if (k === this._chK && !e.hidden) return;
+    this._chK = k; e.hidden = false;
+    e.classList.toggle('bonus', !!i.chapterBonus); e.classList.toggle('dirty', !i.chapterClean);
+    e.firstChild.style.width = `${pct}%`;
   }
 
   // Every 500 m: a gold pill under the HUD (centre announcement lane, milestone priority), edge glow and chime.
@@ -345,10 +426,11 @@ export class UI {
   // p: { title?, cause?, killKind?, tip?, distance, score, coins, best, bestDist, isBest, isBestDist, canRevive, reviveCost, crystals,
   //      rank, toRecord, missions?, onRevive? }. No box overlay, no upgrade card, no chained popups.
   showRunnerResult(p) {
-    const { distance = 0, score = 0, coins = 0, best = 0, canRevive = false, rank = 0, toRecord = 0, onRevive = null } = p || {};
+    const { distance = 0, score = 0, coins = 0, canRevive = false, onRevive = null } = p || {};
     this.runnerDanger(0, 0, 0);
     this.chaseVig(0);
     this.runnerGoal(null);
+    if (this.el.chapBar) this.el.chapBar.hidden = true;
     this.runnerSurge(false);
     this.clearTimers();
     // (the buff icons stay in the hidden #hud on purpose: a revive continues the same run with the same cards)
@@ -366,47 +448,44 @@ export class UI {
 
     const dt = runnerDeathText(p && p.cause, p && p.killKind);
     const title = (p && p.cause && DEATH[p.cause] ? dt.title : p && p.title) || dt.title;
-    let bestDist = p && p.bestDist;
-    if (!(bestDist > 0)) { try { bestDist = save.runnerBestDist(); } catch { bestDist = 0; } }
     const isRec = !!(p && (p.isBestDist ?? p.isBest));
     const rk = recKind(isRec, score, this._best);   // _best / _bestD = records at the START of this run
-    const anyRec = rk.dist || rk.score;
+    const rl = runnerResultLines(p || {}, this._best);   // the hero is the SCORE: a score record turns the screen gold
+    rk.score = rl.rec;
+    const anyRec = rk.score;   // the badge and gold screen mean a SCORE record (the hero number); a distance record only tints the metres chip
+    const badge = recTitle({ dist: false, score: rk.score });
 
     // what the soft toasts / mission rows should say (queued mid-run notices are drained here, never shown during play)
     const mrep = this.missionBlock(p && p.missions);
 
     const ex = this.el.resExtra;
-    let html = '';
     const tipTxt = (p && p.tip) || dt.tip;
-    let note = '';
-    if (isRec) note = '';
-    else if (toRecord > 0 && toRecord < Math.max(400, distance * 0.6)) note = `Rekora ${fmtN(toRecord)} m kaldı!`;
-    else if (rank > 0 && rank <= 3) note = `#${rank}. en iyi koşun`;
-    const chips = [`<div class="rx-chip${anyRec ? ' gold' : ''}"><small>EN İYİ</small><b>${anyRec ? '★ ' : ''}${fmtN(Math.max(best, score))}</b></div>`];
-    if (p && p.perk) chips.push(`<div class="rx-chip"><small>YETENEK</small><b>${p.perk.icon} ${tr(p.perk.name)}</b></div>`);
-    if (coins) chips.push(`<div class="rx-chip"><small>KAZANÇ</small><b>❄️ +${fmtN(coins)}</b></div>`);
-    if ((this._bestCombo || 0) >= 3) chips.push(`<div class="rx-chip"><small>KOMBO</small><b>🔥 x${this._bestCombo}</b></div>`);
+    // ONE compact row: metres, earned, perk, combo, season (no labels); everything else sits behind one tap
+    const chip = (txt, cls = '') => `<span class="rx-c${cls}">${txt}</span>`;
+    const chips = [chip(`🏔 ${fmtN(distance)} m`, rk.dist ? ' gold' : '')];
+    if (coins) chips.push(chip(`❄️ +${fmtN(coins)}`));
+    if (p && p.perk) chips.push(chip(`${p.perk.icon}`));
+    if ((this._bestCombo || 0) >= 3) chips.push(chip(`🔥 x${this._bestCombo}`));
     let seaTok = 0;
     try { seaTok = Math.floor(Number(p && (p.seasonTokens ?? (p.stats && p.stats.seasonTokens))) || meta.stats().seasonTokens || 0); } catch { seaTok = 0; }
-    if (seaTok > 0) chips.push(`<div class="rx-chip"><small>SEZON</small><b>+${fmtN(seaTok)} 🧣</b></div>`);
-    html += `<div class="rx-stats">${chips.join('')}</div>`;
-    html += this.progressBlock();
-    if (p && p.mutator) html += `<div class="rx-line">${tr('BU HAFTA: ' + p.mutator.name)} ${p.mutator.icon}${p.mutator.score > 1 ? ' · ' + tr('x' + p.mutator.score + ' puan') : ''}</div>`;
-    if (p && p.weeklyBest) html += `<div class="rx-line">🏆 Haftalık rekor! ${fmtN(p.weeklyRecord || score)}</div>`;
-    if (p && p.synergies) html += `<div class="rx-line">${tr('SİNERJİ:')} ${p.synergies.map((x) => tr(x)).join(' · ')}</div>`;
+    if (seaTok > 0) chips.push(chip(`+${fmtN(seaTok)} 🧣`));
+    let html = `<div class="rx-row">${chips.join('')}</div>`;
+    let nup = null;
+    try { nup = this.hooks?.nextPower?.() || null; } catch { nup = null; }
+    if (nup && nup.name) html = `<div class="rx-up${nup.afford ? ' ok' : ''}">${nup.icon} <b>${tr(nup.name)}</b> ❄️ ${fmtN(nup.price)} <small>(${tr('sende')} ${fmtN(nup.have)})</small></div>` + html;   // ONE visible reason to come back
+    let det = this.progressBlock();
+    if (p && p.perk) det += `<div class="rx-line">${p.perk.icon} ${tr(p.perk.name)}</div>`;
+    if (p && p.mutator) det += `<div class="rx-line"><span>${tr('BU HAFTA: ' + p.mutator.name)}</span> ${p.mutator.icon}${p.mutator.score > 1 ? ' · ' : ''}${p.mutator.score > 1 ? `<span>${tr('x' + p.mutator.score + ' puan')}</span>` : ''}</div>`;
+    if (p && p.weeklyBest) det += `<div class="rx-line">🏆 Haftalık rekor! ${fmtN(p.weeklyRecord || score)}</div>`;
+    if (p && p.synergies) det += `<div class="rx-line">${tr('SİNERJİ:')} ${p.synergies.map((x) => tr(x)).join(' · ')}</div>`;
     const dly = p && p.daily;
     let shareTxt = '';
     if (dly) {
       const dm = Math.max(dly.best || 0, distance);
       shareTxt = `🏔 PATPAT Günün Rush'ı #${dly.num} — ${fmtN(distance)} m` + ((this._bestCombo || 0) >= 3 ? ` 🔥x${this._bestCombo}` : '');
-      html += `<div class="rx-line">GÜNÜN RUSH'I #${dly.num}: ${fmtN(distance)} m${dm > distance ? ` · EN İYİ ${fmtN(dm)} m` : ''}</div>`;
+      det += `<div class="rx-line">GÜNÜN RUSH'I #${dly.num}: ${fmtN(distance)} m${dm > distance ? ` · EN İYİ ${fmtN(dm)} m` : ''}</div>`;
     }
-    if (!isRec && toRecord > 0 && distance >= 50) {
-      const pr = Math.max(0, Math.min(1, distance / Math.max(1, distance + toRecord)));
-      html = `<div class="rx-rec">REKORA ${fmtN(toRecord)} m KALDI!</div><div class="rx-prog"><b style="width:${Math.round(pr * 100)}%"></b></div>` + html;
-    }
-    if (note && !dly && !(html.includes('rx-rec'))) html += `<div class="rx-line">${note}</div>`;
-    // ONE next-goal card: closest unfinished quest, else the next reward; full quest list behind a tap
+    // closest unfinished quest, else the next reward; the full quest list follows
     let qRows = [];
     try { const r = meta.missionsReport(); qRows = (r && r.rows) || []; } catch { qRows = []; }
     if (!qRows.length && Array.isArray(p && p.missions)) qRows = p.missions.slice(0, 3);
@@ -414,32 +493,33 @@ export class UI {
     let nq = null, nf = -1;
     for (const m of qRows) { if (m.done || !(m.goal > 0)) continue; const f = (m.value || 0) / m.goal; if (f > nf) { nf = f; nq = m; } }
     if (nq) {
-      html += `<div class="rx-goal rx-next"><div class="rg-h">SIRADAKİ HEDEF</div><div class="rg-goal">${nq.icon || '📜'} ${nq.text} <b>${fmtN(Math.floor(nq.value || 0))}/${fmtN(nq.goal)}</b></div><div class="rg-b"><i class="gain" style="width:${Math.round(clamp01(nf) * 100)}%" data-to="${Math.round(clamp01(nf) * 100)}"></i></div></div>`;
-    } else html += this.goalBlock(coins, true);
-    if (mrep.html) {
-      const dn = qRows.filter((m) => m.done).length;
-      html += `<div class="rx-qtoggle">▸ Görevler ${dn}/${qRows.length}</div><div class="rx-qlist hidden">${mrep.html}</div>`;
-    }
-    if (!isRec && tipTxt) html += `<div class="rx-dim">${tipTxt}</div>`;
+      det += `<div class="rx-goal rx-next"><div class="rg-h">SIRADAKİ HEDEF</div><div class="rg-goal">${nq.icon || '📜'} ${nq.text} <b>${fmtN(Math.floor(nq.value || 0))}/${fmtN(nq.goal)}</b></div><div class="rg-b"><i class="gain" style="width:${Math.round(clamp01(nf) * 100)}%" data-to="${Math.round(clamp01(nf) * 100)}"></i></div></div>`;
+    } else det += this.goalBlock(coins, true);
+    if (mrep.html) det += mrep.html;
+    if (!rk.score && tipTxt) det += `<div class="rx-dim">${tipTxt}</div>`;
+    if (det) html += `<div class="rx-qtoggle">▸ Detaylar</div><div class="rx-qlist hidden">${det}</div>`;
     ex.innerHTML = html;
     const qt = ex.querySelector('.rx-qtoggle');
+    const upEl = ex.querySelector('.rx-up');
+    if (upEl) upEl.onclick = () => { try { this.hooks?.power?.(); } catch { /* optional */ } };
     if (qt) qt.onclick = () => { const l = ex.querySelector('.rx-qlist'); const open = l.classList.toggle('hidden'); qt.textContent = qt.textContent.replace(/^[▸▾]/, open ? '▸' : '▾'); };
     ex.classList.toggle('hidden', !html);
     this.lastShareText = shareTxt;  // bottom PAYLAŞ uses it for the daily run
-    const shb = ex.querySelector('.rx-share');
-    if (shb) shb.onclick = () => { try { if (navigator.share) navigator.share({ text: shareTxt }).catch(() => {}); else navigator.clipboard?.writeText(shareTxt); shb.textContent = 'KOPYALANDI'; } catch { /* ignore */ } };
 
     this.el.result.classList.remove('hidden');
-    this.el.result.classList.add('runner');
+    this.el.result.classList.add('runner', 'rr');   // rr = the Rush layout (score hero, TEKRAR first)
     this.shareCardBtn({ mode: 'YETİ RUSH', big: fmtN(distance), unit: 'metre', isRec, challenge: 'Beni geçebilir misin? 🏔️' });
     this.el.resTitle.textContent = title;
     this.el.resBadge.classList.toggle('hidden', !anyRec);
-    this.el.resBadge.textContent = recTitle(rk);
-    this.el.resLabel.textContent = 'metre';
-    // a record shows what it beat; otherwise the target to chase
-    const prevD = Math.round(this._bestD || 0);
-    this.el.resSub.textContent = rk.dist ? (prevD > 0 ? `ÖNCEKİ REKOR ${fmtN(prevD)} m · +${fmtN(Math.max(0, distance - prevD))} m` : '')
-      : rk.score ? `ÖNCEKİ SKOR REKORU ${fmtN(this._best)}` : `REKOR ${fmtN(bestDist)} m`;
+    this.el.resBadge.textContent = badge;
+    this.el.resLabel.textContent = tr('SKOR');
+    // ONE number (score), the signed gap to the best, ONE next goal
+    this.el.resTons.textContent = tr(rl.delta && rl.delta[0] === '+' ? rl.delta + ' ESKİ REKORDAN' : rl.delta);   // the bare +N had no label
+    this.el.resTons.classList.toggle('dl', !!rl.delta && rl.delta[0] !== '+');
+    this.el.resSub.textContent = tr(rl.goal);
+    // a mission goal is a progress chip (the fill is the mission's progress), anything else stays plain text
+    this.el.resSub.classList.toggle('chip', !!nq && !!rl.goal && rl.goal === p.nextGoalText && p.nextGoalKind === 'mission');
+    this.el.resSub.style.setProperty('--f', `${Math.round(clamp01(nf) * 100)}%`);
     this.el.resCoins.classList.add('hidden');
     this.el.resCoins.innerHTML = '';
 
@@ -458,17 +538,34 @@ export class UI {
     if (show) { void this.el.next.offsetWidth; this.el.next.classList.add('rv-ring'); }   // 3 s countdown ring
     clearTimeout(this._rvTm); this._rvTm = show ? setTimeout(() => { this.el.next.classList.remove('rv-ring'); }, 3000) : 0;
     this.el.retry.classList.remove('hidden');
-    // the one-tap TEKRAR carries the next target right under the thumb
-    this.retryLabel(rk.dist ? `Rekoru geç: ${fmtN(distance)} m` : toRecord > 0 && distance >= 50 ? `Rekora ${fmtN(toRecord)} m kaldı!` : '');
+    this.retryLabel('');   // TEKRAR first and biggest (CSS order); the goal line lives under the score
     this.el.menuBtn.classList.remove('hidden');
 
+    this.powerBtn();
     this.resultFx(anyRec);
     this.goalAnimate();
-    this.countUp(distance, (v, e) => {
-      this.el.resPct.textContent = `${fmtN(v)} m`;
-      this.el.resTons.textContent = `SKOR ${fmtN(score * e)}`;
-    }, 1400, { tick: true, done: () => this.resultScoreDone(anyRec) });
+    this.countUp(score, (v) => { this.el.resPct.textContent = fmtN(v); }, 600, { tick: true, done: () => this.resultScoreDone(anyRec) });
     this.flushNotices(mrep.notices);
+  }
+
+  // GÜÇ entry on the Rush result (the permanent upgrades): a small amber button under PAYLAŞ, pulsing when the cheapest upgrade is affordable.
+  // main.js sets ui.hooks = { power(), affordPower(), levelUp() }; before the second run (first runs stay one-button) it stays hidden.
+  powerBtn() {
+    const h = this.hooks;
+    let b = document.getElementById('btn-power');
+    let runs = 0; try { runs = save.runsTotal(); } catch { runs = 0; }
+    let aff0 = false; try { aff0 = !!h?.affordPower?.(); } catch { aff0 = false; }
+    const on = !!(h && h.power) && (runs >= 2 || aff0);   // run 1 shows it too when the bank already buys something
+    if (!on) { if (b) b.style.display = 'none'; return; }
+    if (!b) { b = document.createElement('button'); b.id = 'btn-power'; b.className = 'btn mid'; (document.getElementById('btn-card') || this.el.retry).after(b); }
+    let aff = false; try { aff = !!h.affordPower?.(); } catch { aff = false; }
+    b.style.display = '';
+    b.textContent = '💪 GÜÇ';
+    b.classList.toggle('pulse', aff);
+    b.onclick = () => h.power();
+    // a pending player level: its reward screen opens over the result once the score has counted up
+    clearTimeout(this._lvT);
+    try { if (h.levelUp) this._lvT = setTimeout(() => { if (!this.el.result.classList.contains('hidden')) h.levelUp(); }, 1500); } catch { /* optional */ }
   }
 
   // TEKRAR: big label + an optional small target line (no sub line = plain label, also used to reset it for other result screens)
@@ -689,7 +786,7 @@ export class UI {
     this.el.rvDist.textContent = `${fmtN(distance || 0)} m`;
     this.el.btnRevive.textContent = `BENİ KURTAR 💎${cost}`;
     this.el.btnRevive.classList.toggle('poor', Number.isFinite(crystals) && crystals < cost);
-    this.el.btnReviveEnd.textContent = 'BİTİR';
+    this.el.btnReviveEnd.textContent = 'KOŞUYU BİTİR';
     this.el.revive.classList.remove('hidden');
   }
 
@@ -730,9 +827,9 @@ export class UI {
     this._dgD = danger; this._dgC = chain; this._dgR = risk;
     const el = this.dangerEl || (this.dangerEl = document.getElementById('danger'));
     const parts = [];
-    if (risk) parts.push(`RİSK +${risk}`);
-    if (danger > 0) parts.push(`TEHLİKE +${danger}`);
-    if (chain > 0) parts.push(`ZİNCİR +${chain}`);
+    if (risk) parts.push(tr(`RİSK +${risk}`));   // each part is translated BEFORE joining: the anchored patterns cannot match the joined string
+    if (danger > 0) parts.push(tr(`TEHLİKE +${danger}`));
+    if (chain > 0) parts.push(tr(`ZİNCİR +${chain}`));
     const t = parts.join(' · ');
     if (t !== this.lastDanger) {
       this.lastDanger = t;
@@ -742,26 +839,37 @@ export class UI {
   }
 
   // Goal strip under the score: mode 'cp' = next checkpoint (val = its distance), 'rec' = record in reach (val = metres
-  // left), 'rage' = the Yeti's boulder barrage (fill = how much of it is behind you), 'new' = record just broken.
+  // left), 'rage' = the Yeti's boulder barrage (fill = how much of it is behind you), 'new' = record just broken,
+  // 'clean' = a clean layer, no crash yet (val = metres left in the layer, 0 = no number; fill = layer progress; always shown, unlike 'cp').
   // mode null hides it (campaign, menus). Only touches the DOM when something visible changed.
-  runnerGoal(mode, val = 0, frac) {
+  runnerGoal(mode, val = 0, frac, text) {
     if (mode === 'fury') { if (frac === undefined) frac = val; val = 0; }
     if (frac === undefined) frac = 0;
     if (mode === 'cp' && frac < 0.8) mode = null;   // declutter: the checkpoint strip only shows in the last 20% of a layer
     const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
-    if (mode === this.gMode && val === this.gVal && pct === this.gPct) return;
+    if (mode === this.gMode && val === this.gVal && pct === this.gPct && text === this.gTxt) return;
     const g = this.el.goal, mChanged = mode !== this.gMode;
     if (mChanged) {
       g.classList.toggle('hidden', !mode);
       this.el.hud.classList.toggle('has-goal', !!mode);
       g.classList.remove('cp', 'rec', 'rage', 'new', 'fury');
-      if (mode) g.classList.add(mode === 'boss' ? 'rage' : mode === 'fury' ? 'fury' : mode === 'cannon' ? 'rec' : mode);
+      if (mode) g.classList.add(mode === 'boss' ? 'rage' : mode === 'fury' ? 'fury' : mode === 'cannon' ? 'rec' : mode === 'clean' ? 'cp' : mode);
     }
-    if (mode && (mChanged || val !== this.gVal)) {
-      this.el.goalLbl.textContent = mode === 'cp' ? `SIRADAKİ: ${val} m` : mode === 'rec' ? `REKORA ${val} m` : mode === 'new' ? 'YENİ REKOR!' : mode === 'cannon' ? `KAR KANONU: ${val}` : mode === 'boss' ? 'YETİ ÖNÜNDE!' : mode === 'fury' ? 'YETİ ÖFKESİ' : '⚠ YETİ ÖFKESİ';
+    if (mode && (mChanged || val !== this.gVal || text !== this.gTxt)) {
+      this.el.goalLbl.textContent = text ? text : mode === 'clean' ? (val > 0 ? `TEMİZ KAT: ${val} m` : 'TEMİZ KAT') : mode === 'cp' ? `SIRADAKİ: ${val} m` : mode === 'rec' ? `REKORA ${val} m` : mode === 'new' ? 'YENİ REKOR!' : mode === 'cannon' ? `KAR KANONU: ${val}` : mode === 'boss' ? 'YETİ ÖNÜNDE!' : mode === 'fury' ? 'YETİ ÖFKESİ' : '⚠ YETİ ÖFKESİ';
     }
     if (mode && (mChanged || pct !== this.gPct)) this.el.goalFill.style.width = `${pct}%`;
-    this.gMode = mode; this.gVal = val; this.gPct = pct;
+    this.gMode = mode; this.gVal = val; this.gPct = pct; this.gTxt = text;
+  }
+
+  // campaign live pips p = [0|1|2 x3] (2 met / 1 still possible / 0 lost); a small row under the top bar, created once
+  runnerStars(p) {
+    let e = this.el.rStars;
+    if (!p) { if (e) e.style.display = 'none'; return; }
+    if (!e) { e = this.el.rStars = document.createElement('div'); e.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--sat,0px) + 58px);font-size:18px;letter-spacing:4px;pointer-events:none;text-shadow:0 1px 3px #0008'; this.el.hud.appendChild(e); }
+    const k = p.join('');
+    if (k === this._rsK) return;
+    this._rsK = k; e.style.display = ''; e.textContent = p.map((v) => (v === 2 ? '★' : v === 1 ? '☆' : '·')).join('');
   }
 
   // Checkpoint passed: the strip bounces.
@@ -795,7 +903,7 @@ export class UI {
     if (dist === undefined) {
       if (best === this.lastRec) return;
       this.lastRec = best;
-      this.el.record.textContent = best ? `REKOR ${Math.round(best).toLocaleString('tr-TR')}` : '';
+      this.el.record.textContent = best ? `REKOR ${fmtN(best)}` : '';
       return;
     }
     const over = dist > best;
@@ -838,7 +946,7 @@ export class UI {
     this.el.record?.classList.add('hidden');
     this.el.vitals.classList.add('hidden');
     this.el.yeti.classList.add('hidden');
-    this.el.result.classList.remove('runner');
+    this.el.result.classList.remove('runner', 'rr');
     this.el.resCoins.classList.add('hidden');
     this.el.resLabel.textContent = 'kasaba yıkıldı';
     this.el.coins.classList.add('hidden');
@@ -916,6 +1024,16 @@ export class UI {
     const c = this._cmb || this._mkCmb();
     if (c.classList.contains('broke')) return;
     const n = this._cmN >= 3 ? this._cmN : 0, mu = this._mu || 0;
+    if (this.el.hud.classList.contains('rush')) {
+      // Rush: ONE number, the score multiplier (the hit count only drives the pop animation); gone when there is no multiplier
+      if (mu <= 1) { if (c.classList.contains('on')) c.className = 'cmb'; return; }
+      const m = Math.round(mu * 10) / 10;
+      this._cmKs.textContent = ''; this._cmKe.textContent = `x${m}`; this._cmKe.dataset.t = `x${m}`; this._cmKu.textContent = '';
+      this._cmK.style.display = ''; this._cmM.style.display = 'none';
+      const ts = `t${Math.min(4, Math.max(1, Math.floor(m) - 1))}`;   // tinted by whole step: x2 yellow, x3 orange, x4 pink, x5+ purple
+      if (!c.classList.contains('on') || !c.classList.contains(ts)) { c.classList.remove('t0', 't1', 't2', 't3', 't4'); c.classList.add('on', 'nobar', ts); }
+      return;
+    }
     if (!n) { if (c.classList.contains('on')) c.className = 'cmb'; return; }
     // ONE small chip: 'KOMBO x34 · x5' (the multiplier rides inside it, no second chip, no drain bar)
     this._cmKs.textContent = 'KOMBO'; this._cmKe.textContent = `x${n}`; this._cmKe.dataset.t = `x${n}`; this._cmKu.textContent = mu > 1 ? `x${Math.round(mu * 10) / 10} SKOR` : '';
@@ -949,6 +1067,7 @@ export class UI {
       }
     } else if (this._cmN >= 3) {
       this._cmN = 0; this._cmT = 0;
+      if (this.el.hud.classList.contains('rush')) { this._cmRender(); return; }   // (no "combo broke" message in Rush: the multiplier chip just updates)
       this._cmKs.textContent = ''; this._cmKe.textContent = 'KOMBO KIRILDI'; this._cmKe.dataset.t = ''; this._cmKu.textContent = ''; this._cmK.style.display = ''; this._cmM.style.display = 'none';
       c.className = 'cmb broke';
       clearTimeout(this._cmBk);
@@ -967,13 +1086,14 @@ export class UI {
     this._noTick = 0;
     this.el.tons.className = 'hud-tons';
     this.el.tons.textContent = '0';
+    this._swl = 0; this._sw('0');
   }
 
   scoreTo(sc) {
     const prev = this._sc < 0 ? 0 : this._tgt;
     this._sc = sc; this._tgt = sc;
     const delta = sc - prev;
-    if (delta < 0) { this._disp = sc; this._shown = sc; this.el.tons.textContent = fmtN(sc); this.lastTonsText = this.el.tons.textContent; return; }
+    if (delta < 0) { this._disp = sc; this._shown = sc; this.el.tons.textContent = fmtN(sc); this.lastTonsText = this.el.tons.textContent; this._sw(this.lastTonsText); return; }
     const big = delta >= 20 && delta > this._rate * 4 + 10;
     if (!big) this._rate = this._rate * 0.9 + delta * 0.1;
     const el = this.el.tons;
@@ -999,17 +1119,28 @@ export class UI {
     if (!this._sraf) this._sraf = requestAnimationFrame(this._scoreTick || (this._scoreTick = () => this.scoreStep()));
   }
 
+  // the multiplier chip hangs right beside the score: its offset follows the digit count (CSS var, only written when the length changes)
+  _sw(s) { if (s.length !== this._swl) { this._swl = s.length; this.el.hud.style.setProperty('--sw', String(s.length)); } }
+
+  // the secondary chips (coins, power, perk, weekly) fade after 2 s unless one of them changes
+  _chipsTouch() {
+    const h = this.el.hud;
+    h.classList.remove('chips-dim');
+    clearTimeout(this._chipT);
+    this._chipT = setTimeout(this._dim || (this._dim = () => h.classList.add('chips-dim')), 2000);
+  }
+
   scoreStep() {
     this._sraf = 0;
     const d = this._tgt - this._disp;
     this._disp = Math.abs(d) < 1.5 ? this._tgt : this._disp + d * 0.2;
     const r = Math.round(this._disp);
-    if (r !== this._shown) { this._shown = r; const s = fmtN(r); this.el.tons.textContent = s; this.lastTonsText = s; }
+    if (r !== this._shown) { this._shown = r; const s = fmtN(r); this.el.tons.textContent = s; this.lastTonsText = s; this._sw(s); }
     if (this._disp !== this._tgt) this._sraf = requestAnimationFrame(this._scoreTick);
   }
 
   scorePop(delta) {
-    if (this._pops >= 3 || typeof document === 'undefined' || reduceMotion()) return;
+    if (this._pops >= (this.el.hud.classList.contains('rush') ? 1 : 3) || typeof document === 'undefined' || reduceMotion()) return;
     this._pops++;
     const d = document.createElement('div');
     d.className = 'score-pop';
@@ -1063,7 +1194,7 @@ export class UI {
       this._say('c', { text, prio: cls === 'bad' ? 3 : 2, ms: 1100, drop: true, show: mk });
       return;
     }
-    if (now - this._lastFloat < 1000 || this.floatCount > 2) return;
+    if (now - this._lastFloat < 1000 || this.floatCount > 2 || (this.el.hud.classList.contains('rush') && this.annBusy())) return;   // (Rush: a plain float never stacks on a message)
     this._lastFloat = now;
     mk();
   }
@@ -1101,6 +1232,7 @@ export class UI {
       this.el.buffs.appendChild(el);
       b = { el, q: 72, total: secs, low: false };
       this.buffMap.set(id, b);
+      this._chipsTouch();
     } else {
       b.total = secs; b.q = 72; b.low = false;
       b.el.classList.remove('low', 'out');
@@ -1156,10 +1288,11 @@ export class UI {
     setTimeout(() => b.el.remove(), 320);
   }
 
-  // ---- RUN-START PERK picker (Rush): 3 big cards, one tap, auto-picks the first after `secs`; the runner waits meanwhile ----
+  // ---- RUN-START PERK picker (Rush): 3 big cards, one tap, auto-picks a random one after `secs`; the runner waits meanwhile ----
   runnerPerkPick(perks, onPick, secs = 6) {
     if (this._perkEl) { clearTimeout(this._perkTm); clearInterval(this._perkIv); this._perkEl.remove(); this._perkEl = null; }
     if (!perks || !perks.length) return;
+    secs = Math.min(secs, 3.5);   // PLAY -> run: the pick never holds the player for 6 s (the timeout is a random card anyway)
     const root = document.createElement('div');
     root.className = 'perk-pick';
     const h = document.createElement('div'); h.className = 'pp-h'; h.textContent = 'YETENEK SEÇ';
@@ -1191,7 +1324,7 @@ export class UI {
     const t0 = performance.now();
     fill.style.width = '100%';
     this._perkIv = setInterval(() => { fill.style.width = Math.max(0, 100 - ((performance.now() - t0) / (secs * 10))) + '%'; }, 100);
-    this._perkTm = setTimeout(() => pick(perks[0].id), secs * 1000);
+    this._perkTm = setTimeout(() => pick(perks[Math.floor(Math.random() * perks.length)].id), secs * 1000);   // timeout = a random card, never always the same
   }
 
   runnerMutator(text, title) {
@@ -1199,8 +1332,11 @@ export class UI {
     if (!text) { if (el) el.classList.add('hidden'); return; }
     if (!el) { el = this._mutChip = document.createElement('div'); el.className = 'mut-chip'; this.el.hud.appendChild(el); }
     el.textContent = text; el.title = title || '';
+    this._chipsTouch();
     el.classList.remove('hidden');
     el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+    clearTimeout(this._mutT);
+    this._mutT = setTimeout(() => el.classList.add('hidden'), 5000);   // the weekly-mutator chip is a hello, not a permanent HUD item
   }
 
   runnerPerkIcon(icon, name) {
@@ -1212,6 +1348,7 @@ export class UI {
       this.el.hud.appendChild(el);
     }
     el.textContent = icon;
+    this._chipsTouch();
     el.setAttribute('aria-label', name || '');
     el.classList.remove('hidden');
   }
@@ -1306,25 +1443,31 @@ export class UI {
       this.el.cigHud.classList.remove('hidden');
       this.el.hud.classList.add('cig-endless');
       this.el.level.textContent = 'ÇIĞ SONSUZ';
+      this._cgFirst = (save.cigEndlessRuns?.() || 0) < 3;   // first runs: no record line (one big number, nothing to compare yet)
     }
     // numbers are compared first (no Intl formatting / string building on frames where nothing visible changed)
     const kg = Math.round((d.tons || 0) * 1000);
     if (kg !== c.kg) { c.kg = kg; const ts = fmtTons(kg / 1000); this.el.tons.textContent = ts; this.lastTonsText = ts; }
     const tnRaw = d.tierName || '';
-    if (tnRaw !== c.tnRaw) { c.tnRaw = tnRaw; this.el.cgTn.textContent = String(tnRaw).toLocaleUpperCase('tr-TR'); }
+    if (tnRaw !== c.tnRaw) { c.tnRaw = tnRaw; this.el.cgTn.textContent = UP(tnRaw); }
     const q = Math.round(clamp01(d.frac) * 100);
     if (q !== c.fill) { c.fill = q; this.el.cgFill.style.setProperty('--f', String(q / 100)); }
     const dm = Math.round(d.dist || 0);
     if (dm !== c.dm) { c.dm = dm; this.el.cgDist.textContent = `${fmtN(dm)} m`; }
     const bv = d.best && typeof d.best === 'object' ? d.best.tons : d.best;
-    const bk = bv > 0 ? Math.round(bv * 1000) : 0;
+    const bk = bv > 0 && !this._cgFirst ? Math.round(bv * 1000) : 0;
     if (bk !== c.bk) { c.bk = bk; this.el.cgBest.textContent = bk ? `REKOR ${fmtTons(bk / 1000)}` : ''; }
+    // the ladder is the goal: "sıradaki: MEGA ÇIĞ · 12 t" (next tier and the snow tons still missing); nothing on the last tier
+    let nx = this.el.cgNext;
+    if (!nx) { nx = this.el.cgNext = document.createElement('div'); nx.className = 'cg-row'; this.el.cigHud.appendChild(nx); }
+    const nk = d.nextName ? 'sıradaki: ' + UP(d.nextName) + ' · ' + fmtTons(Math.ceil(d.nextTons || 0)) : '';
+    if (nk !== c.nx) { c.nx = nk; nx.textContent = nk; }
   }
 
   cigReset() {
     this.el.cigHud.classList.add('hidden');
     this.el.hud.classList.remove('cig-endless');
-    this._cg = { kg: -1, tnRaw: null, fill: -1, dm: -1, bk: -1 };
+    this._cg = { kg: -1, tnRaw: null, fill: -1, dm: -1, bk: -1, nx: null };
   }
 
   // ---- ONE announcement scheduler (single source of truth) ----
@@ -1332,6 +1475,7 @@ export class UI {
   // priority danger 3 > milestone 2 > info 1, >=1.2 s between centre messages, identical text deduped for 3 s,
   // info waiting >2 s (milestones >5 s) is dropped, the previous element is fully cleared before the next shows.
   _say(ch, r) {
+    if (ch === 't' && !this.el.hud.classList.contains('hidden')) ch = 'c';   // hyper-casual: while the HUD is up there is ONE transient message at a time (banner and toast share a lane)
     const now = performance.now();
     const D = this._dd || (this._dd = new Map());
     if (r.text && !r.count) {
@@ -1414,7 +1558,7 @@ export class UI {
   }
 
   cigTier(name) {
-    const nm = String(name || '').toLocaleUpperCase('tr-TR');
+    const nm = UP(name || '');
     this._say('c', {
       text: nm, prio: 2, ms: 1350,
       show: () => {
@@ -1482,6 +1626,7 @@ export class UI {
     this.el.hud.classList.add('hidden');
     this.el.result.classList.remove('hidden');
     this.el.result.classList.toggle('runner', isEndless); // hides the star row
+    this.el.result.classList.remove('rr');
     this.el.next.classList.remove('revive');
     this.el.next.classList.add('next');
     this.el.retry.classList.remove('hidden');
@@ -1501,7 +1646,7 @@ export class UI {
       const bd = best && typeof best === 'object' ? best.dist : 0;
       this.el.resTitle.textContent = cause && DEATH[cause] ? dt.title : title || dt.title;
       this.el.resBadge.classList.toggle('hidden', !rec);
-      this.el.resLabel.textContent = tierName ? String(tierName).toLocaleUpperCase('tr-TR') : 'çığ boyutu';
+      this.el.resLabel.textContent = tierName ? 'ulaşılan kademe: ' + UP(tierName) : 'çığ boyutu';
       this.el.resSub.textContent = rec ? '' : bt > 0 ? `REKOR ${fmtTons(bt)}${bd > 0 ? ` · ${fmtN(bd)} m` : ''}` : sub || '';
       this.el.next.classList.add('hidden');
       this.shareCardBtn({ mode: 'ÇIĞ', big: fmtTons(tons), unit: tierName ? String(tierName) : 'çığ boyutu', isRec: rec, challenge: 'Beni geçebilir misin? 🏔️' });

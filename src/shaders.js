@@ -22,10 +22,11 @@ export const SU = {
   // the material shaders: no render target, no extra pass, and fog / alpha keep blending in display space exactly as before.
   // Active only while a YETİ RUSH world drives it (setLookActive) and only in the normal / toon modes (pixel / postcard render linear into the post pass).
   uTail: { value: 0 },
-  uGrade: { value: new THREE.Vector4(1.12, 0.22, 0.26, 0.4) },   // saturation, S-curve contrast, vignette strength, ball rim mix
+  uGrade: { value: new THREE.Vector4(1.12, 0.22, 0.26, 0.5) },   // saturation, S-curve contrast, vignette strength, ball rim mix
   uSh: { value: new THREE.Color().setRGB(0.94, 0.97, 1.04) },     // shadow tint (multiplier)
   uHi: { value: new THREE.Color().setRGB(1.04, 1.01, 0.96) },     // highlight tint (multiplier)
-  uRim: { value: new THREE.Color(0xa9c4ee) },                    // rim colour on the ball's silhouette
+  uRim: { value: new THREE.Color(0x6f9ad8) },                    // rim colour on the ball's silhouette
+  uFlash: { value: new THREE.Vector4(1, 1, 1, 0) },               // full-screen hit flash: display-space rgb + strength (fx.js hitFlash eases the strength to 0)
   uView: { value: new THREE.Vector2(1, 1) },                     // drawing-buffer size in px (vignette)
   uBall: { value: new THREE.Vector4(0, 0, 0, 0) },               // view-space centre + radius of the snowball (w = 0: none); written by main.js each frame
   uAO: { value: AO_STRENGTH },
@@ -69,6 +70,7 @@ uniform vec4 uGrade;
 uniform vec3 uSh;
 uniform vec3 uHi;
 uniform vec2 uView;
+uniform vec4 uFlash;
 // Final colour (display space, after fog): saturation, soft S-curve contrast, cool-shadow / warm-highlight split, vignette, dither.
 vec3 cigFinish( vec3 c ) {
   if ( uTail < 0.5 ) return c;
@@ -80,6 +82,7 @@ vec3 cigFinish( vec3 c ) {
   c *= mix( vec3( 1.0 ), mix( uSh, uHi, smoothstep( 0.15, 0.85, l ) ), gk );
   vec2 q = gl_FragCoord.xy / uView - 0.5;
   c *= 1.0 - uGrade.z * smoothstep( 0.45, 1.1, length( q * vec2( 1.0, 0.85 ) ) * 1.414 );
+  if ( uFlash.w > 0.001 ) c = mix( c, uFlash.rgb, uFlash.w );
   float n = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
   return c + ( n - 0.5 ) * ${DITHER.toFixed(6)};
 }
@@ -145,8 +148,18 @@ const FRAG_MAIN = /* glsl */`
     if ( cigFacing < -0.6 ) {
       // The ball's own skin: a tinted rim at grazing angles lifts it off the background (dark blue on pale biomes, bright on dark ones).
       if ( cigD2 < cigR2 * 1.5 ) {
-        float cigRim = pow( 1.0 - clamp( dot( normal, cigView ), 0.0, 1.0 ), 3.0 );
-        outgoingLight = mix( outgoingLight, uRim, cigRim * uGrade.w * uTail );
+        // (also outside YETI RUSH, at 80%: the lobby / ÇIĞ ball is white on white otherwise)
+        // The ball is the star: near-white skin lifted toward pure white, a soft tinted rim for depth, a crisp dark-blue ink outline and a glint.
+        // (the outline uses the shading normal, not the ball centre: the squashed / lumpy ball is no sphere. Dark on every biome: the white body pops on the dark ones.)
+        vec3 cigSn = -cigD * inversesqrt( cigD2 );
+        float cigNv = clamp( dot( normal, cigView ), 0.0, 1.0 );
+        float cigRim = pow( 1.0 - cigNv, 1.7 );
+        float cigWh = smoothstep( 0.55, 0.8, min( cigAlb.r, min( cigAlb.g, cigAlb.b ) ) );
+        outgoingLight = mix( outgoingLight, vec3( 1.0 ), 0.52 * cigWh );
+        outgoingLight = mix( outgoingLight, uRim, clamp( cigRim * uGrade.w * mix( 0.8, 1.0, uTail ) * 0.5, 0.0, 1.0 ) );
+        float cigGl = smoothstep( 0.955, 0.99, dot( cigSn, vec3( -0.42, 0.62, 0.66 ) ) );
+        outgoingLight += vec3( 1.0 ) * cigGl * ( 0.55 + 0.45 * sin( uTime * 7.0 ) ) * cigWh;
+        outgoingLight = mix( outgoingLight, vec3( 0.003, 0.012, 0.075 ), ( 1.0 - smoothstep( 0.27, 0.37, cigNv ) ) * 0.96 );
       }
     } else if ( cigFacing > 0.0 ) {
       // Soft contact shadow on whatever surface is near the ball (sphere ambient occlusion): follows the track, ramps, walls and props.
@@ -187,7 +200,7 @@ export function patchMaterial(mat, { snow = false } = {}) {
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     prev?.call(mat, shader, renderer);
-    for (const k of ['uTime', 'uToon', 'uSnap', 'uSparkle', 'uTail', 'uGrade', 'uSh', 'uHi', 'uRim', 'uView', 'uBall', 'uAO']) shader.uniforms[k] = SU[k];
+    for (const k of ['uTime', 'uToon', 'uSnap', 'uSparkle', 'uTail', 'uGrade', 'uSh', 'uHi', 'uRim', 'uView', 'uFlash', 'uBall', 'uAO']) shader.uniforms[k] = SU[k];
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${VERT_PARS}`)
       .replace('#include <project_vertex>', VERT_MAIN);
@@ -212,7 +225,7 @@ export function patchTail(mat) {
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     prev?.call(mat, shader, renderer);
-    for (const k of ['uToon', 'uTail', 'uGrade', 'uSh', 'uHi', 'uView']) shader.uniforms[k] = SU[k];
+    for (const k of ['uToon', 'uTail', 'uGrade', 'uSh', 'uHi', 'uView', 'uFlash']) shader.uniforms[k] = SU[k];
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${TAIL_PARS}`)
       .replace('#include <fog_fragment>', `#include <fog_fragment>\n${TAIL_CALL}`);
@@ -229,7 +242,7 @@ export function patchTail(mat) {
 // (and not within cooldownS of the last move). Stalls (tab switch, shader compiles) are ignored; a rung that does not hold makes the next climb wait longer.
 export function makeGovernor(o = {}) {
   const dprMax = o.dprMax || 1, dprMin = Math.min(o.dprMin ?? 1, dprMax), step = o.step || 0.25;
-  const downMs = o.downMs ?? 21, upMs = o.upMs ?? 17.5, winMs = (o.windowS ?? 2) * 1000, upN0 = o.upWindows ?? 3, hold = o.cooldownS ?? 6, stall = o.stallMs ?? 100;
+  const downMs = o.downMs ?? 21, upMs = o.upMs ?? 17.5, winMs = (o.windowS ?? 2) * 1000, upN0 = o.upWindows ?? 3, hold = o.cooldownS ?? 6, stall = o.stallMs ?? 100, severe = o.severe ?? 1.35;
   const nDpr = Math.ceil((dprMax - dprMin) / step - 1e-6), top = nDpr + 1;
   const g = { level: 0, dpr: dprMax, lite: false, tick };
   let acc = 0, n = 0, calm = 0, need = upN0, cool = 0, sinceUp = 1e9, sinceMove = 1e9;
@@ -243,7 +256,7 @@ export function makeGovernor(o = {}) {
     if (mean > downMs) {
       calm = 0;
       if (g.level < top) {
-        g.level++; moved = true; cool = hold;
+        g.level = Math.min(top, g.level + (mean > downMs * severe ? 2 : 1)); moved = true; cool = hold; // (a phone at < ~35 fps does not wait 10 s to reach the bottom)
         if (sinceUp < 15) need = Math.min(upN0 * 8, need * 2); // we had just climbed and it did not hold: wait longer before the next try
         sinceMove = 0;
       }

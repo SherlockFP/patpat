@@ -11,21 +11,32 @@
 // Everything that is a number worth tuning is either at the top of this file or in CFG.lvl (config.js).
 import { CFG, tierOf, hwFor } from './config.js';
 import { makeRng } from './rng.js';
+import { getLang } from './i18n.js';
 
-export const DAG_COUNT = 30;
+// 40 mountains. save.js CIG_LEVELS must be >= this or the last ones stay locked (main.js clamps to min(DAG_COUNT, CIG_LEVELS)).
+export const DAG_COUNT = 40;
 
 // the first mountain that uses each mechanic (also drives the one-time intro card)
 export const MECH_AT = {
   crate: 2, chase: 3, strip: 4, boss: 5, iceWall: 5, chain: 6, crateWall: 6, rival: 7, cannon: 8, gold: 9,
-  strong: 11, bridge: 12, ice: 16, wind: 13, fog: 22, rush: 26,
+  strong: 11, bridge: 12, ice: 16, wind: 13, fog: 22, rush: 26, treasure: 17, bowling: 18, blitz: 19,
 };
 
 export const NAMES = [
   'İlk Çığ', 'Kasa Yolu', 'Kovalamaca', 'Hız Şeridi', "Yeti'nin Kapısı", 'Zincir Kırıcı', 'Rakip Top', 'Top Atarı', 'Altın Avı', 'Robot Şatosu',
   'Demir Kasalar', 'Buz Köprüsü', 'Kasaba Baskını', 'Çığ Fırtınası', 'Buz Golemi', 'Kaygan Yamaç', 'Kristal Vadi', 'Rüzgârlı Zirve', 'Dev Kapılar', 'Yeti Kralı',
   'Beyaz Orman', 'Sisli Geçit', 'Şehir Eteği', 'Çığ Yolu', 'Robot Ordusu', 'İkiz Çığ', 'Kayalık Duvar', 'Gökdelen Vadisi', 'Dağ Devi', 'Kış Kralı',
+  'Buzul Kapısı', 'Fırtına Gözü', 'Altın Vadi', 'Kristal Zirve', 'Zirve Bekçisi', 'Kutup Işığı', 'Şimşek Geçidi', 'Hazine Dağı', 'Son Eşik', 'ÇIĞIN EFENDİSİ',
 ];
 
+// ŞİMŞEK par (seconds). Fitted to the headless bot (scripts/sim-cig.mjs, noise 0.5 / latency 0.3): it finishes a mountain in about 22 + 0.4 n s,
+// so par = 1.55 x that keeps the time star a chase (bot at 0.62-0.78 of par on every n, i.e. >= 22 % to spare for a human). check-levels.mjs re-runs it.
+export const ROLL_EVERY = 1.2;   // BOWLİNG: seconds between two rolling balls (cigplus.js _rollers)
+// KASABA: every non-boss mountain ends with a town run of TOWN_SECS seconds at the nominal pace (length x TOWN_SECS / tNom); the pars include it
+export const TOWN_SECS = 8;
+const tNomOf = (n) => Math.min(90, Math.round(45 + 1.5 * (n - 1)));
+export const blitzPar = (n) => Math.round(1.55 * (22 + 0.4 * Math.min(n, 38)) * (1 + TOWN_SECS / tNomOf(n)));
+export const TOWN_NEED = 0.7;   // star 2: destroy this share of the town (mass swallowed or smashed / mass placed)
 const BOSS_K = 0.94;   // PATRON size vs the final-gate pace requirement (+0.02 per chapter of 10 mountains)
 // one light modifier per 5 mountains (twist = an existing cigplus/main twist; night = darker fog; coinK = coin reward multiplier)
 export const MODS = [
@@ -35,12 +46,25 @@ export const MODS = [
   { id: 'ice', name: 'Buzlu', icon: '⛸️', twist: 'ice' },
   { id: 'fog', name: 'Sisli', icon: '🌫️', twist: 'fog' },
   { id: 'rush', name: 'Hızlı Çığ', icon: '🌨️', twist: 'rush' },
+  { id: 'polar', name: 'Kutup Gecesi', icon: '🌌', twist: 'ice', night: true },
+  { id: 'gale', name: 'Kasırga', icon: '🌪️', twist: 'wind', night: true },
 ];
-export const BOSS_IDS = { 5: 'yeti', 10: 'robot', 15: 'golem', 20: 'yeti', 25: 'robot', 30: 'golem' };
+// SET-PIECE MOUNTAINS (replace the chapter modifier on that mountain, and rotate on the daily one):
+//   treasure = HAZİNE: a crate-heavy mountain (an extra crate line / wall per stage, 5+ golden crates, snow-rich, star 3 = every gold crate)
+//   blitz    = ŞİMŞEK: a timed rush (the avalanche is faster and starts closer, the time star = blitzPar(n), about 30 % under the normal par)
+//   bowling  = BOWLİNG: balls roll down the slope ahead of you (plan item 'rollers': white = eat, red = dodge), star 3 = swallow most of the white balls
+export const SPECIALS = {
+  treasure: { id: 'treasure', name: 'Hazine', icon: '💰', coinK: 2, special: true },
+  blitz: { id: 'blitz', name: 'Şimşek', icon: '⚡', coinK: 1.4, special: true },
+  bowling: { id: 'bowling', name: 'Bowling', icon: '🎳', coinK: 1.3, special: true },
+};
+export const SPECIAL_AT = { 17: 'treasure', 24: 'treasure', 33: 'treasure', 38: 'treasure', 19: 'blitz', 23: 'blitz', 29: 'blitz', 37: 'blitz', 18: 'bowling', 27: 'bowling', 32: 'bowling', 36: 'bowling' };
+const DAILY_SPECIAL = ['treasure', 'blitz', 'bowling', null, null, null];   // daily seed % 6: one day in three is a set piece
+export const BOSS_IDS = { 5: 'yeti', 10: 'robot', 15: 'golem', 20: 'yeti', 25: 'robot', 30: 'golem', 35: 'yeti', 40: 'robot' };
 
 // one-time intro cards (shown BEFORE the mountain starts, never during play)
 export const INTRO = {
-  1: { icon: '⛔', text: 'Küçükleri ye, büyü. Kapıyı kırmak için üstündeki ⛔ boyuta ulaşmalısın.', mech: 'gate' },
+  1: { icon: '🏘️', text: 'Dağın dibindeki KASABAYI yık! Küçükleri ye, büyü, kapıları kır: ⛔ boyuta ulaşmalısın.', mech: 'gate' },
   2: { icon: '📦', text: 'Kasalara çarp: içinden kar fışkırır. Hepsi senin!', mech: 'crate' },
   3: { icon: '🌨️', text: 'Çığ arkandan geliyor. Kapıya çarpıp durursan seni yakalar.', mech: 'chase' },
   4: { icon: '⚡', text: 'Hız şeridinden geç: hızlanırsın ve kapıya daha sert çarparsın.', mech: 'strip' },
@@ -53,6 +77,9 @@ export const INTRO = {
   12: { icon: '🧊', text: 'Buz köprüsü kestirmedir ama çok büyüksen çöker. Boyuna güven.', mech: 'bridge' },
   16: { icon: '⛸️', text: 'Buzlu yol: top kayar, erken dön.', mech: 'ice' },
   13: { icon: '💨', text: 'Rüzgâr seni yana iter.', mech: 'wind' },
+  17: { icon: '💰', text: 'HAZİNE DAĞI: her yer kasa! Altın kasaları kır, kar ve altın kazan.', mech: 'treasure' },
+  18: { icon: '🎳', text: 'BOWLİNG DAĞI: yokuştan toplar yuvarlanıyor! Beyazları yut, kırmızılardan kaç.', mech: 'bowling' },
+  19: { icon: '⚡', text: 'ŞİMŞEK ÇIĞ: çığ çok hızlı, süre yıldızı sıkı. Durma, kapıları hemen kır!', mech: 'blitz' },
   22: { icon: '🌫️', text: 'Sis var: kapı etiketlerine bak.', mech: 'fog' },
   26: { icon: '🌨️', text: 'Çığ bu sefer daha hızlı.', mech: 'rush' },
 };
@@ -94,7 +121,8 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const crateRadius = (pr) => clamp(0.55 * pr, 0.3, 3.4);
 export function fmtD(d) {
   if (d >= 10) return String(Math.round(d));
-  return (Math.round(d * 10) / 10).toFixed(1).replace('.', ',').replace(/,0$/, '');
+  const r = (Math.round(d * 10) / 10).toFixed(1).replace(/\.0$/, '');
+  return getLang() === 'en' ? r : r.replace('.', ',');   // (decimal comma in Turkish, point in English)
 }
 
 // ------------------------------------------------------------------------------------------------ plan helpers
@@ -145,18 +173,26 @@ function build(n, daily, assist, opts) {
   const bossArena = boss && L.bossArena;
   const bossId = boss ? BOSS_IDS[n] || 'yeti' : null;
   const bigBoss = boss && n % 10 === 0;   // PATRON SEVİYESİ: every 10th mountain is a grand boss (bigger reward)
-  const mod0 = daily ? null : MODS[Math.floor((n - 1) / 5)] || null;
+  const sp = SPECIALS[daily ? DAILY_SPECIAL[(seed >>> 0) % DAILY_SPECIAL.length] : SPECIAL_AT[n]] || null;
+  const mod0 = sp && !boss ? sp : daily ? null : MODS[Math.floor((n - 1) / 5)] || null;
+  const treasure = !!mod0 && mod0.id === 'treasure', blitz = !!mod0 && mod0.id === 'blitz', bowling = !!mod0 && mod0.id === 'bowling';
   const mod = mod0 && boss && mod0.twist && mod0.id !== 'rush' ? null : mod0;   // (boss mountains stay a clean size duel)
   const S = 2 + Math.floor(n / 7);
+  // BOWLİNG: one ball every ROLL_EVERY s while you are inside the stretch; the reserved length is ~70 % of what the ball covers meanwhile (speed ~ 28 + 3.2 n m/s, fitted to the bot; the last balls may roll past the stretch)
+  const rollN = 4 + (n >= 20 ? 1 : 0) + (n >= 30 ? 1 : 0), rollLen = Math.min(320, Math.max(150, Math.round(0.7 * rollN * ROLL_EVERY * (28 + 3.2 * n))));
   const ters = !daily && !boss && n >= 7 && n % 7 === 0;   // TERS ÇIĞ: the avalanche runs ahead, you chase it
   const tNom = Math.min(90, Math.round(45 + 1.5 * (n - 1)) + (boss ? 8 : 0));
-  const par = Math.round(L.parK * tNom);
+  const townSecs = boss ? 0 : TOWN_SECS;   // (boss mountains end with the PATRON, not a town)
+  const par = blitz ? blitzPar(n) : Math.round(L.parK * (tNom + townSecs));
   const speedK = L.speedK0 + L.speedKStep * (n - 1);
-  const rEnd = 1.8 * Math.pow(1.105, n - 1);
+  // (DAG 31+: slower size growth; the world's props / tiers were only ever tuned up to DAG 30's ~33 m radius)
+  const rEnd = 1.8 * Math.pow(1.105, Math.min(n, 30) - 1) * (1 + 0.035 * Math.max(0, n - 30));
   const r0 = n <= 4 ? CFG.startR : Math.max(CFG.startR, rEnd / 3.2);
   const rCap = L.capK * rEnd;
-  const length = round10(L.lenK * tNom * speedK * (18 + 6 * Math.sqrt(Math.sqrt(r0 * rEnd))));
-  const dF = length - L.finalPad;
+  const base = round10(L.lenK * tNom * speedK * (18 + 6 * Math.sqrt(Math.sqrt(r0 * rEnd))));
+  const townLen = townSecs ? round10(townSecs * base / tNom) : 0;
+  const length = base + townLen;
+  const dF = base - L.finalPad;
   const gateK = (n === 1 ? 0.72 : n < 6 ? 0.78 + 0.0028 * (n - 2) : Math.min(1.1, 0.9 + 0.004 * (n - 6))) - (assist ? 0.04 : 0);
   const star2K = 1 + 0.005 * (n - 1);
   const hw0 = hwFor(r0);
@@ -166,7 +202,7 @@ function build(n, daily, assist, opts) {
     ters, boss, bossId, bigBoss, mod, coinK: mod && mod.coinK ? mod.coinK : 1, bossHits: boss ? 6 + Math.floor(n / 5) : 0,
     speedK, tNom, par, r0, rEnd, rCap, tierStart: tierOf(r0), tierCap: tierOf(rEnd), hw0, length, dF, S,
     gateK, star2K, r2: star2K * rEnd, meltMul: n <= 2 ? 0.7 : n <= 5 ? 0.85 : 1, assist,
-    gates: [], finale: null, items: [], widths: [], chase: null, twist: null, mech: [], intro: null,
+    gates: [], finale: null, town: null, townLen, items: [], widths: [], chase: null, twist: null, mech: [], intro: null,
     crates: { total: 0, gold: 0, target3: 0 }, stars: [],
   };
   if (daily && opts.dailyNo) P.label = 'GÜNÜN DAĞI #' + opts.dailyNo;
@@ -187,6 +223,8 @@ function build(n, daily, assist, opts) {
   }
   const fg = P.gates[S - 1];
   P.finale = { kind: bossArena ? 'boss' : (n % 2 ? 'wall' : 'gate'), d: dF, minR: fg.minR };
+  // KASABA (PLAN_V3 5): after the final gate the course runs through the mountain's town; R = the size that broke the gate (TERS: the plan ball, its gate is only 0.3 of that), min = the final gate's size, every building is at most 1.3 R (smashable even by a ball that cracked the gate)
+  if (townLen) P.town = { d0: dF + 24, d1: length - 8, R: ters ? Math.max(fg.minR, 0.72 * rEnd) : fg.minR, min: fg.minR, need: TOWN_NEED, name: daily ? 'Günün Kasabası' : NAMES[n - 1] + ' Kasabası' };
   // PATRON: a fixed size (radius) from the plan. Ball >= it at contact: swallow it; smaller: crash. It is also the finish barrier's
   // requirement (the boss IS the barrier), so the HUD chip shows it. Fair: a bit under a normal final gate at that distance.
   P.bossNeedR = boss ? Math.round((BOSS_K + 0.02 * Math.floor((n - 1) / 10)) * fg.minR * 20) / 20 : 0;
@@ -199,10 +237,11 @@ function build(n, daily, assist, opts) {
     let k = Math.min(0.78, 0.42 + 0.012 * (n - 3)), gap0 = Math.max(70, 120 - 1.5 * (n - 3));
     if (n >= 26) { k += 0.08; gap0 -= 15; }
     if (assist) gap0 += 20;
+    if (blitz) { k = Math.min(0.9, k + 0.1); gap0 = Math.max(60, gap0 - 15); }
     P.chase = { t0: 6, gap0, k, clamp: 1.35 };
   }
   // modifier twist: not on boss mountains (they stay a clean size duel) except the existing late-game rush
-  P.twist = n >= 26 ? 'rush' : mod && mod.twist && !boss ? mod.twist : null;
+  P.twist = mod && mod.twist && !boss ? mod.twist : n >= 26 ? 'rush' : null;
   for (const m in MECH_AT) if (MECH_AT[m] <= n) P.mech.push(m);
   if (!daily) P.intro = INTRO[n] || null;
 
@@ -259,6 +298,7 @@ function build(n, daily, assist, opts) {
         if (n >= 6) { kind = ['crateLine', 'crateWall', 'iceWall'][crateCycle % 3]; crateCycle++; }
         parts.push({ kind, len: RES[kind], gold: 0 });
         lastKind = kind;
+        if (treasure) { const k2 = kind === 'crateWall' ? 'crateLine' : 'crateWall'; parts.push({ kind: k2, len: RES[k2], gold: 0 }); lastKind = k2; }
       }
       const used = {};
       while (parts.length < k) {
@@ -286,6 +326,8 @@ function build(n, daily, assist, opts) {
     if (!arenaStage && !daily && !boss && !ters && n >= 3 && i === Math.min(2, S - 1)) parts.unshift({ kind: 'throne', len: RES.throne });
     // GİZLİ KAR TÜNELİ: a cracked ice wall at the slope edge (about one per mountain, from DAĞ 4)
     if (!arenaStage && n >= 4 && i === Math.min(1, S - 1)) parts.unshift({ kind: 'secret', len: RES.secret });
+    // BOWLİNG: a rolling-balls stretch in every stage after the first (first in the list = the last one the packer drops)
+    if (!arenaStage && bowling && i >= 1) parts.unshift({ kind: 'rollers', len: rollLen, count: rollN, gold: 0 });
     if (!arenaStage) {
       // a power-up after the first part, an extra strip in the middle of later stages
       if (n >= 2 && parts.length) parts.splice(Math.min(1, parts.length), 0, { kind: 'pickup', len: RES.pickup, power: power() });
@@ -345,7 +387,7 @@ function build(n, daily, assist, opts) {
   }
 
   // golden crates: spread over the crate parts (hand-made lists already mark theirs)
-  const gc = n < 9 ? 0 : n < 17 ? 2 : n < 25 ? 3 : 4;
+  const gc = Math.max(treasure ? 5 : 0, n < 9 ? 0 : n < 17 ? 2 : n < 25 ? 3 : 4);
   P.crates.gold = 0;
   const crateParts = items.filter((p) => p.kind === 'crateLine' || p.kind === 'crateWall');
   if (gc && !items.some((p) => p.gold)) {
@@ -402,6 +444,17 @@ function build(n, daily, assist, opts) {
       p.xf = rng.range(-0.6, 0.6);
     } else if (p.kind === 'army') {
       p.at = p.start + 12;
+    } else if (p.kind === 'rollers') {
+      // BOWLİNG: the balls are plan data (a fair retry): white, red, white, red ... alternating sides; k = radius / the ball's radius at spawn
+      p.rolls = [];
+      P.rollWhites = P.rollWhites | 0;
+      let side = rng.sign();
+      for (let q = 0; q < p.count; q++) {
+        side = -side;
+        const big = q % 2 === 1;
+        if (!big) P.rollWhites++;
+        p.rolls.push({ xf: +(side * rng.range(0.3, 0.7)).toFixed(2), big, k: +(big ? rng.range(1.35, 1.7) : rng.range(0.5, 0.65)).toFixed(2) });
+      }
     }
     p.at = p.at ?? p.start + 10;
   }
@@ -441,6 +494,7 @@ function build(n, daily, assist, opts) {
     }
   }
   items.push({ kind: 'finish', start: dF + 14, len: 4, at: length, stage: S - 1 });
+  if (P.town) items.push({ kind: 'townrun', start: P.town.d0, len: P.town.d1 - P.town.d0, at: P.town.d0, stage: S - 1 });
   items.sort((x, y) => x.start - y.start || (x.kind === 'gate' ? 1 : 0) - (y.kind === 'gate' ? 1 : 0));
   P.items = items;
 
@@ -470,10 +524,14 @@ function makePowerBag(n, rng) {
 
 function makeStars(P, n, daily, boss, items) {
   const st = [{ star: 1, kind: 'finish', text: 'Dağı bitir' }];
-  st.push({ star: 2, kind: 'size', r: P.r2, text: `Bitişte ${fmtD(2 * P.r2)} m boyuta ulaş` });
+  if (P.town) st.push({ star: 2, kind: 'town', pct: P.town.need, text: `Kasabanın %${Math.round(100 * P.town.need)} kadarını yık` });
+  else st.push({ star: 2, kind: 'size', r: P.r2, text: `Bitişte ${fmtD(2 * P.r2)} m boyuta ulaş` });
   let kind;
   const hasRival = items.some((p) => p.kind === 'rival');
-  if (!daily && n <= 12) kind = STAR3[n];
+  if (P.mod && P.mod.id === 'blitz') kind = 'time';
+  else if (P.mod && P.mod.id === 'bowling') kind = 'rolls';
+  else if (P.mod && P.mod.id === 'treasure' && P.crates.gold > 0) kind = 'gold';
+  else if (!daily && n <= 12) kind = STAR3[n];
   else if (boss) kind = n % 10 === 5 ? 'nohit' : 'time';
   else {
     const pool = ['nobounce', 'time', 'chain', 'nohit'];
@@ -492,6 +550,7 @@ function makeStars(P, n, daily, boss, items) {
   if (kind === 'statues' && !P.hasStatues) kind = 'nobounce';
   if (kind === 'throne' && !P.hasThrone) kind = 'nohit';
   if (kind === 'secret' && !P.hasSecret) kind = 'nobounce';
+  if (kind === 'rolls' && !P.rollWhites) kind = 'nohit';
   const s3 = { star: 3, kind };
   switch (kind) {
     case 'nobounce': s3.text = 'Kapıdan hiç geri sekme'; break;
@@ -503,6 +562,7 @@ function makeStars(P, n, daily, boss, items) {
     case 'rival': s3.text = 'Rakip kartopunu yut'; break;
     case 'throne': s3.text = 'KARDAN ADAM TAHTINI yık'; break;
     case 'secret': s3.text = 'GİZLİ YOLU bul'; break;
+    case 'rolls': s3.count = Math.max(2, Math.floor((n < 24 ? 0.4 : 0.6) * P.rollWhites)); s3.text = `Yuvarlanan ${s3.count} topu yut`; break;
     case 'statues': s3.count = P.hasStatues; s3.text = `HEYKEL SERİSİ: ${s3.count} heykelin hepsini yık`; break;
     default: s3.text = 'Dağı bitir';
   }
@@ -510,11 +570,11 @@ function makeStars(P, n, daily, boss, items) {
   return st;
 }
 
-// stats = { finished, finalR, bounces, hits, crates, gold, maxMul, time, rivalEaten }
+// stats = { finished, finalR, townPct (0..1), bounces, hits, crates, gold, maxMul, time, rivalEaten, statues, throne, secret, rolls }
 export function evalStars(P, st) {
   const fin = !!(st && st.finished);
   const b1 = fin;
-  const b2 = fin && st.finalR >= P.r2 - 1e-6;
+  const b2 = fin && (P.town ? st.townPct >= P.town.need - 1e-6 : st.finalR >= P.r2 - 1e-6);
   const s3 = P.stars[2];
   let b3 = false;
   if (fin) {
@@ -529,6 +589,7 @@ export function evalStars(P, st) {
       case 'statues': b3 = (st.statues | 0) >= s3.count; break;
       case 'throne': b3 = (st.throne | 0) >= 1; break;
       case 'secret': b3 = (st.secret | 0) >= 1; break;
+      case 'rolls': b3 = (st.rolls | 0) >= s3.count; break;
       default: b3 = true;
     }
   }
@@ -540,7 +601,7 @@ export function planBrief(n, opts) {
   return {
     n: P.n, id: P.id, label: P.label, name: P.name, boss: P.boss, bossId: P.bossId, S: P.S, length: P.length,
     tierFrom: CFG.tierNames[P.tierStart], tierTo: CFG.tierNames[P.tierCap],
-    goals: P.stars.map((s) => s.text), intro: P.intro,
+    goals: P.stars.map((s) => s.text), intro: P.intro, town: P.town ? { name: P.town.name, size: 2 * P.town.R } : null,
   };
 }
 
@@ -553,14 +614,15 @@ export function validatePlan(P) {
     if (g.minR < prevMin - 1e-9) bad.push('minR decreasing');
     prev = g.d; prevMin = g.minR;
   }
-  if (P.gates[P.S - 1].d !== P.length - CFG.lvl.finalPad) bad.push('final gate is not at length-36');
-  let end = 0;
+  if (P.gates[P.S - 1].d !== P.length - P.townLen - CFG.lvl.finalPad) bad.push('final gate is not at length-townLen-36');
+  if (P.town && !(P.town.d0 > P.dF && P.town.d1 > P.town.d0 + 40 && P.town.d1 < P.length)) bad.push('town outside the course');
+  let end = 0, forkEnd = 0;
   for (const it of P.items) {
-    if (it.start < end - 0.5 && it.kind !== 'strip' && it.kind !== 'finish') {
-      // gates may start inside the previous reserved span only when that span is the boss arena's 100 m
-      bad.push(`overlap at ${it.kind}@${it.start} (prev end ${Math.round(end)})`);
-    }
-    if (it.kind !== 'strip') end = Math.max(end, it.start + (it.kind === 'finish' ? 0 : it.len));
+    // (a route fork may run into the 70 m approach of the gate after it: the gate's feeding trail is thin there by design)
+    const lim = it.kind === 'gate' ? end : Math.max(end, forkEnd);
+    if (it.start < lim - 0.5 && it.kind !== 'strip' && it.kind !== 'finish') bad.push(`overlap at ${it.kind}@${it.start} (prev end ${Math.round(lim)})`);
+    if (it.kind === 'fork') forkEnd = Math.max(forkEnd, it.start + it.len);
+    else if (it.kind !== 'strip') end = Math.max(end, it.start + (it.kind === 'finish' ? 0 : it.len));
     if (it.start < 100 || it.start > P.length) bad.push(`${it.kind} out of range @${it.start}`);
   }
   for (let i = 1; i < P.items.length; i++) if (P.items[i].start < P.items[i - 1].start) bad.push('items not sorted');

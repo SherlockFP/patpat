@@ -1,4 +1,5 @@
 import { installI18n } from "./i18n.js";
+import './fullscreen.js';
 installI18n();
 import * as THREE from 'three';
 import './style.css';
@@ -8,11 +9,11 @@ import { World, clamp } from './world.js';
 import { Ball } from './ball.js';
 import { Fx } from './fx.js';
 import { Input } from './input.js';
-import { UI, fmtTons } from './ui.js';
+import { UI, fmtTons, fmtN } from './ui.js';
 import { setShareContext } from './sharecard.js';
 import { audio } from './audio.js';
 import { platform, notify } from './platform.js';
-import { save } from './save.js';
+import { save, CIG_LEVELS } from './save.js';
 import { dailySeed, dailyNumber } from './rng.js';
 import { PostFX, VISUAL_MODES, SU, patchMaterial, makeGovernor } from './shaders.js';
 import { makeSkin, disposeSkin, trailStyle, setGoldBall } from './skins.js';
@@ -25,6 +26,8 @@ import { openShop } from './shop.js';
 import { CigPlus, CigGame } from './cigplus.js';
 import { t as tr } from './i18n.js';
 import { dagPlan, DAG_COUNT, evalStars, validatePlan, fmtD } from './cigplan.js';
+// (the save file decides how many mountains can be unlocked / recorded: never offer one it cannot store)
+const MAX_DAG = Math.min(DAG_COUNT, CIG_LEVELS);
 // YETİ RUSH (the runner) is loaded on demand (keeps the first load small and ÇIĞ SONSUZ independent of it).
 let Runner = null;
 let music = { duck() {}, setMuted() {}, suspend() {}, resume() {} };
@@ -33,8 +36,22 @@ async function loadEndless() {
   const [r, mu] = await Promise.all([import('./runner/runner.js'), import('./runner/music.js')]);
   Runner = r.Runner;
   music = mu.music;
-  music.setMuted(!musicOn);
+  syncMusicMute();
 }
+// music is silent when EITHER the music toggle or the sound toggle is off
+function syncMusicMute() {
+  const m = !musicOn || audio.isMuted();
+  music.setMuted(m);
+  if (!m && G.state === 'menu') startMenuMusic();
+}
+// lobby theme: the chunk is lazy, so it may arrive after the player already left the menu; every way out of the menu bumps the token
+let menuMusicTok = 0;
+function startMenuMusic() {
+  const tok = ++menuMusicTok;
+  if (!musicOn || audio.isMuted()) return;
+  loadEndless().then(() => { if (tok === menuMusicTok && G.state === 'menu' && musicOn && !audio.isMuted()) { music.start('menu', 88); music.setIntensity(0.85); } }).catch(() => {});
+}
+function stopMenuMusic() { menuMusicTok++; music.stop?.(); }
 
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
@@ -43,14 +60,21 @@ const MAX_LEVEL = 99;
 
 // ---------- renderer / scene ----------
 const canvas = document.getElementById('c');
-const dprMax = Math.min(window.devicePixelRatio || 1, 2);
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: dprMax < 2, powerPreference: 'high-performance' });
+// Test browsers (navigator.webdriver) and software GL (SwiftShader / llvmpipe: the "GPU" is the CPU) get the cheapest settings from the start:
+// no MSAA, pixel ratio 1 (0.75 on software GL), "lite" extras off. Real phones keep the full ladder below.
+const AUTOMATED = !!(typeof navigator !== 'undefined' && navigator.webdriver);
+const dprMax0 = AUTOMATED ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: dprMax0 < 2 && !AUTOMATED, powerPreference: 'high-performance' });
+const SOFTWARE_GL = (() => {
+  try { const gl = renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); return !!e && /swiftshader|llvmpipe|software|basic render/i.test(String(gl.getParameter(e.UNMASKED_RENDERER_WEBGL))); } catch { return false; }
+})();
+const dprMax = SOFTWARE_GL ? Math.min(dprMax0, 0.75) : dprMax0;
 let dpr = dprMax;
 renderer.setPixelRatio(dpr);
 // Adaptive quality (makeGovernor, shaders.js): when the mean frame time of a 2 s window is above ADAPT_DOWN_MS the pixel ratio drops one 0.25 step
 // (floor 1), then the optional extras go ("lite": no contact shadow / glitter / streaks); a few calm windows below ADAPT_UP_MS climb back, never above dprMax.
 const ADAPT_DOWN_MS = 21, ADAPT_UP_MS = 17.5;
-const gov = makeGovernor({ dprMax, dprMin: 1, step: 0.25, downMs: ADAPT_DOWN_MS, upMs: ADAPT_UP_MS });
+const gov = makeGovernor({ dprMax, dprMin: SOFTWARE_GL ? 0.5 : 1, step: 0.25, downMs: ADAPT_DOWN_MS, upMs: ADAPT_UP_MS });
 
 const HORIZON = 0xdcefff;
 const scene = new THREE.Scene();
@@ -65,6 +89,8 @@ const post = new PostFX(renderer);
 let visualMode = 'normal';
 try { visualMode = localStorage.getItem('cig.visual') || 'normal'; } catch { /* ignore */ }
 post.setMode(visualMode);
+if (SOFTWARE_GL) post.setLite(true);
+let pausedDrawn = false;   // a paused screen is static: it is drawn once, then the GPU / CPU rest until resume
 const camLook = new THREE.Vector3();
 let baseFov = 60;
 
@@ -79,14 +105,29 @@ function resize() {
   camera.fov = baseFov + (camera.userData.fovBoost || 0);
   camera.updateProjectionMatrix();
   post?.resize();
+  pausedDrawn = false;
 }
-window.addEventListener('resize', resize);
+// (a drag-resize / the Android URL bar fire many events: one real resize per frame; iOS reports the new size late after a rotation)
+let resizeQ = 0;
+function resizeSoon() { if (!resizeQ) resizeQ = requestAnimationFrame(() => { resizeQ = 0; resize(); }); }
+window.addEventListener('resize', resizeSoon);
+window.addEventListener('orientationchange', () => { resizeSoon(); setTimeout(resizeSoon, 250); });
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeSoon);
 resize();
 
-canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); pause(true); });
+// WebGL context loss (the OS reclaims the GPU: backgrounded tab, memory pressure): stop drawing and pause the run; three.js rebuilds its GPU state
+// itself on restore, we only have to draw again at the right size.
+let glLost = false;
+canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); glLost = true; pause(true); });
+canvas.addEventListener('webglcontextrestored', () => { glLost = false; pausedDrawn = false; resize(); });
 
 // ---------- systems ----------
 const lib = buildPropLibrary();
+// The ~1 MB imported models: the download starts NOW and is off the critical path of the first screen (boot() gives it a short head start only).
+// Anything that builds a world waits for it (afterModels), so a very fast tap never plays on a half-filled prop library.
+let modelsDone = false;
+const modelsP = loadModels().then((m) => { Object.assign(lib, m); }, (e) => console.warn(e)).then(() => { modelsDone = true; });
+const afterModels = (fn) => (modelsDone ? fn() : modelsP.then(fn));
 const propMat = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
 const ball = new Ball(scene, lib, propMat);
 const ui = new UI();
@@ -118,15 +159,24 @@ const G = {
 const _v = new THREE.Vector3();
 
 // ---------- wardrobe ----------
-let skin = null;
+let skin = null, skinId = '', skinLv = -1;
 function applySkin(id) {
-  const next = makeSkin(id);
+  let lv = 0; try { lv = meta.charLevel(id) | 0; } catch { lv = 0; }
+  skinId = id; skinLv = lv;
+  const next = makeSkin(id, lv);
   // Lava ships its own shader patch; everything else gets the shared look (classic = sparkly snow).
   if (id !== 'lav') patchMaterial(next.material, { snow: id === 'classic' || id === 'pamuk' });
+  if (!skin) ball.snow.geometry.dispose(); // the placeholder sphere the Ball was built with
   ball.snow.geometry = next.geometry;
   ball.snow.material = next.material;
   if (skin) disposeSkin(skin);
   skin = next;
+}
+// the character level ring follows meta.charLevel: rebuild only when the chosen ball or its level changed (menu / run start)
+function refreshSkin() {
+  const id = save.selected('skin');
+  let lv = 0; try { lv = meta.charLevel(id) | 0; } catch { lv = 0; }
+  if (id !== skinId || lv !== skinLv) applySkin(id);
 }
 function tintGold() {
   setGoldBall(true); // classic skin only; makeSkin re-applies the tint for every later build
@@ -143,7 +193,7 @@ let musicOn = true;
 try { musicOn = localStorage.getItem('cig.music.muted') !== '1'; } catch { /* ignore */ }
 function openWardrobe() {
   audio.init();
-  menus.hideMain();
+  menus.hideMain(); stopMenuMusic();
   closeShop = openShop({
     save,
     onSelect: (kind, id) => {
@@ -170,19 +220,19 @@ const menus = createMenus({
     // OYNA = YETİ RUSH straight away; ÇIĞ SONSUZ and MACERA are small buttons.
     onEndless: () => startEndless(),
     onDailyRush: () => { window.patpatDailyRush?.(); startEndless(); },  // GÜNÜN RUSH'I (seeded by date)
-    onCigEndless: () => startCigEndless(),    // (the menu only offers it once DAĞ 10 is cleared)
-    onCigLevel: (n, o) => startCigLevel(n, o),
+    onCigEndless: () => afterModels(() => startCigEndless()),    // (the menu only offers it once DAĞ 10 is cleared)
+    onCigLevel: (n, o) => afterModels(() => startCigLevel(n, o)),
     onAgar: () => startAgar(),
     onPlayLevel: (id) => startLevel(id),
     onBallTap: () => lobbyBounce(),
     onBallGold: () => { window.__patpatGold = true; tintGold(); },
     onSneeze: () => { fx?.burst(ball.x, ball.y + ball.r, ball.d, 30, 0xffffff, 6, 0.15, 6); audio.pop(0.2, 4); },
-    onLevels: () => playCigLevel(save.cigNext()),
-    onDaily: () => startCigLevel({ daily: true }),
+    onLevels: () => afterModels(() => playCigLevel(save.cigNext())),
+    onDaily: () => afterModels(() => startCigLevel({ daily: true })),
     onShop: () => openWardrobe(),
     onVisualCycle: () => cycleVisual(),
-    onSound: (on) => { audio.init(); audio.setMuted(!on); ui.setToggle('sound', on); },
-    onMusic: (on) => { musicOn = on; music.setMuted(!on); try { localStorage.setItem('cig.music.muted', on ? '0' : '1'); } catch { /* ignore */ } },
+    onSound: (on) => { audio.init(); audio.setMuted(!on); ui.setToggle('sound', on); syncMusicMute(); },
+    onMusic: (on) => { musicOn = on; syncMusicMute(); try { localStorage.setItem('cig.music.muted', on ? '0' : '1'); } catch { /* ignore */ } },
     onHaptics: (on) => { platform.setHapticsEnabled(on); ui.setToggle('haptic', on); if (on) platform.haptic('medium'); },
     getToggles: () => ({ sound: !audio.isMuted(), music: musicOn, haptics: platform.hapticsEnabled(), visualName: (VISUAL_MODES.find((v) => v.id === visualMode) || VISUAL_MODES[0]).name }),
     sfx: (kind) => { audio.init(); audio.ui(kind); },
@@ -221,6 +271,7 @@ function randomSeed() {
 
 // Dispose + rebuild everything that belongs to the ÇIĞ slope (world, scenery, extras, the rules).
 function buildWorld(seed, themeIdx, daily, plan = null) {
+  game?.dispose?.();
   plus?.dispose();
   if (world) world.dispose();
   world = new World(scene, lib, { seed, level: plan });
@@ -268,6 +319,9 @@ const cigHost = {
   text(str, at, cls) { popText(str, at, cls); },
   toast(str) { if (ui.toastSoft) ui.toastSoft(str); },
   shake(v) { G.shake += v; },
+  debris(x, y, d, n) { fx.debris?.({ x, y, z: -d }, 0xb08a5a, n); },
+  dust(x, y, d, r) { fx.dust?.({ x, y, z: -d }, r); },
+  photoFlash() { fx.photoFlash?.(); },
   hitStop(s) { if (G.hitStopCd <= 0) { G.hitStop = Math.max(G.hitStop, s); G.hitStopCd = 0.15; } },
   flash(kind) { ui.flash?.(kind); },
   kick(zoom, fov) { camZoom = Math.max(camZoom, zoom); G.fovKick = Math.max(G.fovKick, fov); },
@@ -343,14 +397,22 @@ function showIntroChip(plan) {
   }
   const parts = [];
   if (plan.boss && !plan.daily) parts.push('<b class="pat' + (plan.bigBoss ? ' big' : '') + '">' + (plan.bigBoss ? '👑 ' : '👹 ') + 'PATRON SEVİYESİ</b>');
-  if (plan.mod && !plan.daily) parts.push('<b class="mod">' + plan.mod.icon + ' ' + plan.mod.name + '</b>');
+  if (plan.mod && (!plan.daily || plan.mod.special)) parts.push('<b class="mod">' + plan.mod.icon + ' ' + plan.mod.name + '</b>');
+  if (plan.town) parts.push('<b class="mod">🏘️ KASABAYI YIK · en az ' + fmtD(2 * plan.town.min) + ' m ol</b>');   // the goal, told up front
   nightEl.style.display = plan.mod && plan.mod.night && !plan.daily ? 'block' : 'none';
   if (!parts.length) { introChip.style.display = 'none'; return; }
   introChip.innerHTML = parts.join('');
-  introChip.style.display = 'flex';
-  introChip.classList.remove('out');
-  clearTimeout(introChipT);
-  introChipT = setTimeout(() => { introChip.classList.add('out'); introChipT = setTimeout(() => { introChip.style.display = 'none'; }, 600); }, 3200);
+  // the chip is a message like any other: it takes the HUD's single message lane (ui._say), so it never stacks with a toast / banner
+  ui._say('c', {
+    text: 'intro:' + plan.n, prio: 2, ms: 2000,
+    show: () => {
+      introChip.style.display = 'flex';
+      introChip.classList.remove('out');
+      clearTimeout(introChipT);
+      introChipT = setTimeout(() => { introChip.classList.add('out'); introChipT = setTimeout(() => { introChip.style.display = 'none'; }, 600); }, 2000);
+      return () => { clearTimeout(introChipT); introChip.style.display = 'none'; };
+    },
+  });
 }
 function hideIntroChip() { if (introChip) { clearTimeout(introChipT); introChip.style.display = 'none'; } if (nightEl) nightEl.style.display = 'none'; }
 const NIGHT_C = new THREE.Color(0x14204a);
@@ -399,7 +461,7 @@ async function startEndless(level = null, opts = {}) {
   audio.init();
   audio.ui();
   try {
-    await loadEndless();
+    await Promise.all([loadEndless(), modelsP]);
   } catch (e) {
     console.error(e);
     ui.toast('Sonsuz mod yüklenemedi');
@@ -416,7 +478,7 @@ async function startEndless(level = null, opts = {}) {
   ui.cigReset?.();
   G.lv = null;
   hideLevelHud();
-  menus.hideMain();
+  menus.hideMain(); stopMenuMusic();
   setCigVisible(false);
   if (!fx) { fx = new Fx(scene, groundless, camera); applyTrail(save.selected('trail')); }
   fx.world = groundless;
@@ -429,8 +491,18 @@ async function startEndless(level = null, opts = {}) {
   input.consumeDoubleTap?.();
   runner.onFinish = level ? (stats) => levelDone(level, stats) : null;
   runner.onFail = level ? (cause, stats) => levelFailed(level, cause, stats) : null;
+  refreshSkin();
   runner.start(undefined, level, { retry: !!opts.retry });
+  if (!prewarmed) { prewarmed = true; fx.prewarm?.(renderer, scene, camera); }   // compile the streak shader before the first fast frame (the 383 ms hitch)
 }
+let prewarmed = false;
+// result screen hooks: GÜÇ button + the player level-up screen (menus owns both screens)
+ui.hooks = {
+  power: () => menus.openPower(),
+  nextPower: () => { try { return menus.cheapestPower() || null; } catch { return null; } },   // { name, icon, price, have, afford } of the cheapest open upgrade
+  affordPower: () => { try { return !!menus.cheapestPower()?.afford; } catch { return false; } },
+  levelUp: () => { try { if (meta.pendingLevelUps().length) { fx?.levelUp?.(ball.group.position); menus.openLevelUp(); } } catch { /* optional */ } },
+};
 let debugNoTut = false;
 
 function leaveEndless() {
@@ -459,7 +531,7 @@ async function startAgar() {
   audio.ui();
   let mod;
   try {
-    mod = await import('./agar/agar.js');
+    [mod] = await Promise.all([import('./agar/agar.js'), modelsP]);
   } catch (e) {
     console.error(e);
     ui.toast('Agar modu yüklenemedi');
@@ -475,7 +547,7 @@ async function startAgar() {
   hideLevelHud();
   ui.showPause(false);
   hideEnemyBars();
-  menus.hideMain();
+  menus.hideMain(); stopMenuMusic();
   audio.setRoll(0, 0);
   setCigVisible(false);
   agar = new mod.AgarMode({
@@ -511,6 +583,8 @@ function toMenu() {
   G.lv = null;
   hideLevelHud();
   G.state = 'menu';
+  // lobby theme (the music chunk is lazy; skip if the player already left the menu when it arrives)
+  startMenuMusic();
   G.paused = false;
   G.level = Math.min(save.level, MAX_LEVEL);
   G.hitStop = 0; G.timeScale = 1; G.shake = 0; G.fovKick = 0;
@@ -520,6 +594,7 @@ function toMenu() {
   ball.reset(CFG.startR);
   ball.y = world.groundY(0, 0) + ball.r * 0.92;
   ball.speed = 0;
+  refreshSkin();
   ball.sync();
   const ds = dailySeed();
   const best = save.dailyFor(ds);
@@ -562,7 +637,7 @@ function startCigEndless(opts = {}) {
   leaveAgar();
   leaveEndless();
   ui.cigReset?.();
-  menus.hideMain();
+  menus.hideMain(); stopMenuMusic();
   audio.init();
   if (!opts.retry) audio.ui();
   meta.track('run_start', { mode: 'cigEndless', daily });
@@ -608,9 +683,18 @@ function ensureLevelHud(plan) {
     row.appendChild(gc); row.appendChild(sz);
     root.appendChild(row); root.appendChild(ch);
     hud.appendChild(root);
-    lvHud = { root, gc, gs, gt, sz, ch, s: '', t: '', z: '', c: '', r: -1, marks: [], gi: -1 };
+    // ONE permanent gauge: ball size -> town size (stage gates = notches); once the town is being destroyed the same bar shows the destroyed % (notch = the 2-star goal)
+    const g = mk('div'); g.id = 'cig-gauge';
+    const gb = mk('div', 'gb'), gf = mk('i', 'gf');
+    gb.appendChild(gf);
+    const gi = mk('span', 'gi'), gtn = mk('span', 'gt');
+    gi.textContent = '⚪'; gtn.textContent = '🏘️';
+    g.append(gi, gb, gtn);
+    hud.appendChild(g);
+    lvHud = { root, gc, gs, gt, sz, ch, g, gb, gf, gIco: gi, gnotch: [], gk: '', s: '', t: '', z: '', c: '', r: -1, marks: [], gi: -1 };
   }
   lvHud.root.style.display = '';
+  lvHud.g.style.display = 'none'; lvHud.gk = '';   // shown by the first payload that carries a gauge
   lvHud.s = lvHud.t = lvHud.z = lvHud.c = ''; lvHud.r = -1; lvHud.gi = -1; lvHud.marks.length = 0;
   lvHud.ch.style.display = 'none';
   hud.classList.add('cig-lvl');
@@ -624,12 +708,12 @@ function ensureLevelHud(plan) {
     sp.title = plan.stars.map((g) => g.text).join(' · ');
   }
   const town = hud.querySelector('.hud-progress .town');
-  if (town) town.textContent = '🏁';
+  if (town) town.textContent = plan.town ? '🏘️' : '🏁';
   const bar = hud.querySelector('.hud-progress .bar');
   if (bar) {
     for (const e of Array.from(bar.querySelectorAll('.pt'))) e.remove();
     for (const g of plan.gates) {
-      if (g.i === plan.S - 1) continue;
+      if (g.i === plan.S - 1 && !plan.town) continue;   // (with a town the final gate is a tick too: the town is the stretch after it)
       const m = document.createElement('i');
       m.className = 'pt gate';
       m.textContent = '⛔';
@@ -641,7 +725,7 @@ function ensureLevelHud(plan) {
 }
 // level mode: the ball DIAMETER is the headline number, the (exploding) tons shrink to a compact secondary line
 function tonsCompact(t) {
-  const f = (v, u) => (v < 10 ? v.toFixed(1) : String(Math.round(v))).replace('.', ',') + u;
+  const f = (v, u) => (v < 10 ? v.toFixed(1) : String(Math.round(v))).replace('.', fmtD(1.5)[1]) + u;   // (the decimal separator follows the language: fmtD(1.5) = "1,5" / "1.5")
   if (t < 1000) return f(t, ' t');
   if (t < 1e6) return f(t / 1e3, 'k t');
   return f(t / 1e6, 'M t');
@@ -666,7 +750,9 @@ function updateLevelHud(V) {
   const m5 = Math.round(V.left / 5) * 5;
   const s = V.finalBroken ? 'BİTİŞ' : V.final ? 'FİNAL' : 'ETAP ' + (V.gateI + 1) + '/' + V.S;
   const t0 = V.finalBroken ? '🏁' : V.locked ? '👹 ' + fmtD(V.need) + ' m' : V.need > 0 ? '⛔ ' + fmtD(V.need) + ' m' : m5 + ' m';
-  const t = s + ' · ' + t0;
+  // KASABA mountains: ONE gauge "⚪ have → 🏘️ target" (the stage gates are ticks on the bar), the destroyed % once the town starts
+  const t = V.townNeed > 0 ? (V.finalBroken || V.have >= V.townNeed ? '🏘️ KASABA %' + (V.pct | 0) : '⚪ ' + fmtD(V.have) + ' m → 🏘️ ' + fmtD(V.townNeed) + ' m')
+    : V.final || V.finalBroken ? s + ' · ' + t0 : t0;   // plain target (⛔ 1.6 m); the stage count lives in the bar's gate pips
   const r = V.finalBroken ? 2 : V.ready;
   if (h.s !== '-') { h.s = '-'; h.gs.textContent = ''; h.gs.style.display = 'none'; }
   if (t !== h.t) { h.t = t; h.gt.textContent = t; }
@@ -674,7 +760,9 @@ function updateLevelHud(V) {
   if (lv.textContent !== t) lv.textContent = t;   // the level label IS the ETAP chip now
   if (r !== h.r) { h.r = r; h.gc.className = 'cgl gc r' + r; lv.classList.remove('lr0', 'lr1', 'lr2'); lv.classList.add('lr' + r); }
   if (h.stars) updateStars(V);
-  if (V.gateI !== h.gi) { h.gi = V.gateI; for (let i = 0; i < h.marks.length; i++) h.marks[i].classList.toggle('passed', i < V.gateI); }
+  const gk = V.finalBroken ? 99 : V.gateI;
+  if (gk !== h.gi) { h.gi = gk; for (let i = 0; i < h.marks.length; i++) h.marks[i].classList.toggle('passed', i < gk); }
+  updateGauge(V);
   h.sz.style.display = 'none';   // the size/speed pill lives in the ETAP strip now
   const c = V.ters > 0 ? '🏔 ÇIĞ: ' + Math.round(V.ters) + ' m ↑' : V.chainMul >= 2 ? 'ZİNCİR x' + V.chainMul : '';
   if (c !== h.c) { h.c = c; h.ch.textContent = c; h.ch.style.display = c ? '' : 'none'; }
@@ -682,12 +770,35 @@ function updateLevelHud(V) {
   const cl = ui.el.hud.classList;
   if (V.gap < CFG.lvl.chaseNear) cl.add('chase-near'); else if (V.gap > CFG.lvl.chaseNear + 10) cl.remove('chase-near');
 }
+// the ball-size -> town gauge (V.gauge / notchF / townPct / townGoal from cigplus); DOM is only written when the rounded state changes
+function updateGauge(V) {
+  const h = lvHud;
+  if (!h || !(V.gaugeTo > 0)) return;
+  const town = V.townNeed > 0 && (V.townPct > 0 || V.finalBroken);   // phase 2: the destroyed share of the town
+  const f = town ? V.townPct / 100 : V.gauge, pct = Math.round(Math.max(0, Math.min(1, f)) * 100);
+  const nf = town ? (V.townGoal > 0 ? [V.townGoal / 100] : []) : V.notchF;
+  const k = (town ? 't' : 's') + pct + ':' + nf.length + ':' + (town ? 0 : Math.round(V.gauge * 50));
+  if (k === h.gk) return;
+  if (h.gk === '' || h.gk[0] !== k[0]) {     // first payload or phase flip: rebuild the notches
+    h.g.style.display = 'flex'; ui.el.hud.classList.add('has-gauge');
+    for (const e of h.gnotch) e.remove();
+    h.gnotch.length = 0;
+    for (const x of nf) { const e = document.createElement('i'); e.className = 'gn'; e.style.left = (x * 100).toFixed(1) + '%'; h.gb.appendChild(e); h.gnotch.push(e); }
+    h.gb.classList.toggle('t', town);
+    h.gIco.textContent = town ? '🏘️' : '⚪';
+  }
+  h.gk = k;
+  h.gf.style.width = pct + '%';
+  for (let i = 0; i < h.gnotch.length; i++) h.gnotch[i].classList.toggle('passed', f >= nf[i]);
+  const tp = V.townNeed > 0 ? (V.townPct >= V.townGoal && V.townGoal > 0 ? 3 : V.townPct >= V.townGoal * 0.55 ? 2 : V.townPct > 0 ? 1 : 0) : 0;
+  if (ui.el.level.dataset.tp !== String(tp)) ui.el.level.dataset.tp = String(tp);
+}
 // star pips: 0 = not yet, 1 = earned, 2 = impossible now (grey)
 function updateStars(V) {
   const P = G.lv, st = game && game.stats;
   if (!P || !st || !P.stars) return;
   const fin = !!V.finalBroken, g3 = P.stars[2];
-  const a = [fin ? 1 : 0, lastHave >= 2 * P.r2 - 1e-6 ? 1 : 0, 0];
+  const a = [fin ? 1 : 0, P.town ? ((st.townPct || 0) >= P.town.need - 1e-6 ? 1 : 0) : lastHave >= 2 * P.r2 - 1e-6 ? 1 : 0, 0];
   const neg = (bad) => (bad ? 2 : fin ? 1 : 0);
   switch (g3.kind) {
     case 'nobounce': a[2] = neg((st.bounces | 0) > 0); break;
@@ -700,8 +811,11 @@ function updateStars(V) {
     case 'statues': a[2] = (st.statues | 0) >= g3.count ? 1 : 0; break;
     case 'throne': a[2] = (st.throne | 0) >= 1 ? 1 : 0; break;
     case 'secret': a[2] = (st.secret | 0) >= 1 ? 1 : 0; break;
+    case 'rolls': a[2] = (st.rolls | 0) >= g3.count ? 1 : 0; break;
     default: a[2] = fin ? 1 : 0;
   }
+  const vis = V.final || fin ? '1' : '0', sp = lvHud.stars[0].parentNode;   // the pip row fades in at the finale only (one row up top)
+  if (sp.style.opacity !== vis) { sp.style.transition = 'opacity .6s'; sp.style.opacity = vis; }
   const k = a.join('');
   if (k === lvHud.sc) return;
   lvHud.sc = k;
@@ -709,7 +823,8 @@ function updateStars(V) {
 }
 function hideLevelHud() {
   hideIntroChip();
-  if (lvHud) lvHud.root.style.display = 'none';
+  if (lvHud) { lvHud.root.style.display = 'none'; lvHud.g.style.display = 'none'; }
+  document.getElementById('hud')?.classList.remove('has-gauge');
   try { if (ui.el.tons) { ui.el.tons.textContent = ''; ui.lastTonsText = ''; if (ui._cg) ui._cg.kg = -1; } } catch { /* optional */ }
   const hud = ui.el?.hud;
   if (hud) {
@@ -719,6 +834,7 @@ function hideLevelHud() {
     hud.querySelector('.cig-stars')?.remove();
     if (lvHud) lvHud.stars = null;
     ui.el.level?.classList.remove('lr0', 'lr1', 'lr2');
+    if (ui.el.level) delete ui.el.level.dataset.tp;
     const town = hud.querySelector('.hud-progress .town');
     if (town && town.textContent === '🏁') town.textContent = '🏘️';
     const bar = hud.querySelector('.hud-progress .bar');
@@ -749,13 +865,13 @@ function startCigLevel(arg, opts = {}) {
   const daily = !!(arg && typeof arg === 'object' && arg.daily);
   const force = !!opts.force || DEBUG;
   if (daily && !force && !save.cigDailyOpen()) { ui.toast?.("Günün Dağı için DAĞ 3'ü bitir"); return; }
-  let n = daily ? Math.max(3, save.cigCleared()) : Math.max(1, Math.min(DAG_COUNT, Math.round(Number(arg)) || 1));
+  let n = daily ? Math.max(3, save.cigCleared()) : Math.max(1, Math.min(MAX_DAG, Math.round(Number(arg)) || 1));
   if (!daily && !force && n > save.cigUnlocked()) n = save.cigUnlocked();
   const fromMenu = G.state === 'menu' && G.mode === 'cig'; // lobby -> slope: the camera swoops out; retries cut cleanly
   leaveAgar();
   leaveEndless();
   ui.cigReset?.();
-  menus.hideMain();
+  menus.hideMain(); stopMenuMusic();
   audio.init();
   if (!opts.retry) audio.ui();
   G.dailySeed = dailySeed();
@@ -812,11 +928,12 @@ function finishCigLevel() {
   if (!sim) { ui.buffClear?.(); ui.hungerHide?.(); ui.cigReset?.(); ui.speedLines?.(0); ui.el.hud.classList.add('hidden'); }   // (the menu card replaces the HUD)
   G.state = 'result';
   if (win) {
-    const goalsMet = evalStars(plan, { finished: true, finalR: G.finalR, bounces: st.bounces, hits: st.hits, crates: st.crates, gold: st.gold, maxMul: st.maxMul, time: st.time, rivalEaten: st.rivalEaten, statues: st.statues, secret: st.secret });
+    const goalsMet = evalStars(plan, { finished: true, finalR: G.finalR, bounces: st.bounces, hits: st.hits, crates: st.crates, gold: st.gold, maxMul: st.maxMul, time: st.time, rivalEaten: st.rivalEaten, statues: st.statues, secret: st.secret, throne: st.throne, rolls: st.rolls, townPct: st.townPct });
+    const townPct = plan.town ? Math.round(100 * (st.townPct || 0)) : -1;
     const stars = Math.max(1, goalsMet.filter(Boolean).length);
     G.lastEval = { win, stars, goalsMet };
     if (sim) return;
-    const rec = daily ? null : save.recordCigLevel(n, { stars, tons: r.tons, size: 2 * G.finalR, time: st.time });
+    const rec = daily ? null : save.recordCigLevel(n, { stars, tons: r.tons, size: 2 * G.finalR, time: st.time, pct: townPct >= 0 ? townPct : undefined });
     if (!daily) { save.cigLvFailReset(n); streakSet(streakGet() + 1); }
     const firstClear = !!(rec && rec.firstClear);
     const prev = rec ? rec.prevStars : 0;
@@ -825,7 +942,7 @@ function finishCigLevel() {
     for (let k = prev + 1; k <= stars; k++) coins += bonus[k - 1];
     let crystals = 0;
     if (plan.boss && !daily) { if (firstClear) crystals += plan.bigBoss ? 5 : 2; if (stars === 3 && prev < 3) crystals += plan.bigBoss ? 2 : 1; }
-    if (!daily && plan.coinK > 1) coins = Math.round(coins * plan.coinK);   // ALTIN modifier
+    if (plan.coinK > 1) coins = Math.round(coins * plan.coinK);   // ALTIN / HAZİNE / ŞİMŞEK modifiers (the daily one too)
     const comboC = G.comboCoins | 0; G.comboCoins = 0;
     coins += comboC;
     save.addCoins(coins);
@@ -841,12 +958,12 @@ function finishCigLevel() {
     if (daily) save.recordDaily(G.dailySeed, { tons: r.tons, pct: 1, stars });
     meta.track('cig_end', { level: n, stars, tons: r.tons, pct: 0.9, reached: true, daily, theme: scenery.theme.id, endless: false });
     meta.track('cig_progress', { tons: r.tons, dist: peakD });
-    const hasNext = !daily && n < DAG_COUNT;
+    const hasNext = !daily && n < MAX_DAG;
     menus.showLevelComplete({
       level: planAsLevel(plan), stars, goalsMet, rewards: { coins, crystals }, hasNext,
-      labels: { banner: 'DAĞ TAMAM!', bossBanner: 'PATRON YENİLDİ!', next: 'SONRAKİ DAĞ ▶', map: 'DAĞLAR', retry: '↻ TEKRAR' },
+      labels: { banner: townPct >= 0 ? 'KASABA %' + townPct + ' YIKILDI' : 'DAĞ TAMAM!', bossBanner: 'PATRON YENİLDİ!', next: 'SONRAKİ DAĞ ▶', map: 'DAĞLAR', retry: '↻ TEKRAR' },
       chips: ['⚪ ' + fmtD(2 * G.finalR) + ' m', '⚖️ ' + fmtTons(r.tons), '⏱ ' + clock(st.time)].concat(comboC ? ['🪙 KOMBO +' + comboC] : [], plan.bigBoss && firstClear ? ['👑 PATRON ÖDÜLÜ'] : [], lootChip ? [lootChip] : []),
-      special: !daily && firstClear && n === 10 ? '∞ ÇIĞ SONSUZ AÇILDI!' : !daily && firstClear && n === DAG_COUNT ? '🏆 TÜM DAĞLAR TAMAM!' : null,
+      special: !daily && firstClear && n === 10 ? '∞ ÇIĞ SONSUZ AÇILDI!' : !daily && firstClear && n === MAX_DAG ? '🏆 TÜM DAĞLAR TAMAM!' : null,
     }, {
       onNext: () => playCigLevel(n + 1),
       onRetry: () => startCigLevel(daily ? { daily: true } : n, { retry: true }),
@@ -915,9 +1032,9 @@ function pause(on) {
     const st = document.getElementById('pause-stats');
     if (st) {
       st.textContent = G.mode === 'runner' && runner
-        ? `${Math.round(runner.b.s).toLocaleString('tr-TR')} m · ${Math.round(runner.score).toLocaleString('tr-TR')} puan`
-        : G.lv ? `${Math.round(ball.d).toLocaleString('tr-TR')} / ${G.lv.length.toLocaleString('tr-TR')} m · ${fmtD(2 * ball.r)} m`
-          : `${Math.round(ball.d).toLocaleString('tr-TR')} m · ${fmtTons(game ? game.totalTons() : 0)}`;
+        ? `${fmtN(runner.b.s)} m · ${fmtN(runner.score)} puan`
+        : G.lv ? `${fmtN(ball.d)} / ${fmtN(G.lv.length)} m · ${fmtD(2 * ball.r)} m`
+          : `${fmtN(ball.d)} m · ${fmtTons(game ? game.totalTons() : 0)}`;
     }
   }
   if (on) audio.setRoll(0, 0);
@@ -939,7 +1056,7 @@ function restartSame() {
 }
 
 bind('btn-play', () => startEndless());            // OYNA / BAŞLA = YETİ RUSH
-bind('btn-daily', () => startCigLevel({ daily: true }));
+bind('btn-daily', () => afterModels(() => startCigLevel({ daily: true })));
 bind('btn-pause', () => { audio.ui(); pause(true); });
 bind('btn-resume', () => { audio.ui(); pause(false); });
 bind('btn-restart', restartSame);
@@ -948,8 +1065,8 @@ function syncPauseToggles() {
     document.getElementById(id)?.classList.toggle('off', !on);
   }
 }
-bind('btn-p-sound', () => { audio.setMuted(!audio.isMuted()); ui.setToggle('sound', !audio.isMuted()); syncPauseToggles(); audio.ui('toggle'); });
-bind('btn-p-music', () => { musicOn = !musicOn; music.setMuted(!musicOn); try { localStorage.setItem('cig.music.muted', musicOn ? '0' : '1'); } catch { /* ignore */ } syncPauseToggles(); });
+bind('btn-p-sound', () => { audio.setMuted(!audio.isMuted()); ui.setToggle('sound', !audio.isMuted()); syncMusicMute(); syncPauseToggles(); audio.ui('toggle'); });
+bind('btn-p-music', () => { musicOn = !musicOn; syncMusicMute(); try { localStorage.setItem('cig.music.muted', musicOn ? '0' : '1'); } catch { /* ignore */ } syncPauseToggles(); });
 bind('btn-p-haptic', () => { platform.setHapticsEnabled(!platform.hapticsEnabled()); syncPauseToggles(); platform.haptic('medium'); });
 bind('btn-quit', () => { audio.ui(); toMenu(); });
 bind('btn-menu', () => { audio.ui(); toMenu(); });
@@ -983,11 +1100,11 @@ bind('btn-share', async () => {
   if (G.mode === 'runner' && runner?.daily && ui.lastShareText) {
     text = ui.lastShareText;
   } else if (G.mode === 'runner' && runner) {
-    text = `❄️ PATPAT · Yeti Kaçışı
-📏 ${Math.round(runner.b.s).toLocaleString('tr-TR')} m
-🏆 Skor ${Math.round(runner.score).toLocaleString('tr-TR')}
+    text = `❄️ PATPAT · ${tr('Yeti Kaçışı')}
+📏 ${fmtN(runner.b.s)} m
+🏆 ${tr('Skor')} ${fmtN(runner.score)}
 ❄️ ${runner.coins}
-Beni geçebilir misin?`;
+${tr('Beni geçebilir misin?')}`;
   } else {
     if (!G.result) return;
     text = shareText(G.result);
@@ -999,7 +1116,7 @@ Beni geçebilir misin?`;
 bind('btn-sound', () => {
   audio.init();
   audio.setMuted(!audio.isMuted());
-  music.setMuted(audio.isMuted());
+  syncMusicMute();
   ui.setToggle('sound', !audio.isMuted());
   audio.ui();
 });
@@ -1021,7 +1138,7 @@ setVisualLabel();
 try { ui.setToggle('sound', !audio.isMuted()); ui.setToggle('haptic', platform.hapticsEnabled()); } catch { /* optional buttons */ }
 
 function shareText(r) {
-  return `❄️ PATPAT · ${tr("ÇIĞ SONSUZ")}\n🌋 ${tr(r.tierName)}\n⚖️ ${fmtTons(r.tons)}\n📏 ${Math.round(r.dist).toLocaleString('tr-TR')} m\n${tr("Beni geçebilir misin?")}`;
+  return `❄️ PATPAT · ${tr("ÇIĞ SONSUZ")}\n🌋 ${tr(r.tierName)}\n⚖️ ${fmtTons(r.tons)}\n📏 ${fmtN(r.dist)} m\n${tr("Beni geçebilir misin?")}`;
 }
 
 // ---------- ÇIĞ SONSUZ: per-frame ----------
@@ -1381,8 +1498,9 @@ let fpsT = 0, frames = 0, fps = 0;
 
 function frame(now) {
   requestAnimationFrame(frame);
+  if (document.hidden) { last = now; return; }   // (a hidden tab / backgrounded app draws and simulates nothing)
   const rawMs = now - last;
-  const dt = Math.min(0.05, rawMs / 1000);
+  const dt = Number.isFinite(rawMs) ? Math.max(0, Math.min(0.05, rawMs / 1000)) : 0;   // (the first rAF stamp can be older than `last`: never a negative / NaN step)
   last = now;
 
   // A bug in one system must never freeze the picture (the pause / menu buttons still need a live page): log and carry on.
@@ -1403,6 +1521,10 @@ function frame(now) {
     adaptResolution(rawMs);
     return;
   }
+
+  // a lost GL context draws nothing; a paused screen is static: draw it once, then the CPU and GPU rest until resume (resize() redraws it)
+  if (glLost) return;
+  if (G.paused) { if (pausedDrawn) return; pausedDrawn = true; } else pausedDrawn = false;
 
   // widen the FOV with speed (endless modes)
   let wantFov = baseFov + (camera.userData.fovBoost || 0);
@@ -1436,7 +1558,7 @@ v ${runner.b.vs.toFixed(1)} gap ${runner.gap.toFixed(0)} r ${runner.b.r.toFixed(
 // Drop resolution (then the optional extras) when the phone struggles, creep back up when it's comfortable. The ladder lives in makeGovernor.
 function adaptResolution(rawMs) {
   if (!gov.tick(rawMs)) return;
-  post.setLite(gov.lite);
+  post.setLite(gov.lite || SOFTWARE_GL);
   if (gov.dpr !== dpr) {
     dpr = gov.dpr;
     renderer.setPixelRatio(dpr);
@@ -1579,29 +1701,30 @@ if (platform.isNative) {
 
 // Boot: pull in the imported models (≈1 MB) first; the game still runs on procedural props if they fail.
 async function boot() {
-  try { Object.assign(lib, await loadModels()); } catch (e) { console.warn(e); }
   applySkin(save.selected('skin'));
-  // FTUE: existing saves count as done; a brand-new player gets a 2 s splash, then YETİ RUSH right away.
+  const direct = params.has('play') || params.has('cig') || params.has('endless') || DEBUG;
+  // models: deep links / debug hooks want the full prop library from frame 1; a normal launch waits at most 300 ms (a warm cache is faster) and
+  // then shows the menu anyway
+  await Promise.race([modelsP, new Promise((r) => setTimeout(r, direct ? 8000 : 300))]);
+  // FTUE: existing saves count as done; a brand-new player goes straight into YETİ RUSH (no splash timer, no extra tap).
   let ftueNew = false;
   try {
     if (localStorage.getItem('patpat.ftue') === null) {
       if (save.runsTotal() > 0) localStorage.setItem('patpat.ftue', '1');
-      else { localStorage.setItem('patpat.ftueGate', 'on'); ftueNew = !params.has('play') && !params.has('cig') && !params.has('endless') && !DEBUG; }
+      else { localStorage.setItem('patpat.ftueGate', 'on'); ftueNew = !direct; }
     }
   } catch { /* ignore */ }
   toMenu();
+  if (!modelsDone && !ftueNew) modelsP.then(() => { if (G.state === 'menu') toMenu(); });   // slow launch: rebuild the lobby once the models are merged
   updateCamera(0, true);
   if (ftueNew) {
+    // the logo cover hides the menu -> run swap (the run chunk may still be loading); it fades out as soon as the run has started. Audio unlocks on the first touch.
     const sp = document.createElement('div');
     sp.className = 'ftue-splash';
-    sp.innerHTML = '<div class="fs-logo">PATPAT</div><div class="fs-sub">YETİ</div><div class="fs-tap">DOKUN VE OYNA</div>';
+    sp.innerHTML = '<div class="fs-logo">PATPAT</div><div class="fs-sub">YETİ</div>';
     document.body.appendChild(sp);
-    let gone = false;
-    const startedAt = G.runNo;
-    // only auto-start if nothing else was started meanwhile (e.g. a mode launched while the splash was up)
-    const go = () => { if (gone) return; gone = true; sp.classList.add('out'); setTimeout(() => sp.remove(), 350); if (G.runNo === startedAt && G.mode !== 'runner' && G.mode !== 'agar') startEndless(); };
-    sp.addEventListener('pointerdown', go);
-    setTimeout(go, 2000);
+    const done = () => { sp.classList.add('out'); setTimeout(() => sp.remove(), 350); };
+    startEndless().then(done, done);
   }
   try { (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => { loadEndless().catch(() => {}); }); } catch { /* optional */ }
   if (params.has('play') || params.has('cig')) {

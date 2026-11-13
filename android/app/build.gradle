@@ -7,8 +7,9 @@ android {
         applicationId "com.patpat.game"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // Keep in step with package.json "version" and the in-game VERSION constant (src/menus.js). versionCode must grow with every Play upload.
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,9 +17,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing (PLACEHOLDER, nothing secret here): create the upload keystore yourself, keep it OUTSIDE the repo, and provide the
+    // values through ~/.gradle/gradle.properties or environment variables, then uncomment this block and the signingConfig line below.
+    // signingConfigs {
+    //     release {
+    //         storeFile file(findProperty('PATPAT_UPLOAD_STORE_FILE') ?: System.getenv('PATPAT_UPLOAD_STORE_FILE') ?: 'MISSING')
+    //         storePassword findProperty('PATPAT_UPLOAD_STORE_PASSWORD') ?: System.getenv('PATPAT_UPLOAD_STORE_PASSWORD')
+    //         keyAlias findProperty('PATPAT_UPLOAD_KEY_ALIAS') ?: System.getenv('PATPAT_UPLOAD_KEY_ALIAS')
+    //         keyPassword findProperty('PATPAT_UPLOAD_KEY_PASSWORD') ?: System.getenv('PATPAT_UPLOAD_KEY_PASSWORD')
+    //     }
+    // }
     buildTypes {
         release {
-            minifyEnabled false
+            // R8 shrinks code + resources. Capacitor ships its own consumer keep rules; smoke-test a release build on a device.
+            minifyEnabled true
+            shrinkResources true
+            // signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

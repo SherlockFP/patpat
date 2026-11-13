@@ -9,6 +9,7 @@
 //     goals: [ {star:1, kind:'finish', text},
 //              {star:2, kind:'flakes', pct, text} | {star:2, kind:'flakesN', n, text},
 //              {star:3, kind:'noloss'|'nocrash'|'maxsize'|'yeti'|'perfects'|'powerups', ...params, text} ],
+//     type: 'BİTİR'|'TOPLA'|'DOKUNULMAZ'|'KAÇIŞ'|'PATRON', goal: one-sentence goal of that type (see levelType / levelGoal)
 //     boss: bool                          // idx 5 and 10: Yeti boss level (UI may read lv.boss for a boss icon) (faster Yeti, throws boulders)
 //   }
 //
@@ -113,6 +114,19 @@ function star3Goal(id, idx, boss, act, length, startTier, t) {
   }
 }
 
+// Level types (PLAN_V3 4): derived from the goals, so the name always says what the level asks. The first 3 levels are plain BİTİR (they teach the controls).
+export const LEVEL_TYPES = ['BİTİR', 'TOPLA', 'DOKUNULMAZ', 'KAÇIŞ', 'PATRON'];
+export function levelType(boss, goals, id = 99) {
+  if (boss) return 'PATRON';
+  if (goals[1].kind === 'flakesN') return 'TOPLA';
+  const k = goals[2].kind;
+  if (id <= 3) return 'BİTİR';
+  return k === 'nocrash' || k === 'noloss' ? 'DOKUNULMAZ' : k === 'yeti' ? 'KAÇIŞ' : 'BİTİR';
+}
+export function levelGoal(type, goals) {
+  return type === 'TOPLA' ? goals[1].text : type === 'DOKUNULMAZ' || type === 'KAÇIŞ' ? goals[2].text : type === 'PATRON' ? "Yeti Patronu'nu atlat: bitişe ulaş!" : 'Bitişe ulaş!';
+}
+
 function build() {
   const out = [];
   for (let id = 1; id <= CAMPAIGN_SIZE; id++) {
@@ -140,10 +154,12 @@ function build() {
       ? (() => { const n = Math.max(10, round5((length / 8) * (pct / 100))); return { star: 2, kind: 'flakesN', n, text: `${n} kar tanesi topla` }; })()
       : { star: 2, kind: 'flakes', pct: pct / 100, text: `Kar tanelerinin %${pct}'ini topla` };
 
+    const goals = [{ star: 1, kind: 'finish', text: 'Bölümü bitir' }, goal2, star3Goal(id, idx, boss, act, length, startTier, t)];
+    const type = levelType(boss, goals, id);
     out.push({
       id, act, idx, name: NAMES[act - 1][idx - 1], biome: ACTS[act - 1].biome, seed: seedFor(id),
       length, hardness, startTier, features, intro,
-      goals: [{ star: 1, kind: 'finish', text: 'Bölümü bitir' }, goal2, star3Goal(id, idx, boss, act, length, startTier, t)],
+      goals, type, goal: levelGoal(type, goals),
       boss,
     });
   }
@@ -163,6 +179,7 @@ export const BONUS = BONUS_BASE.map((baseId, i) => {
     ...b, id, bonus: true, bonusN: i + 1, after: baseId, name: `Gizli Rota ${i + 1}`, boss: false, seed: seedFor(id * 7 + 13),
     length: Math.round((b.length * 1.15) / 10) * 10, hardness: Math.round(Math.min(2.2, b.hardness * 1.3 + 0.1) * 100) / 100, startTier: 0,
     intro: null, goals: b.goals.map((g) => ({ ...g })),
+    type: levelType(false, b.goals, id), goal: levelGoal(levelType(false, b.goals, id), b.goals),
   };
 });
 export const bonusReward = (n) => ({ coins: 150 + 100 * n, crystals: 1 + Math.floor(n / 2) });
@@ -202,3 +219,31 @@ export function evalGoals(level, stats = {}) {
   });
 }
 export const countStars = (met) => (Array.isArray(met) ? met.filter(Boolean).length : 0);
+
+// LIVE star pips during a run: [pip1, pip2, pip3], each 2 = met, 1 = still possible, 0 = lost. `stats` is the same shape evalGoals reads (so far); `finished` true
+// settles every pip to 2 / 0 exactly like evalGoals. Fills and returns `out` (no allocation when one is passed).
+export function starProgress(level, stats, out = [1, 1, 1]) {
+  const lv = typeof level === 'number' ? levelById(level) : level;
+  const s = stats || {};
+  const num = (x, d = 0) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
+  for (let i = 0; i < 3; i++) {
+    const g = lv && lv.goals[i];
+    if (!g) { out[i] = 0; continue; }
+    let v;
+    switch (g.kind) {
+      case 'flakes': v = num(s.flakesPct) >= g.pct - 1e-9; break;
+      case 'flakesN': v = num(s.flakes) >= g.n; break;
+      case 'maxsize': v = num(s.maxTier) >= 4; break;
+      case 'perfects': v = num(s.perfects) >= g.n; break;
+      case 'powerups': v = num(s.powerups) >= g.n; break;
+      case 'noloss': v = num(s.layersLost, 0) === 0; break;
+      case 'nocrash': v = num(s.crashes, 0) === 0; break;
+      case 'yeti': v = num(s.minYetiGap, Infinity) >= g.gap; break;
+      default: v = true;   // finish
+    }
+    const hold = g.kind === 'noloss' || g.kind === 'nocrash' || g.kind === 'yeti';   // kept by NOT failing: still possible until the end
+    const done = s.finished === true;
+    out[i] = done ? (v ? 2 : 0) : g.kind === 'finish' ? 1 : hold ? (v ? 1 : 0) : v ? 2 : 1;
+  }
+  return out;
+}

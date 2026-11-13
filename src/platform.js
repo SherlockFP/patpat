@@ -27,6 +27,42 @@ try {
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
+// ---------------------------------------------------------------- local error log (no network)
+// window.onerror / unhandledrejection go into a small ring buffer in localStorage; Settings > "Hata bildir" copies it to the clipboard.
+const ERR_KEY = 'patpat.errlog';
+const ERR_MAX = 20;
+function readErrLog() {
+  try {
+    const a = JSON.parse(localStorage.getItem(ERR_KEY) || '[]');
+    return Array.isArray(a) ? a.filter((e) => e && typeof e.m === 'string').slice(-ERR_MAX) : [];
+  } catch (_) {
+    return [];
+  }
+}
+function logError(msg, where) {
+  try {
+    const a = readErrLog();
+    const m = String(msg == null ? '' : msg).slice(0, 300);
+    const w = String(where || '').slice(0, 160);
+    const last = a[a.length - 1];
+    if (last && last.m === m && last.w === w) last.n = (last.n || 1) + 1;
+    else a.push({ t: new Date().toISOString(), m, w, n: 1 });
+    localStorage.setItem(ERR_KEY, JSON.stringify(a.slice(-ERR_MAX)));
+  } catch (_) {
+    /* storage full / blocked: the log is best effort */
+  }
+}
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('error', (e) => {
+    const f = e && e.filename ? String(e.filename).split('/').pop() + ':' + (e.lineno || 0) + ':' + (e.colno || 0) : '';
+    logError((e && e.message) || (e && e.error && e.error.message) || 'error', f);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const r = e && e.reason;
+    logError('unhandledrejection: ' + ((r && (r.stack || r.message)) || r), '');
+  });
+}
+
 // ---------------------------------------------------------------- haptics setting
 let hapticsOn = true;
 try {
@@ -262,7 +298,42 @@ export const platform = {
     };
   },
 
+  /** Copies text to the clipboard. Resolves to true on success. */
+  copyText(text) {
+    return copyText(String(text == null ? '' : text));
+  },
+
+  /** The local error log as plain text (newest last), with a short header; empty log still returns the header. */
+  errorLogText(version) {
+    const a = readErrLog();
+    const head = 'PATPAT ' + (version || '') + ' | native=' + isNative + ' | ' + new Date().toISOString() + ' | errors=' + a.length;
+    return [head].concat(a.map((e) => e.t + (e.n > 1 ? ' x' + e.n : '') + ' ' + e.m + (e.w ? ' @ ' + e.w : ''))).join('\n');
+  },
+  errorLogCount() {
+    return readErrLog().length;
+  },
+  clearErrorLog() {
+    try { localStorage.removeItem(ERR_KEY); } catch (_) { /* ignore */ }
+  },
+
+  /**
+   * Asks the OS for an in-app store review (Play In-App Review / SKStoreReview). Never throws, resolves to true when asked.
+   * shortcut: no review plugin is installed (no new dependencies allowed for 1.0), so this is a no-op everywhere; to ship it,
+   * add @capacitor-community/in-app-review and call InAppReview.requestReview() inside the isNative branch below.
+   */
+  async requestReview() {
+    if (!isNative) return false;
+    return false;
+  },
+
   /** Returns 'shared' | 'copied' | 'failed'. Call from a user gesture (tap). */
+  // Rewarded-ad gate (PLAN_V3 8.6). Every reward-ad button (revive, 2x snowflakes, free chest, extra wheel spin) must be created only
+  // when rewardedAvailable() is true and must grant its reward only when rewarded(placement) resolves true.
+  // shortcut: no ad SDK, wire AdMob here (load/show the rewarded ad, resolve true on the reward callback); until then nothing is shown.
+  rewardedAvailable() { return false; },
+  /** placement: 'revive' | 'x2flakes' | 'chest' | 'wheel'. Resolves true only after the reward was earned. Never rejects. */
+  rewarded(placement) { void placement; return Promise.resolve(false); },
+
   async share({ text, url } = {}) {
     const clipboardText = [text, url].filter(Boolean).join('\n');
     if (!clipboardText) return 'failed';

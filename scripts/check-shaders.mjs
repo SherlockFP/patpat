@@ -96,7 +96,7 @@ for (const snow of [false, true]) {
   finishAfterFog(`patched lambert (snow=${snow})`, sh.fragmentShader);
   const v = analyse(`patched lambert (snow=${snow}) vs`, sh.vertexShader, { mine: true });
   ok(/vCigW/.test(v.code) && (v.decl.uSnap || 0) === 1, 'patched lambert vs: vCigW / uSnap declared once');
-  for (const u of ['uTail', 'uGrade', 'uSh', 'uHi', 'uView', 'uBall', 'uAO', 'uRim', 'uToon', 'uTime', 'uSparkle']) ok(u in sh.uniforms, `patched lambert: uniform ${u} bound`);
+  for (const u of ['uTail', 'uGrade', 'uSh', 'uHi', 'uView', 'uBall', 'uAO', 'uRim', 'uToon', 'uTime', 'uSparkle', 'uFlash']) ok(u in sh.uniforms, `patched lambert: uniform ${u} bound`);
 }
 { // Phong costumes take the same patch
   const sh = compile(patchMaterial(new THREE.MeshPhongMaterial({ flatShading: true, shininess: 12 })), 'phong');
@@ -148,6 +148,22 @@ ok(checkGlsl('void main() { vec3 a = vec2( 1.0 ) * 2; }').length >= 2, 'the type
   const m = fx.streaks.material;
   for (const e of checkGlsl(m.vertexShader, { position: 'vec3', cameraPosition: 'vec3', viewMatrix: 'mat4', projectionMatrix: 'mat4', gl_Position: 'vec4' })) ok(false, 'streak vertex shader: ' + e);
   for (const e of checkGlsl(m.fragmentShader, { gl_FragColor: 'vec4' })) ok(false, 'streak fragment shader: ' + e);
+}
+
+{ // GLSL ES portability: smoothstep(edge0, edge1) with edge0 >= edge1 is undefined (wrong on some mobile GPUs); no unbounded point sprites (the mist is clamped)
+  const fx = new Fx(new THREE.Scene(), { groundY: () => 0, rampAt: () => 0 }, new THREE.PerspectiveCamera());
+  const srcs = { 'lit snippets': GLSL.TAIL_PARS + GLSL.FRAG_PARS + GLSL.FRAG_MAIN, 'streak vs': fx.streaks.material.vertexShader, 'streak fs': fx.streaks.material.fragmentShader, 'mist vs': fx.mist.material.vertexShader, 'mist fs': fx.mist.material.fragmentShader };
+  for (const [name, src] of Object.entries(srcs)) {
+    for (const m of strip(src).matchAll(/smoothstep\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,/g)) ok(parseFloat(m[1]) < parseFloat(m[2]), name + ': smoothstep(' + m[1] + ', ' + m[2] + ') has edge0 >= edge1');
+  }
+  ok(/gl_PointSize\s*=\s*min\(/.test(fx.mist.material.vertexShader), 'mist: gl_PointSize is clamped');
+  ok(/uFlash\.w > 0\.001/.test(GLSL.TAIL_PARS), 'the hit flash is behind a uniform branch (no cost when idle)');
+  { // the ball is the star: a dark ink outline (on every biome) over a white-lifted body
+    const ink = /mix\( outgoingLight, vec3\( ([\d.]+), ([\d.]+), ([\d.]+) \), \( 1\.0 - smoothstep\( ([\d.]+), ([\d.]+), cigNv \) \) \* ([\d.]+) \)/.exec(GLSL.FRAG_MAIN);
+    const lift = /vec3\( 1\.0 \), ([\d.]+) \* cigWh \)/.exec(GLSL.FRAG_MAIN);
+    ok(ink && 0.2126 * +ink[1] + 0.7152 * +ink[2] + 0.0722 * +ink[3] < 0.03 && +ink[5] - +ink[4] <= 0.15 && +ink[6] >= 0.9, 'ball outline: dark (linear luma < 0.03), crisp (edge band <= 0.15), nearly opaque');
+    ok(lift && +lift[1] >= 0.3 && +lift[1] <= 0.7, 'ball body: white lift in 0.3..0.7 (keeps the shading, reads white)');
+  }
 }
 
 console.log(fails ? `${fails} check(s) failed` : 'shaders: all checks passed');

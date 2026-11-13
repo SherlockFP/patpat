@@ -1,0 +1,11 @@
+{
+  "name": "PATPAT",
+  "short_name": "PATPAT",
+  "start_url": ".",
+  "scope": ".",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#bfe3ff",
+  "theme_color": "#bfe3ff",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

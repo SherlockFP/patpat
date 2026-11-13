@@ -12,6 +12,11 @@ const _s = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const _axis = new THREE.Vector3();
 
+// KARAKTER level badge: a ring hovering round the ball's equator, arc = level / 5 of a full turn, colour climbs with the level.
+// Driven by snow.material.userData.level (1-5, set by makeSkin(id, level) or by hand); absent / 0 = no ring.
+const BADGE_COL = [0x9fd8ff, 0x7aff9a, 0xffd23a, 0xff8a2a, 0xff5cf0];
+let _badgeGeo = null;
+
 export class Ball {
   constructor(scene, lib, material) {
     this.lib = lib;
@@ -21,9 +26,16 @@ export class Ball {
     this.group.add(this.spin);
     scene.add(this.group);
 
-    this.snow = new THREE.Mesh(makeSnowGeometry(), patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { snow: true }));
+    this._ownGeo = makeSnowGeometry();
+    this._ownMat = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { snow: true });
+    this.snow = new THREE.Mesh(this._ownGeo, this._ownMat);
     this.spin.add(this.snow);
 
+    if (!_badgeGeo) _badgeGeo = BADGE_COL.map((_, i) => new THREE.RingGeometry(1.14, 1.3, 40, 1, 0, Math.PI * 2 * (i + 1) / 5).rotateX(-Math.PI / 2));
+    this.badge = new THREE.Mesh(_badgeGeo[0], new THREE.MeshBasicMaterial({ color: BADGE_COL[0], transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
+    this.badge.visible = false; this.badge.frustumCulled = false; this.badge.renderOrder = 2;
+    this.group.add(this.badge);
+    this._bl = 0; this._bt = 0;
     this.pp = 0; this.pv = 0; // scale punch spring (growth feedback)
     this.sq = 0; this.sqv = 0; // squash spring (landing / bounce): >0 = flattened
     this.hopY = 0; this.hopV = 0; this.hopping = false; this.onHopLand = null; // lobby bounce
@@ -51,6 +63,19 @@ export class Ball {
     this.flee.length = 0;
     this.applyScale();
     this.group.scale.set(1, 1, 1);
+  }
+
+  // Take the ball out of the scene and free what it owns. (The skin's geometry / material belong to disposeSkin; the one built here is only
+  // freed when it is still the mesh's own; main.js swapping in a skin leaves the original unreferenced but undisposed (one-off, ~4k verts).)
+  dispose() {
+    for (const k of Object.keys(this.stuck)) this.dropSlot(k);
+    this.setRiders(0);
+    for (const f of this.flee) f.m.parent && f.m.parent.remove(f.m);
+    this.flee.length = 0;
+    if (this.group.parent) this.group.parent.remove(this.group);
+    if (this.snow.geometry === this._ownGeo) this._ownGeo.dispose();
+    if (this.snow.material === this._ownMat) this._ownMat.dispose();
+    this.badge.material.dispose();   // (the five ring geometries are shared module-wide)
   }
 
   // ---- EKİP TOPU: cute mini snowmen on top of the ball
@@ -122,7 +147,24 @@ export class Ball {
       if (Math.abs(this.visT - this.visK) < 0.002) this.visK = this.visT;
     }
     this.applyScale();
+    this.tickBadge(dt);
     this.tickRiders(dt);
+  }
+
+  tickBadge(dt) {
+    const u = this.snow.material && this.snow.material.userData, b = this.badge;
+    const lv = u && u.level > 0 ? Math.min(5, u.level | 0) : 0;
+    if (lv !== this._bl) {
+      this._bl = lv;
+      b.visible = lv > 0;
+      if (lv) { b.geometry = _badgeGeo[lv - 1]; b.material.color.setHex(BADGE_COL[lv - 1]); }
+    }
+    if (!lv) return;
+    this._bt += dt;
+    b.rotation.y += dt * (0.8 + 0.3 * lv);   // (spins in its own plane: the ring geometry is already laid flat)
+    b.scale.setScalar(this.r * this.visK * (1 + 0.04 * Math.sin(this._bt * 4)));
+    b.position.y = -this.r * this.visK * 0.35;
+    b.material.opacity = 0.55 + 0.05 * lv;
   }
 
   tickRiders(dt) {

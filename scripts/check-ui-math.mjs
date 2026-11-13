@@ -29,7 +29,7 @@ const mkEl = (tag = 'div') => {
   };
   return el;
 };
-globalThis.document = { getElementById: () => mkEl(), createElement: (t) => mkEl(t), createTextNode: (t) => ({ _text: t }), querySelector: () => mkEl(), body: mkEl('body') };
+globalThis.document = { addEventListener() {}, removeEventListener() {}, hidden: false, getElementById: () => mkEl(), createElement: (t) => mkEl(t), createTextNode: (t) => ({ _text: t }), querySelector: () => mkEl(), body: mkEl('body') };
 globalThis.window = globalThis; globalThis.innerWidth = 360; globalThis.innerHeight = 640;
 globalThis.requestAnimationFrame = () => 0; globalThis.cancelAnimationFrame = () => {};
 
@@ -48,7 +48,7 @@ assert.equal(milestoneIdx(-40, 0), 0);
 assert.equal(milestoneIdx(NaN, 0), 0);
 assert.equal(milestoneText(1), '500 m');
 assert.equal(milestoneText(2), '1 km');
-assert.equal(milestoneText(3), '1.500 m');
+assert.equal(milestoneText(3), '1,500 m', 'English: a thousands comma (Turkish keeps the dot)');
 assert.equal(milestoneText(4), '2 km');
 assert.equal(milestoneTag(1), 'GÜZEL!');
 assert.equal(milestoneTag(99), 'EFSANE!');
@@ -81,9 +81,24 @@ assert.equal(recTitle({ dist: true, score: true }), '★ ÇİFT REKOR! ★');
 assert.equal(recTitle({ dist: true, score: false }), 'YENİ REKOR!');
 assert.equal(recTitle({ dist: false, score: true }), 'YENİ SKOR REKORU!');
 assert.equal(recTitle({ dist: false, score: false }), '');
+// Rush result read-out: one signed gap + one goal; fields may be missing; every string has an English entry
+{
+  const { runnerResultLines: L } = UI, { t: tt } = await import('../src/i18n.js');
+  assert.deepEqual(L({ score: 1500, deltaBest: 320, isRecord: true, nextGoal: { k: 'next', val: 2500 }, nextGoalText: 'SIRADAKİ: 2.500 PUAN' }, 1180), { rec: true, delta: '+320', goal: 'SIRADAKİ: 2.500 PUAN' });
+  assert.deepEqual(L({ score: 1000 }, 1380), { rec: false, delta: 'EN İYİYE 381 PUAN', goal: 'EN İYİ 1,380' }, 'below best without runner fields');
+  assert.equal(L({ score: 1000 }, 0).delta, '', 'first run: no gap');
+  assert.equal(L({ score: 900, isRecord: true }, 0).delta, '+900', 'record with a missing deltaBest');
+  assert.match(tt('EN İYİYE 381 PUAN'), /BEAT YOUR BEST/);
+  assert.equal(tt('EN İYİ 1,380'), 'BEST 1,380');
+  assert.equal(tt('SKOR'), 'SCORE');
+  assert.equal(tt('⛔ 1.6 m gerekli'), '⛔ 1.6 m needed');
+  assert.equal(tt('RİSK +3'), 'RISK +3');
+}
 
 // ---- English entries for every new visible string ----
 const { t } = await import('../src/i18n.js');
+assert.equal(t('REKOR 4.000 PUAN'), 'RECORD 4.000 PTS'); assert.equal(t('KASABA AVI · 12/40'), 'TOWN HUNT · 12/40');
+assert.equal(t('BİTİR'), 'FINISH'); assert.equal(t('KOŞUYU BİTİR'), 'END RUN');
 for (const [tr, en] of [
   ['YENİ SKOR REKORU!', 'NEW SCORE RECORD!'], ['★ ÇİFT REKOR! ★', '★ DOUBLE RECORD! ★'], ['YENİ REKOR!', 'NEW RECORD!'],
   ['GÜZEL!', 'NICE!'], ['HARİKA!', 'GREAT!'], ['SÜPER!', 'SUPER!'], ['MUHTEŞEM!', 'AMAZING!'], ['EFSANE!', 'LEGENDARY!'],
@@ -128,19 +143,92 @@ ui.runnerHud(true, 'Karlı Zirve');
 ui.runnerStats(4000, 12, 2, 0.2, 640, 'Karlı Zirve');
 ui._best = 1000; ui._bestD = 500;   // records at the start of this run
 ui.showRunnerResult({ cause: 'yeti', distance: 640, score: 4000, coins: 12, best: 4000, bestDist: 640, isBest: true, isBestDist: true, rank: 1, toRecord: 0, crystals: 0 });
-assert.equal(ui.el.resBadge.textContent, '★ ÇİFT REKOR! ★');
-assert.equal(ui.el.resSub.textContent, 'ÖNCEKİ REKOR 500 m · +140 m');
-assert.ok(ui.el.resExtra.innerHTML.includes('class="rx-pg"') && ui.el.resExtra.innerHTML.includes('SEVİYE'), 'progress rows are in the result');
-assert.equal(ui.el.retry.kids[0]._text, 'Rekoru geç: 640 m');
+assert.equal(ui.el.resBadge.textContent, 'YENİ SKOR REKORU!', 'the badge is a SCORE record (the hero number); a distance record alone shows none');
+assert.equal(ui.el.resPct.textContent.includes(' m'), false, 'the hero number is the SCORE, not metres');
+ui._best = 4000; ui._bestD = 100;   // a distance record with a score far below the stored best: no record badge
+ui.showRunnerResult({ cause: 'yeti', distance: 640, score: 244, coins: 1, best: 4000, bestDist: 640, isBest: false, isBestDist: true, rank: 1, toRecord: 0, crystals: 0 });
+assert.equal(ui.el.resBadge.textContent, '', 'no record badge on 244 points against a best of 4,000');
+ui._best = 1000; ui._bestD = 500;
+ui.showRunnerResult({ cause: 'yeti', distance: 640, score: 4000, coins: 12, best: 4000, bestDist: 640, isBest: true, isBestDist: true, rank: 1, toRecord: 0, crystals: 0 });
+assert.equal(ui.el.resLabel.textContent, 'SCORE', 'English: no literal SKOR');
+assert.equal(ui.el.resTons.textContent, '+3,000 vs old record', 'record: signed gap to the old best (deltaBest missing -> computed)');
+assert.ok(ui.el.resExtra.innerHTML.includes('class="rx-pg"') && ui.el.resExtra.innerHTML.includes('SEVİYE') && ui.el.resExtra.innerHTML.includes('rx-qlist hidden'), 'progress rows are in the result, collapsed behind one tap');
+assert.ok(ui.el.resExtra.innerHTML.startsWith('<div class="rx-row">'), 'one compact chip row first');
+assert.equal(ui.el.retry.kids.length, 0, 'TEKRAR carries no sub line');
 ui._best = 1000; ui._bestD = 900;
 ui.showRunnerResult({ cause: 'wall', distance: 120, score: 300, coins: 0, best: 1000, bestDist: 900, isBest: false, isBestDist: false, rank: 0, toRecord: 780, crystals: 0 });
 assert.equal(ui.el.resBadge.textContent, '', 'no record: no badge text');
-assert.equal(ui.el.resSub.textContent, 'REKOR 900 m');
-assert.equal(ui.el.retry.kids[0]._text, 'Rekora 780 m kaldı!');
+assert.equal(ui.el.resTons.textContent, 'BEAT YOUR BEST: 701 PTS', 'below the best: points still missing');
+assert.equal(ui.el.resSub.textContent, 'BEST 1,000');
 ui.showResult({ endless: true, tons: 3, dist: 100, distance: 100, best: { tons: 5, dist: 200 }, isBest: false, cause: 'wave', tierName: 'Çığ', coins: 4, hasNext: false }, null);
 assert.equal(ui.el.retry.kids.length, 0, 'legacy results reset the TEKRAR sub line');
 assert.equal(ui.el.resBadge.textContent, 'YENİ REKOR!');
 ui.hideResult();
+
+// ---- hyper-casual HUD: number format follows the language, ONE message lane, ONE multiplier chip, random perk timeout, clean-layer goal ----
+assert.equal(UI.fmtN(1234567), '1,234,567');
+assert.equal(UI.fmtTons(1.5), '1.5 ton', 'English: decimal point');
+{
+  const u = new UI.UI();
+  u.el.hud.classList.remove('hidden');
+  u.banner('A', 2); u.toastSoft('B info'); u.toastSoft('GÖREV tamam');
+  assert.deepEqual(Object.keys(u._chs || {}), ['c'], 'with the HUD up banners and toasts share ONE lane');
+  assert.equal(u._chs.c.cur.prio, 2, 'the first message is the one on screen; the others queue behind it');
+  u._annReset();
+  u.el.hud.classList.add('hidden');
+  u.toastSoft('C');
+  assert.ok(u._chs.t && u._chs.t.cur, 'HUD hidden (result screen): the top toast lane works as before');
+  u._annReset();
+
+  // Rush: the chip shows the multiplier only, and only when there is one
+  u.el.hud.classList.remove('hidden');
+  u.runnerHud(true, 'Test');
+  u._cmb || u._mkCmb();
+  u._mu = 3; u._cmN = 12; u._cmRender();
+  assert.equal(u._cmKe.textContent, 'x3', 'Rush chip: the multiplier');
+  assert.equal(u._cmKs.textContent + u._cmKu.textContent, '', 'Rush chip: no KOMBO label / SKOR suffix');
+  assert.ok(u._cmb.classList.contains('on'));
+  assert.ok(u._cmb.classList.contains('t2'), 'Rush chip: x3 tint');
+  u._mu = 5; u._cmRender();
+  assert.ok(u._cmb.classList.contains('t4') && !u._cmb.classList.contains('t2'), 'Rush chip: tint follows the whole step');
+  u._mu = 3;
+  u._mu = 0; u._cmRender();
+  assert.ok(!u._cmb.classList.contains('on'), 'Rush chip: gone without a multiplier');
+
+  // 'clean' goal: always shown (unlike 'cp'), label with / without the metres, other modes unchanged
+  u.runnerGoal('clean', 120, 0.3);
+  assert.equal(u.el.goalLbl.textContent, 'TEMİZ KAT: 120 m');
+  assert.ok(!u.el.goal.classList.contains('hidden') && u.el.goal.classList.contains('cp'));
+  u.runnerGoal('clean', 0, 0.3);
+  assert.equal(u.el.goalLbl.textContent, 'TEMİZ KAT');
+  u.runnerGoal('cp', 90, 0.5);
+  assert.ok(u.el.goal.classList.contains('hidden'), "'cp' still hides below 80 % of the layer");
+  u.runnerGoal('rec', 40, 0.5);
+  assert.equal(u.el.goalLbl.textContent, 'REKORA 40 m');
+  u.runnerGoal('rec', 40, 0.5, 'REKOR 4.000 PUAN');
+  assert.equal(u.el.goalLbl.textContent, 'REKOR 4.000 PUAN', 'runnerGoal text overrides the label');
+  u.runnerGoal(null);
+
+  // perk timeout: a RANDOM card (not always the first)
+  const realTimeout = globalThis.setTimeout, realInterval = globalThis.setInterval, realRandom = Math.random, realCreate = document.createElement;
+  const picked = [];
+  let timeoutFn = null, timeoutMs = 0;
+  globalThis.setTimeout = (f, ms) => { if (ms >= 3000) { timeoutFn = f; timeoutMs = ms; } return 0; };
+  globalThis.setInterval = () => 0;
+  document.createElement = (tag) => { const e = mkEl(tag); e.querySelector = () => mkEl(); e.kids.push(mkEl(), mkEl()); return e; };
+  document.body = document.body || mkEl('body');
+  try {
+    const perks = [{ id: 'a', icon: '1', name: 'A', desc: '' }, { id: 'b', icon: '2', name: 'B', desc: '' }, { id: 'c', icon: '3', name: 'C', desc: '' }];
+    for (const r of [0, 0.5, 0.99]) {
+      Math.random = () => r;
+      u.runnerPerkPick(perks, (id) => picked.push(id), 6);
+      timeoutFn();
+    }
+  } finally { globalThis.setTimeout = realTimeout; globalThis.setInterval = realInterval; Math.random = realRandom; document.createElement = realCreate; }
+  assert.deepEqual(picked, ['a', 'b', 'c'], 'perk timeout picks a random card');
+  assert.equal(timeoutMs, 3500, 'the pick never holds the run longer than 3.5 s (the runner asks for 6)');
+  u.runnerHud(false, '');
+}
 
 // ---- smoke: the lobby builds and refreshes (BUGÜN streak / season bar, daily summary, settings privacy link) ----
 globalThis.window.addEventListener = () => {};

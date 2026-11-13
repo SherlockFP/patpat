@@ -12,7 +12,7 @@
 //   new Environment(scene, track, opts?) ; update(dt, camera, ball, beat) ; dispose()
 //   junctionOkAt(s) -> bool (false in the ice cave: no Temple Run corner there)
 //   env.fogPress (0..1) and env.ballVs (m/s) are written by the runner every frame; update() writes scene.fog (colour from the biome look, near / far =
-//   biome x blizzard modifier x fogPress, far >= max(70, 2 * ballVs)). Per-biome roadside extras: stump / logs, seal / stalag, fence / bench / lampost,
+//   biome x blizzard modifier x fogPress, far >= max(70, 2 * ballVs)). Per-biome roadside extras: stump / logs, seal / stalag, fence / lampost,
 //   skullrock, fire, jellycube, robot.
 //
 // Look per biome = sky + fog + key (sun) / fill (hemisphere) lights + colour grade (b.grade: saturation, contrast, vignette, shadow / highlight tint, ball rim
@@ -118,14 +118,15 @@ const biomeIdx = (s) => (OVR >= 0 ? OVR : s > 0 ? Math.floor(s / BIOME_LENGTH) :
 // ---------------------------------------------------------------------------------------------
 export const BIOMES = [
   {
-    id: 'snow', name: 'Karlı Zirve', music: 'snow', depth: 56, flank: { U: 120, e: 1.6, top: 0xffffff, mid: 0xa9c6e8, rock: 0x7f8898, rockAmt: 0.9 },
-    sky: { top: 0x1f6fe0, mid: 0x6bb6f2, horizon: 0xf2e6d4 },
-    fog: { color: 0xcfe2f4, near: 70, far: 330 },
-    hemi: { sky: 0xc8e0ff, ground: 0x86a2d6, intensity: 1.51 },
-    sun: { color: 0xffe2b0, intensity: 2.26, az: 2.3, el: 0.88 },
+    id: 'snow', name: 'Karlı Zirve', music: 'snow', depth: 56, flank: { U: 120, e: 1.6, top: 0xf6faff, mid: 0x7ea6e0, rock: 0x626c86, rockAmt: 0.9 },
+    sky: { top: 0x0f58d6, mid: 0x3f9eee, horizon: 0xb4dcf8 },
+    fog: { color: 0xb0d4f2, near: 62, far: 320 },
+    hemi: { sky: 0xb4d4ff, ground: 0x6a88cc, intensity: 1.4 },
+    sun: { color: 0xffdca0, intensity: 2.14, az: 2.3, el: 0.88 },
     disc: { color: 0xfff6dc, size: 0.055, az: 0.32, el: 0.62, kind: 'sun' },
-    ground: [0xe6f0fb, 0xaec9ea, 0xf8fbff],
-    track: { tileA: 0xf4f9ff, tileB: 0x84c0ec, edge: 0x4f9ccc, rail: 0x7cc0e8, glow: 0x8fe1ff, under: 0x5d8fb5 },
+    ground: [0xd2e3f7, 0x9dbde8, 0xe6f0fc],
+    // icy blue tiles (soft difference between the two) so the white ball and the white snow banks both pop off the track
+    track: { tileA: 0x5ea2e6, tileB: 0x4686d6, edge: 0x1a50b0, rail: 0x2f86dc, glow: 0x8fe1ff, under: 0x3a6ca4 },
     clouds: 0xffffff, stars: 0, grid: 0,
     pulse: { sky: 0.035, glow: 0, grid: 0, spark: 0.25, lava: 0 }, glowBase: 1,
     particles: {
@@ -135,13 +136,13 @@ export const BIOMES = [
   },
   {
     id: 'forest', name: 'Çam Ormanı', music: 'forest', depth: 54, flank: { U: 100, e: 1.7, top: 0x7cc95a, mid: 0x3f8a3a, rock: 0x8a7658, rockAmt: 0.6 },
-    sky: { top: 0x4a9be0, mid: 0xa2d3ee, horizon: 0xf3efd0 },
-    fog: { color: 0xe6efd0, near: 65, far: 320 },
+    sky: { top: 0x2c84e2, mid: 0x82c6ee, horizon: 0xe0eebc },
+    fog: { color: 0xcce4b4, near: 62, far: 320 },
     hemi: { sky: 0xdfeeff, ground: 0x8fae78, intensity: 1.51 },
     sun: { color: 0xffe0a8, intensity: 2.15, az: 2.4, el: 0.73 },
     disc: { color: 0xfff0c0, size: 0.06, az: 0.28, el: 0.5, kind: 'sun' },
     ground: [0x4d9a3a, 0x5fae45, 0x3e7f33],
-    track: { tileA: 0xf0e6c8, tileB: 0x9cc673, edge: 0x5a8f3f, rail: 0x7a5a38, glow: 0xbfff8a, under: 0x3d5a2c },
+    track: { tileA: 0xbc9e5c, tileB: 0x5e9a38, edge: 0x2e6a20, rail: 0x7a5a38, glow: 0xbfff8a, under: 0x3d5a2c },
     clouds: 0xfffbea, stars: 0, grid: 0,
     pulse: { sky: 0.035, glow: 0, grid: 0, spark: 0.2, lava: 0 }, glowBase: 1,
     particles: {
@@ -159,7 +160,7 @@ export const BIOMES = [
     disc: { color: 0xfffbd0, size: 0.055, az: 0.3, el: 0.62, kind: 'sun' },
     ground: [0x3fcf2a, 0x58dd34, 0x2eb824],
     // checker: true -> the track draws its bank sides as a checkerboard of checkerA / checkerB (brown / orange)
-    track: { tileA: 0x6ad63c, tileB: 0x55c22f, edge: 0xf4ffd2, rail: 0x8a5428, glow: 0xfff27a, under: 0x7a4a24, checker: true, checkerA: 0x8a5428, checkerB: 0xe0983f },
+    track: { tileA: 0x3fa828, tileB: 0x2f9422, edge: 0xf4ffd2, rail: 0x8a5428, glow: 0xfff27a, under: 0x7a4a24, checker: true, checkerA: 0x8a5428, checkerB: 0xe0983f },
     clouds: 0xffffff, stars: 0, grid: 0,
     pulse: { sky: 0.04, glow: 0, grid: 0, spark: 0.35, lava: 0 }, glowBase: 1,
     particles: {
@@ -186,8 +187,8 @@ export const BIOMES = [
   },
   {
     id: 'town', name: 'Kasaba', music: 'town', depth: 48, flank: { U: 46, e: 1.9, top: 0x92d366, mid: 0x6bb04c, rock: 0xa89878, rockAmt: 0.4 },
-    sky: { top: 0x4d9fee, mid: 0x98d2f6, horizon: 0xe2f2ff },
-    fog: { color: 0xe0f0fb, near: 70, far: 330 },
+    sky: { top: 0x2a86ee, mid: 0x78c4f8, horizon: 0xcbe8ff },
+    fog: { color: 0xc4e2fa, near: 66, far: 330 },
     hemi: { sky: 0xe8f2ff, ground: 0xb8c4a0, intensity: 1.71 },
     sun: { color: 0xffeccf, intensity: 2.14, az: 2.3, el: 0.88 },
     disc: { color: 0xfff6e0, size: 0.05, az: 0.3, el: 0.7, kind: 'sun' },
@@ -208,7 +209,7 @@ export const BIOMES = [
     sun: { color: 0xffcf8a, intensity: 2.1, az: 2.3, el: 0.62 },
     disc: { color: 0xffe3a0, size: 0.1, az: 0.25, el: 0.36, kind: 'sun' },
     ground: [0xf0c985, 0xdcab63, 0xf7dba6],
-    track: { tileA: 0xcf9560, tileB: 0xb27846, edge: 0x7a4a26, rail: 0xffe9c0, glow: 0xffa940, under: 0x6b4423 },
+    track: { tileA: 0xb87a48, tileB: 0xa06838, edge: 0xffe0a8, rail: 0xffe9c0, glow: 0xffa940, under: 0x6b4423 },
     clouds: 0xffe6c8, stars: 0, grid: 0,
     pulse: { sky: 0.035, glow: 0, grid: 0, spark: 0.2, lava: 0 }, glowBase: 1,
     particles: {
@@ -225,7 +226,7 @@ export const BIOMES = [
     sun: { color: 0xbfe6ff, intensity: 1.3, az: 2.6, el: 0.9 },
     disc: { color: 0xbfe6ff, size: 0.04, az: 0.3, el: 0.6, kind: 'sun' },
     ground: [0x1a4a8a, 0x2a6ab0, 0x123a70],
-    track: { tileA: 0xcfeeff, tileB: 0x7cc4f0, edge: 0x1d6fd0, rail: 0x4aa8ff, glow: 0x7fe8ff, under: 0x1a3a6a },
+    track: { tileA: 0x58aae6, tileB: 0x3280cc, edge: 0x0f4fa8, rail: 0x4aa8ff, glow: 0x7fe8ff, under: 0x1a3a6a },
     clouds: 0x2a5a90, stars: 0, grid: 0, cloudAmt: 0.35,
     pulse: { sky: 0.03, glow: 0.35, grid: 0, spark: 0.5, lava: 0 }, glowBase: 0.9,
     particles: {
@@ -241,7 +242,7 @@ export const BIOMES = [
     sun: { color: 0xfff2e8, intensity: 1.8, az: 2.4, el: 0.83 },
     disc: { color: 0xfff4fa, size: 0.07, az: 0.3, el: 0.55, kind: 'sun' },
     ground: [0xffadd6, 0xa8ecd0, 0xffcfe8],
-    track: { tileA: 0xff70b8, tileB: 0x5fe3b8, edge: 0xffffff, rail: 0xff3f9f, glow: 0xfff27a, under: 0xb85a96 },
+    track: { tileA: 0xff5aac, tileB: 0x2fbf94, edge: 0xffffff, rail: 0xff3f9f, glow: 0xfff27a, under: 0xb85a96 },
     clouds: 0xffe3f3, stars: 0, grid: 0,
     pulse: { sky: 0.05, glow: 0, grid: 0, spark: 0.9, lava: 0 }, glowBase: 1,
     particles: {
@@ -275,7 +276,7 @@ export const BIOMES = [
     sun: { color: 0xff9a5a, intensity: 1.8, az: 2.4, el: 0.45 },
     disc: { color: 0xffc070, size: 0.12, az: 0.2, el: 0.18, kind: 'sun' },
     ground: [0x2a78b0, 0x3a90c8, 0x1e6498],
-    track: { tileA: 0xd8d2c8, tileB: 0xb8b0a4, edge: 0xe03a3a, rail: 0xf5f0e8, glow: 0xffd070, under: 0x6a5a58 },
+    track: { tileA: 0x9a9488, tileB: 0x7e786e, edge: 0xf5f0e8, rail: 0xe03a3a, glow: 0xffd070, under: 0x6a5a58 },
     clouds: 0xffb8a0, stars: 0, grid: 0, cloudAmt: 0.9,
     pulse: { sky: 0.04, glow: 0, grid: 0, spark: 0.3, lava: 0 }, glowBase: 1,
     particles: {
@@ -308,7 +309,7 @@ export const BIOMES = [
     sun: { color: 0xffffff, intensity: 2.3, az: 2.2, el: 0.5 },
     disc: { color: 0xffffff, size: 0.12, az: 0.45, el: 0.42, kind: 'earth' },
     ground: [0x8e8e98, 0x70707a, 0xa6a6b0],
-    track: { tileA: 0xdedee6, tileB: 0xb0b0bc, edge: 0xff7a1a, rail: 0x4a4a58, glow: 0x9ad8ff, under: 0x2a2a34 },
+    track: { tileA: 0x8a8a98, tileB: 0x6e6e7c, edge: 0xf0f4ff, rail: 0x4a4a58, glow: 0x9ad8ff, under: 0x2a2a34 },
     clouds: 0x1a1a22, stars: 1, grid: 0, cloudAmt: 0,
     pulse: { sky: 0.02, glow: 0.2, grid: 0, spark: 0.3, lava: 0 }, glowBase: 1,
     particles: {
@@ -361,7 +362,7 @@ export const BIOMES = [
     sun: { color: 0xa8c8ff, intensity: 1.0, az: 2.6, el: 0.7 },
     disc: { color: 0xdfeaff, size: 0.05, az: 0.3, el: 0.5, kind: 'sun' },
     ground: [0x9ab4e0, 0x7f9ad0, 0xb4c8ec],
-    track: { tileA: 0xe4f0ff, tileB: 0x6a8fd8, edge: 0x3fd0a0, rail: 0x5fffc0, glow: 0x5fffc0, under: 0x1a2a5a },
+    track: { tileA: 0x6a98e4, tileB: 0x4a70c0, edge: 0x3fd0a0, rail: 0x5fffc0, glow: 0x5fffc0, under: 0x1a2a5a },
     clouds: 0x1a3a6a, stars: 1, grid: 0, cloudAmt: 0.3,
     pulse: { sky: 0.05, glow: 0.4, grid: 0, spark: 0.4, lava: 0 }, glowBase: 1,
     particles: {
@@ -372,13 +373,13 @@ export const BIOMES = [
   {
     id: 'bamboo', name: 'Bambu Ormanı', music: 'bamboo', depth: 48,
     flank: { U: 90, e: 1.7, top: 0x7fcf6a, mid: 0x3f8a48, rock: 0x6a7a5a, rockAmt: 0.5 },
-    sky: { top: 0x7fc4a8, mid: 0xb8e4c8, horizon: 0xe8f6dc },
-    fog: { color: 0xcfe8d4, near: 25, far: 210 },
+    sky: { top: 0x3aae90, mid: 0x96d9b4, horizon: 0xdcf2c4 },
+    fog: { color: 0xb6e0c0, near: 25, far: 210 },
     hemi: { sky: 0xeaffe0, ground: 0x6a9a70, intensity: 1.3 },
     sun: { color: 0xfff0c8, intensity: 1.5, az: 2.6, el: 0.7 },
     disc: { color: 0xfff6d8, size: 0.06, az: 0.3, el: 0.5, kind: 'sun' },
     ground: [0x6fb868, 0x5aa85a, 0x84c878],
-    track: { tileA: 0xf2f0dc, tileB: 0x9cc87a, edge: 0x4a8a3a, rail: 0x8cd05a, glow: 0xb6ff8a, under: 0x3a6a3a },
+    track: { tileA: 0xb4a868, tileB: 0x6ea84e, edge: 0x2f6a2a, rail: 0x8cd05a, glow: 0xb6ff8a, under: 0x3a6a3a },
     clouds: 0xf4fff0, stars: 0, grid: 0, cloudAmt: 0.8,
     pulse: { sky: 0.03, glow: 0, grid: 0, spark: 0.25, lava: 0 }, glowBase: 1,
     particles: {
@@ -395,7 +396,7 @@ export const BIOMES = [
     sun: { color: 0xfff0dc, intensity: 1.84, az: 2.3, el: 0.83 },
     disc: { color: 0xf4fbff, size: 0.05, az: 0.3, el: 0.62, kind: 'sun' },
     ground: [0xa8dcff, 0x8ec8f5, 0xc4e8ff],
-    track: { tileA: 0xe8f8ff, tileB: 0x5aa8f0, edge: 0x2a78d8, rail: 0x4ab8ff, glow: 0x9ae8ff, under: 0x2a5a9a },
+    track: { tileA: 0x5aa8ec, tileB: 0x3070cc, edge: 0x1a54b0, rail: 0x4ab8ff, glow: 0x9ae8ff, under: 0x2a5a9a },
     clouds: 0xeaf8ff, stars: 0, grid: 0, cloudAmt: 0.6,
     pulse: { sky: 0.04, glow: 0.3, grid: 0, spark: 0.5, lava: 0 }, glowBase: 1,
     particles: {
@@ -412,7 +413,7 @@ export const BIOMES = [
     sun: { color: 0xffd0f0, intensity: 1.3, az: 2.7, el: 0.6 },
     disc: { color: 0xffe0f4, size: 0.08, az: 0.3, el: 0.3, kind: 'sun' },
     ground: [0x6a3ab0, 0x7a4ac0, 0x5a2aa0],
-    track: { tileA: 0xfff0fa, tileB: 0xff9ad0, edge: 0xffd23a, rail: 0x7fe8ff, glow: 0xffe03a, under: 0x3a1a6a },
+    track: { tileA: 0x2098dc, tileB: 0x1170b0, edge: 0xffd23a, rail: 0x7fe8ff, glow: 0xffe03a, under: 0x3a1a6a },
     clouds: 0xe8a0d8, stars: 0.6, grid: 0, cloudAmt: 0.6,
     pulse: { sky: 0.12, glow: 0.6, grid: 0, spark: 0.5, lava: 0 }, glowBase: 0.9,
     particles: {
@@ -444,11 +445,11 @@ for (const b of BIOMES) {
 // rimC is picked against the biome's background: a deeper blue on the pale biomes, a bright glow on the dark ones.
 const GRADE0 = { sat: 1.12, con: 0.22, vig: 0.26, rim: 0.4, sh: [0.94, 0.97, 1.04], hi: [1.04, 1.01, 0.96], rimC: 0x6f9ad8 };
 const GRADES = {
-  snow: { sat: 1.1, con: 0.2, sh: [0.92, 0.96, 1.06], hi: [1.05, 1.02, 0.95], rim: 0.46 },
-  forest: { sat: 1.16, vig: 0.28, sh: [0.92, 0.97, 1.0], hi: [1.06, 1.02, 0.94], rimC: 0x3f7f8f },
+  snow: { sat: 1.24, con: 0.3, vig: 0.3, sh: [0.9, 0.95, 1.08], hi: [1.06, 1.02, 0.94], rim: 0.55, rimC: 0x3f76cc },
+  forest: { sat: 1.26, con: 0.28, vig: 0.28, sh: [0.92, 0.97, 1.0], hi: [1.06, 1.02, 0.94], rimC: 0x3f7f8f },
   greenhill: { sat: 1.2, con: 0.2, vig: 0.22, rimC: 0x2f78c8 },
   kapadokya: { sat: 1.14, con: 0.24, vig: 0.3, sh: [0.95, 0.93, 1.06], hi: [1.07, 1.0, 0.92], rimC: 0x9a5a9a },
-  town: { rimC: 0x4f82c8 },
+  town: { sat: 1.22, con: 0.26, rimC: 0x4f82c8 },
   desert: { sat: 1.15, con: 0.24, vig: 0.3, sh: [0.95, 0.92, 1.05], hi: [1.08, 1.01, 0.9], rimC: 0x4f7fb8 },
   icecave: { sat: 1.1, con: 0.2, vig: 0.34, sh: [0.9, 0.97, 1.08], hi: [0.98, 1.03, 1.06], rimC: 0x7fe8ff, rim: 0.5 },
   candy: { con: 0.16, vig: 0.2, sh: [0.97, 0.94, 1.04], hi: [1.03, 1.0, 0.97], rimC: 0xd0509f },
@@ -459,7 +460,7 @@ const GRADES = {
   pirate: { sat: 1.16, con: 0.2, vig: 0.24, rimC: 0x2a78c0 },
   volcano: { sat: 1.2, con: 0.28, vig: 0.36, sh: [1.02, 0.94, 0.9], hi: [1.06, 1.0, 0.9], rimC: 0xff8a3a, rim: 0.5 },
   aurora: { sat: 1.18, con: 0.26, vig: 0.34, sh: [0.9, 0.98, 1.1], hi: [0.98, 1.04, 1.04], rimC: 0x5fffc0, rim: 0.5 },
-  bamboo: { con: 0.18, rimC: 0x3a8a6a },
+  bamboo: { sat: 1.24, con: 0.26, rimC: 0x2a7a5a },
   glacier: { sat: 1.14, con: 0.2, rimC: 0x2a78d8 },
   carnival: { sat: 1.2, con: 0.24, vig: 0.3, sh: [0.96, 0.92, 1.08], hi: [1.06, 0.99, 0.96], rimC: 0xffe03a, rim: 0.5 },
 };
@@ -999,11 +1000,36 @@ BUILD.crystal = () => { // glowing ice crystal cluster (unlit)
 BUILD.bamboo = () => { // cluster of segmented bamboo stalks with leaf tufts (tint per instance)
   const m = new Mesher();
   for (const [x, z, h, r] of [[0, 0, 6, 0.17], [0.55, 0.25, 5.2, 0.15], [-0.5, 0.3, 5.6, 0.16], [0.15, -0.55, 4.6, 0.14]]) {
-    m.add(CYL(r * 0.8, r, h, 6, 1), (nx, ny, nz, cx, cy) => (Math.floor(cy / 0.7) % 2 ? 0x4f9e34 : 0x62b845), { x, z, y: h / 2 });
-    for (let y = 0.7; y < h; y += 0.7) m.add(CYL(r * 1.2, r * 1.2, 0.07, 6, 1), 0x2f6a22, { x, z, y });
+    // (open 5-sided tubes: ~290 tris a cluster; the env budget counts every live instance, and this prop is the densest one)
+    m.add(CYL(r * 0.8, r, h, 5, 1, true), 0x57ab3c, { x, z, y: h / 2 });
+    for (let y = 1.4; y < h; y += 1.4) m.add(CYL(r * 1.2, r * 1.2, 0.07, 5, 1, true), 0x2f6a22, { x, z, y });
     m.add(jit(ICO(1, 0), 0.2, 3), 0x7ed04a, { x, z, y: h, sx: 0.7, sy: 0.22, sz: 0.7 });
-    m.add(jit(ICO(1, 0), 0.2, 5), 0x9ae060, { x: x + 0.15, z, y: h - 0.7, sx: 0.55, sy: 0.18, sz: 0.55 });
+    if (x > 0) m.add(jit(ICO(1, 0), 0.2, 5), 0x9ae060, { x: x + 0.15, z, y: h - 0.7, sx: 0.55, sy: 0.18, sz: 0.55 });
   }
+  return m.build();
+};
+
+// signature silhouettes (~100-250 tris each): readable at a glance in the biome they belong to, none of them warm red / orange (that colour means danger)
+BUILD.igloo = () => { // packed-snow igloo with a dark low doorway (front = +Z)
+  const m = new Mesher();
+  m.add(new THREE.SphereGeometry(1.9, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), (nx, ny) => (ny > 0.75 ? 0xffffff : 0xe2eeff), { sy: 0.85, y: -0.02 });
+  m.add(BOX(1.3, 1.0, 1.4), 0xeef5ff, { y: 0.5, z: 1.75 });
+  m.add(BOX(0.75, 0.7, 0.1), 0x24406e, { y: 0.36, z: 2.47 });
+  return m.build();
+};
+BUILD.mushroom = () => { // giant toadstool: violet cap with cream spots on a cream stem
+  const m = new Mesher();
+  m.add(CYL(0.45, 0.62, 2.2, 7), 0xf6ecd8, { y: 1.1 });
+  m.add(new THREE.SphereGeometry(1.6, 9, 5, 0, Math.PI * 2, 0, 1.45), (nx, ny) => (ny > 0.6 ? 0x7d63e0 : 0x5d49b8), { sy: 0.75, y: 1.95 });
+  for (let i = 0; i < 4; i++) m.add(ICO(0.24, 0), 0xfff4dc, { x: Math.cos(i * 1.7) * 0.95, z: Math.sin(i * 1.7) * 0.95, y: 1.95 + 0.75 * Math.sqrt(1.6 * 1.6 - 0.95 * 0.95) - 0.05, sy: 0.5 });
+  m.add(ICO(0.28, 0), 0xfff4dc, { y: 3.12, sy: 0.5 });
+  return m.build();
+};
+BUILD.arch = () => { // natural ice arch: two stout pillars and a lintel (the opening faces the track)
+  const m = new Mesher();
+  for (const sx of [-1, 1]) m.add(CYL(0.75, 1.0, 4.4, 6), (nx, ny) => (ny > 0.5 ? 0xd6e6ff : 0x9fbdf0), { x: sx * 1.9, y: 2.2 });
+  m.add(BOX(5.6, 1.0, 1.7), 0xe6f0ff, { y: 4.7 });
+  m.add(ICO(0.9, 0), 0xffffff, { y: 5.4, sy: 0.6, sx: 1.6 });
   return m.build();
 };
 
@@ -1305,13 +1331,6 @@ BUILD.fence = () => { // 5 m picket fence section along X
   return m.build();
 };
 
-BUILD.bench = () => {
-  const m = new Mesher();
-  m.add(BOX(1.8, 0.1, 0.55), 0xb07a42, { y: 0.5 });
-  m.add(BOX(1.8, 0.45, 0.08), 0x8f5f32, { y: 0.85, z: -0.24, rx: 0.12 });
-  for (const sx of [-1, 1]) m.add(BOX(0.1, 0.5, 0.5), 0x4a5060, { x: sx * 0.78, y: 0.25 });
-  return m.build();
-};
 
 BUILD.lampost = () => {
   const m = new Mesher();
@@ -1446,7 +1465,6 @@ const TDEF = {
   seal: { make: BUILD.seal, cap: 40 },
   stalag: { make: BUILD.stalag, cap: 90, sink: 0.1 },
   fence: { make: BUILD.fence, cap: 100 },
-  bench: { make: BUILD.bench, cap: 40 },
   lampost: { make: BUILD.lampost, cap: 80 },
   skullrock: { make: BUILD.skullrock, cap: 50 },
   fire: { make: BUILD.fire, cap: 40, glow: true },
@@ -1454,6 +1472,9 @@ const TDEF = {
   robot: { make: BUILD.robot, cap: 50, glow: true },
   bamboo: { make: BUILD.bamboo, cap: 260, sink: 0.3 },
   icespire: { make: BUILD.icespire, cap: 70, sink: 0.3 },
+  igloo: { make: BUILD.igloo, cap: 24 },
+  mushroom: { make: BUILD.mushroom, cap: 60, sink: 0.2 },
+  arch: { make: BUILD.arch, cap: 24 },
   ferris: { make: BUILD.ferris, cap: 12 },
   tent: { make: BUILD.tent, cap: 40 },
   // library props, snowy originals
@@ -1476,9 +1497,9 @@ const TDEF = {
 
 // Types each biome uses: created one per frame in the biome before, so no frame ever builds a dozen geometries at once.
 const BIOME_TYPES = {
-  snow: ['pine', 'pine_big', 'cabin', 'snowman', 'boulder', 'pond', 'hill', 'peak'],
-  forest: ['pineG', 'pineBigG', 'roundtree', 'rock', 'pond', 'hill', 'stump', 'logs'],
-  town: ['road', 'hut', 'house', 'house_tall', 'shop', 'apartment', 'car', 'car_blue', 'roundtree', 'pineG', 'clocktower', 'fence', 'bench', 'lampost'],
+  snow: ['pine', 'pine_big', 'cabin', 'snowman', 'igloo', 'boulder', 'pond', 'hill', 'peak'],
+  forest: ['pineG', 'pineBigG', 'roundtree', 'rock', 'pond', 'hill', 'stump', 'logs', 'mushroom'],
+  town: ['road', 'hut', 'house', 'house_tall', 'shop', 'apartment', 'car', 'car_blue', 'roundtree', 'pineG', 'clocktower', 'fence', 'lampost'],
   greenhill: ['hill', 'roundtree', 'palm', 'sunflower', 'islet', 'waterfall', 'pond'],
   desert: ['hill', 'mesa', 'cactus', 'camel', 'rock', 'palm', 'pond', 'skullrock'],
   kapadokya: ['hill', 'chimney', 'rock', 'balloon'],
@@ -1490,7 +1511,7 @@ const BIOME_TYPES = {
   candy: ['hill', 'cane', 'lollipop', 'donut', 'icecream', 'pond', 'jellycube'],
   neon: ['pillar', 'tower', 'pyramid', 'ring', 'peak', 'robot'],
   volcano: ['volcano', 'hill', 'lava', 'rock', 'spire', 'fire'],
-  aurora: ['peak', 'hill', 'pine', 'pine_big', 'boulder', 'pond', 'crystal'],
+  aurora: ['peak', 'hill', 'pine', 'pine_big', 'boulder', 'pond', 'crystal', 'arch'],
   bamboo: ['hill', 'bamboo', 'roundtree', 'rock', 'pond', 'pavilion', 'rbridge'],
   glacier: ['peak', 'hill', 'icespire', 'crystal', 'stalag', 'pond', 'seal'],
   carnival: ['hill', 'ferris', 'tent', 'balloon', 'lollipop', 'ring', 'tower'],
@@ -1626,6 +1647,7 @@ const GEN = {
     E._sc('pine_big', 3, 20, U - 4, 1.0, 1.5, O_PINE);
     E._sc('boulder', 2.5, 16, U, 0.9, 1.9, { pal: P.pineTint });
     E._sc('snowman', 0.7, 17, 55, 2.2, 3.0, { yaw: 'face' });
+    E._sc('igloo', 0.45, 17, 60, 2.0, 2.8, { yaw: 'face' });
     // ... and the valley below is forest with a few chalets
     E._sc('pine', 12, 6, 75, 1.2, 2.0, O_PINE_V);
     E._sc('pine_big', 4, 6, 75, 1.2, 1.9, O_PINE_V);
@@ -1652,6 +1674,7 @@ const GEN = {
     E._sc('rock', 2, 16, U, 0.9, 2.2, { pal: P.rockGrey });
     E._sc('stump', 4, 16, U - 4, 1.5, 2.4, {});                 // stumps + log piles along the slope
     E._sc('logs', 1.6, 16, U - 4, 1.5, 2.1, {});
+    E._sc('mushroom', 1.3, 16, U - 4, 1.3, 2.3, {});
     // valley forest
     E._sc('pineBigG', 4, 6, 85, 1.2, 1.9, { pal: P.pineTint, clump: 0.3, rel: true });
     E._sc('pineG', 9, 6, 85, 1.4, 2.2, { pal: P.pineTint, clump: 0.3, rel: true });
@@ -1700,9 +1723,8 @@ const GEN = {
         E._put(R.next() < 0.7 ? 'roundtree' : 'pineG', s0 + 6 + R.next() * 38, uc + (R.next() - 0.5) * 6, sc, sc, sc, undefined, P.treeTint[(R.next() * P.treeTint.length) | 0]);
       }
     }
-    // grassy mountain slope above the village: fences, benches, street lamps
+    // grassy mountain slope above the village: fences, street lamps
     E._sc('fence', 3.5, 16, U - 6, 1.6, 2.2, {});
-    E._sc('bench', 1.6, 16, U - 6, 1.8, 2.4, {});
     E._sc('lampost', 3, 16, U - 6, 1.6, 2.2, {});
     E._sc('pineG', 6, 17, U - 6, 1.1, 1.7, { pal: P.pineTint, clump: 0.3 });
     E._sc('roundtree', 4, 17, U - 6, 1.1, 1.7, { pal: P.treeTint, clump: 0.3 });
@@ -1910,6 +1932,7 @@ const GEN = {
     E._sc('pine_big', 3, 20, U - 4, 1.0, 1.5, { pal: P.nightPine, clump: 0.3 });
     E._sc('crystal', 4, 15, U - 2, 1.2, 2.6, { pal: P.auroraGlow });
     E._sc('boulder', 2.5, 16, U, 0.9, 1.9, { pal: P.nightHill });
+    E._sc('arch', 0.5, 17, 70, 1.6, 2.4, { yaw: 'face' });
     E._sc('pine', 12, 6, 75, 1.2, 2.0, { pal: P.nightPine, clump: 0.3, rel: true });
     E._sc('crystal', 5, 6, 90, 1.8, 4, { rel: true, pal: P.auroraGlow, ov: 0.8 });
     E._sc('boulder', 1.5, 6, 80, 1.2, 2.4, { rel: true, pal: P.nightHill });
@@ -1925,8 +1948,8 @@ const GEN = {
       const k = side * ((16 / 120) * Math.cos(s / 120 + 0.7) + (6 / 43) * Math.cos(s / 43));
       E._put('pond', s, u, 7.5, 1, 16, 'path', P.bamWater[(R.next() * 3) | 0], { yo: -Math.atan(k), lift: 0.5, ov: 0.9, floor: true });
     }
-    E._sc('bamboo', 16, 15, U - 3, 1.3, 2.4, { pal: P.bamTint, clump: 0.25 });
-    E._sc('bamboo', 20, 6, 80, 1.6, 2.8, { rel: true, pal: P.bamTint, clump: 0.25 });
+    E._sc('bamboo', 8, 15, U - 3, 1.3, 2.4, { pal: P.bamTint, clump: 0.25 });
+    E._sc('bamboo', 10, 6, 80, 1.6, 2.8, { rel: true, pal: P.bamTint, clump: 0.25 });
     E._sc('rock', 3, 15, U, 1.0, 2.4, { pal: P.rockGrey });
     if (R.next() < 0.35) E._sc('pavilion', 1, 15, 70, 2.4, 3.2, { rel: true, yaw: 'face', pal: P.bld });
     E._sc('roundtree', 2, 6, 80, 1.2, 1.9, { rel: true, pal: P.treeTint });
@@ -2017,6 +2040,7 @@ export class Environment {
     this._tf = mkFrame();  // boundary frames
     this._sf = mkFrame();  // path sample cache (never share with _f: _clear() runs while _put() still reads _f)
     this._cp = new THREE.Vector3();
+    this._cd = new THREE.Vector3(); this._cfx = 0; this._cfz = 1; this._ctn = 1; this._call = true; // view cone (see _setCull)
     this._dir = new THREE.Vector3();
     this._fx = 0; this._fz = -1;
     this._head = 0;
@@ -2082,6 +2106,7 @@ export class Environment {
     this._nI = 0; this._nT = 0; this._nD = 0;
     this._fy = 0; this._ff = 0; this._fdu = 0; this._fs = 0; this._fpy = 0; this._cU = 100;
     this.fogPress = 0;    // 0..1 extra fog (blizzard / zones), written by the runner every frame; the runner never writes scene.fog
+    this._vk = 0;         // eased speed amount (0..1) for the vignette
     this.ballVs = 0;      // ball speed (m/s), written by the runner every frame: the fog never closes in nearer than 2 s of running
     this._bDepth = BIOMES.map((b) => b.depth);
     this._bU = BIOMES.map((b) => b.flank.U);
@@ -2722,6 +2747,7 @@ export class Environment {
     this.group.add(mesh);
     T = {
       id: this._types.length, name, mesh, geo, owned, cap, count: 0, dirty: false, glow: !!def.glow, meta: new Float32Array(cap * MS),
+      mm: new Float32Array(cap * 16), mc: new Float32Array(cap * 3).fill(1), // master instances in chunk order; the mesh's own buffers get the visible ones each frame (_cullDecor)
       hr: me.hr, y0: me.y0, y1: me.y1, sink: def.sink || 0, tris: geo.attributes.position.count / 3,
     };
     this._types.push(T);
@@ -2821,12 +2847,50 @@ export class Environment {
     }
   }
 
+  // View cone in plan (x, z) from the camera. 390 px wide is only a +-15 degree window, so most of a flank is never on screen: instances outside it are
+  // neither uploaded nor drawn (fewer triangles; a type with nothing in view costs no draw call at all). The margins (+30% width, +8 m) cover camera
+  // sway and the one frame the camera pose can lag behind. Looking (almost) straight down, a non-camera object or the first frames: draw everything.
+  _setCull(camera) {
+    const d = this._cd;
+    if (!camera || !camera.getWorldDirection) { this._call = true; return; }
+    camera.getWorldDirection(d);
+    const fl = Math.hypot(d.x, d.z);
+    this._call = !(fl > 0.45) || !(camera.aspect > 0) || !(camera.fov > 0) || this._shaderWarm > 0;
+    this._cfx = d.x / (fl || 1); this._cfz = d.z / (fl || 1);
+    this._ctn = Math.tan(camera.fov * 0.00872665) * camera.aspect * 1.3 / Math.max(0.5, fl); // (a pitched-down camera sees a wider wedge of ground)
+  }
+
+  _inView(x, z, r) {
+    const cp = this._cp, dx = x - cp.x, dz = z - cp.z;
+    const al = dx * this._cfx + dz * this._cfz, lt = Math.abs(dz * this._cfx - dx * this._cfz);
+    return al > -r - 4 && lt < (al + r) * this._ctn + r + 8;
+  }
+
+  _cullDecor() {
+    const all = this._call;
+    for (let t = 0; t < this._types.length; t++) {
+      const T = this._types[t], mesh = T.mesh, ma = mesh.instanceMatrix.array, ca = mesh.instanceColor.array, mm = T.mm, mc = T.mc, meta = T.meta;
+      let n = 0;
+      for (let i = 0, c = T.count; i < c; i++) {
+        const j = i * MS;
+        if (!all && !(meta[j + 2] >= 0 && this._inView(meta[j], meta[j + 1], meta[j + 2]))) continue;
+        const a = i * 16, b = n * 16;
+        for (let k = 0; k < 16; k++) ma[b + k] = mm[a + k];
+        ca[n * 3] = mc[i * 3]; ca[n * 3 + 1] = mc[i * 3 + 1]; ca[n * 3 + 2] = mc[i * 3 + 2];
+        n++;
+      }
+      mesh.count = n;
+      mesh.visible = n > 0;
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.instanceColor.needsUpdate = true;
+    }
+  }
+
   _kill(T, i) {
-    const m = T.mesh.instanceMatrix.array, b = i * 16;
+    const m = T.mm, b = i * 16;
     for (let k = 0; k < 16; k++) m[b + k] = 0;
     m[b + 15] = 1; // collapsed to a point
     T.meta[i * MS + 2] = -1;
-    T.mesh.instanceMatrix.needsUpdate = true;
   }
 
   _ensureSamples(sLo, sHi) {
@@ -3026,14 +3090,13 @@ export class Environment {
     const c = Math.cos(a), sn = Math.sin(a);
     const tilt = (o && o.tilt) || 0;
     const ct = Math.cos(tilt), st = Math.sin(tilt);
-    const mesh = T.mesh;
     const b = T.count * 16;
-    const m = mesh.instanceMatrix.array;
+    const m = T.mm;
     m[b] = c * sx; m[b + 1] = 0; m[b + 2] = -sn * sx; m[b + 3] = 0;
     m[b + 4] = sn * st * sy; m[b + 5] = ct * sy; m[b + 6] = c * st * sy; m[b + 7] = 0;
     m[b + 8] = sn * ct * sz; m[b + 9] = -st * sz; m[b + 10] = c * ct * sz; m[b + 11] = 0;
     m[b + 12] = x; m[b + 13] = y; m[b + 14] = z; m[b + 15] = 1;
-    const ca = mesh.instanceColor.array, cb = T.count * 3;
+    const ca = T.mc, cb = T.count * 3;
     if (tint) { ca[cb] = tint.r; ca[cb + 1] = tint.g; ca[cb + 2] = tint.b; }
     else { ca[cb] = 1; ca[cb + 1] = 1; ca[cb + 2] = 1; }
     const mj = T.count * MS;
@@ -3087,15 +3150,7 @@ export class Environment {
     this._genCeil(ch);
     GEN[b.id](this, this._r);
     this._chunks.push(ch);
-    for (let i = 0; i < this._types.length; i++) {
-      const T = this._types[i];
-      if (!T.dirty) continue;
-      T.dirty = false;
-      T.mesh.count = T.count;
-      T.mesh.visible = T.count > 0;
-      T.mesh.instanceMatrix.needsUpdate = true;
-      T.mesh.instanceColor.needsUpdate = true;
-    }
+    for (let i = 0; i < this._types.length; i++) this._types[i].dirty = false; // (the meshes are refilled every frame by _cullDecor)
     this._ch = null; this._prev = null;
   }
 
@@ -3106,13 +3161,9 @@ export class Environment {
       if (!n) continue;
       const T = this._types[t];
       const rest = T.count - n;
-      const ma = T.mesh.instanceMatrix.array, ca = T.mesh.instanceColor.array;
+      const ma = T.mm, ca = T.mc;
       if (rest > 0) { ma.copyWithin(0, n * 16, T.count * 16); ca.copyWithin(0, n * 3, T.count * 3); T.meta.copyWithin(0, n * MS, T.count * MS); }
       T.count = rest;
-      T.mesh.count = rest;
-      T.mesh.visible = rest > 0;
-      T.mesh.instanceMatrix.needsUpdate = true;
-      T.mesh.instanceColor.needsUpdate = true;
     }
     if (ch.wallV) {
       const n = ch.wallV * 3, end = this._wn * 3;
@@ -3158,16 +3209,14 @@ export class Environment {
     this._revalNeeded = false;
     const hint = Math.floor(this._sNow / SP);
     for (let t = 0; t < this._types.length; t++) {
-      const T = this._types[t], meta = T.meta, m = T.mesh.instanceMatrix.array;
-      let changed = false;
+      const T = this._types[t], meta = T.meta, m = T.mm;
       for (let i = 0, n = T.count; i < n; i++) {
         const j = i * MS;
         if (meta[j + 2] < 0 || meta[j + 5] > 4) continue; // dead, or floating (balloons, islands, gulls keep their height)
         const yNew = this._field(meta[j], meta[j + 1], hint) + meta[j + 5];
         const dy = yNew - m[i * 16 + 13];
-        if (dy < -1) { m[i * 16 + 13] += dy; meta[j + 3] += dy; meta[j + 4] += dy; changed = true; }
+        if (dy < -1) { m[i * 16 + 13] += dy; meta[j + 3] += dy; meta[j + 4] += dy; }
       }
-      if (changed) T.mesh.instanceMatrix.needsUpdate = true;
     }
   }
 
@@ -3358,7 +3407,7 @@ export class Environment {
     }
     const t = this.time;
     const camt = this.nCur[16];
-    this.clouds.visible = camt > 0.03;
+    let nv = 0; // clouds in view are packed to the front (see _setCull)
     for (let i = 0; i < N; i++) {
       cl.x[i] += cl.vx[i] * dt;
       cl.z[i] += cl.vz[i] * dt;
@@ -3380,8 +3429,9 @@ export class Environment {
       }
       if (respawn) this._spawnCloud(i, false);
       const r = cl.r[i];
+      if (!this._call && !this._inView(cl.x[i], cl.z[i], r * this._cloudHr)) continue;
       const a = cl.yaw[i], c = Math.cos(a), sn = Math.sin(a);
-      const b = i * 16;
+      const b = nv++ * 16;
       const ra = r * camt;
       const sy = ra * cl.sq[i];
       m[b] = c * ra; m[b + 1] = 0; m[b + 2] = -sn * ra; m[b + 3] = 0;
@@ -3389,6 +3439,8 @@ export class Environment {
       m[b + 8] = sn * ra; m[b + 9] = 0; m[b + 10] = c * ra; m[b + 11] = 0;
       m[b + 12] = cl.x[i]; m[b + 13] = cl.y[i] + Math.sin(t * 0.25 + cl.ph[i]) * 1.2; m[b + 14] = cl.z[i]; m[b + 15] = 1;
     }
+    this.clouds.count = nv;
+    this.clouds.visible = camt > 0.03 && nv > 0;
     this.clouds.instanceMatrix.needsUpdate = true;
   }
 
@@ -3613,6 +3665,9 @@ export class Environment {
     }
     this._lastS = s;
     if (this._lookDirty) this._applyLook();
+    // speed feel: the vignette closes in a little (up to +0.12) between ~25 and ~55 m/s; one uniform, no extra pass
+    this._vk += ((this.ballVs > 25 ? Math.min(1, (this.ballVs - 25) / 30) : 0) - this._vk) * Math.min(1, dt * 2);
+    SU.uGrade.value.z = this.nCur[20] + 0.12 * this._vk;
 
     // fog = the biome's look (blended across portals) x the blizzard modifier (eased) x the runner's pressure; written every frame
     // (so a portal never snaps it back) and never closer than ~2 s of running: far >= max(70, 2 * ballVs)
@@ -3631,7 +3686,9 @@ export class Environment {
     if (this._inited && this._warm.length) this._type(this._warm.shift());
     this._inited = true;
     this._updateGround(cp, s, bi);
+    this._setCull(camera);
     this._updateClouds(dt);
+    this._cullDecor();
     this._updateParticles(dt, cp);
     this._updateCelestial(cp);
 

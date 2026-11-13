@@ -12,21 +12,33 @@
 //
 // Importing this module never touches `document`; everything happens inside createMenus().
 import { SKINS, TRAILS, setGoldBall } from './skins.js';
-import { ACHIEVEMENTS, EGGS, DAILY_REWARDS, UPGRADES, SLED_PACK } from './meta.js';
+import { POSTCARDS, ACHIEVEMENTS, EGGS, DAILY_REWARDS, UPGRADES, GUC, POWER_BRANCHES, SLED_PACK, UNLOCK_END, UNLOCK_LV, UNLOCK_LV_MAX, WELCOME, isUnlocked, welcomeGift } from './meta.js';
 import { ACTS, LEVELS, levelById, BONUS } from './campaign.js';
 import { dagPlan, DAG_COUNT, planBrief } from './cigplan.js';
-import { nextGoal, vitrinInfo } from './shop.js';
+import { nextGoal, vitrinInfo, shopNewCount } from './shop.js';
 import { hideBoot, runnerDeathText } from './ui.js';
 import { PUBLIC_URL } from './sharecard.js';
-import { getLang, setLang } from './i18n.js';
+import { platform } from './platform.js';
+import { getLang, setLang, t as tr } from './i18n.js';
 import { hasArenaInvite } from './agar/invite.js';
 
 const STYLE_ID = 'freemon-menus-style';
-const VERSION = '0.3.0';
+const VERSION = '1.0.0'; // keep in step with package.json and android/app/build.gradle versionName
 const PRIVACY_URL = PUBLIC_URL + 'privacy.html';
 const LEVELS_PER_ACT = 10;
 const ACT_SUF = ['i', 'yi', 'ü', 'ü', 'i', 'yı', 'yi', 'i', 'u', 'u']; // Turkish accusative: Act 1'i, 2'yi, 3'ü ...
 const WORD = 'PATPAT';
+// open-source notices shown in Settings (MIT needs the notice to ship with the app; the CC0 credits are courtesy)
+const LICENSES = [
+  ['three.js', 'MIT License, Copyright (c) 2010-2026 three.js authors'],
+  ['PeerJS', 'MIT License, Copyright (c) 2015 Michelle Bu and Eric Zhang'],
+  ['Trystero', 'MIT License, Copyright (c) 2021 Dan Motzenbecker'],
+  ['Capacitor (@capacitor/core, app, haptics, local-notifications)', 'MIT License, Copyright (c) Drifty Co. / Ionic'],
+  ['Kenney asset packs (kenney.nl)', 'CC0 1.0: 3D models and sound effects'],
+  ['rubberduck (OpenGameArt)', 'CC0 1.0: sound effects'],
+  ['Lilita One (Juan Montoreano)', 'SIL Open Font License 1.1, loaded from Google Fonts when online'],
+];
+const MIT_TEXT = 'Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.';
 const KONAMI = ['up', 'up', 'down', 'down', 'left', 'right', 'left', 'right', 'b', 'a'];
 
 // ================================================================================================================ CSS
@@ -69,7 +81,7 @@ const CSS = `
   padding-top: calc(var(--sat, env(safe-area-inset-top, 0px)) + 8px);
   background:
     radial-gradient(ellipse 85% 42% at 50% 56%, rgba(40, 20, 100, 0) 0%, rgba(40, 20, 100, 0) 55%, rgba(26, 14, 78, 0.38) 100%),
-    linear-gradient(180deg, rgba(34, 24, 104, 0.84) 0%, rgba(40, 52, 140, 0.52) 17%, rgba(46, 78, 170, 0.16) 36%, rgba(36, 60, 140, 0.06) 56%, rgba(28, 22, 92, 0.58) 82%, rgba(22, 14, 74, 0.86) 100%);
+    linear-gradient(180deg, rgba(34, 24, 104, 0.84) 0%, rgba(40, 52, 140, 0.52) 17%, rgba(46, 78, 170, 0.3) 36%, rgba(36, 60, 140, 0.26) 56%, rgba(28, 22, 92, 0.58) 82%, rgba(22, 14, 74, 0.86) 100%);
 }
 .fm-main.fm-hide { display: none; }
 .fm-main.fm-under { visibility: hidden; }
@@ -176,7 +188,7 @@ const CSS = `
   position: absolute; left: 50%; top: 18px; transform: translateX(-50%) rotate(-1.5deg); max-width: 100%; padding: 5px 12px 6px; text-align: center; pointer-events: none; border-radius: 16px; border: 3px solid var(--ink);
   background: linear-gradient(180deg, #ffffff, #dfeaff); color: var(--ink); text-shadow: none; box-shadow: 0 4px 0 var(--ink2), 0 8px 12px rgba(10, 20, 60, 0.35); animation: fmBubble 3.2s ease-in-out infinite alternate;
 }
-.fm-best::after { content: ""; position: absolute; left: 50%; bottom: -11px; width: 16px; height: 16px; margin-left: -8px; transform: rotate(45deg); background: #dfeaff; border: 0 solid var(--ink); border-right-width: 3px; border-bottom-width: 3px; border-radius: 0 0 5px 0; }
+.fm-best::after { content: ""; position: absolute; z-index: -1; left: 50%; bottom: -11px; width: 16px; height: 16px; margin-left: -8px; transform: rotate(45deg); background: #dfeaff; border: 0 solid var(--ink); border-right-width: 3px; border-bottom-width: 3px; border-radius: 0 0 5px 0; }
 .fm-best .bk { display: block; font-size: 11px; line-height: 1; letter-spacing: 0.12em; color: #5a7196; }
 .fm-best .bv { display: block; margin-top: 2px; font-size: 24px; line-height: 1.05; color: var(--orange-dark); white-space: nowrap; }
 .fm-best .bs { display: block; margin-top: 2px; font-size: 12px; line-height: 1.1; white-space: nowrap; }
@@ -213,10 +225,10 @@ const CSS = `
 }
 .fm-info:active { transform: translateY(2px); }
 .fm-info { margin-bottom: 16px; position: relative; z-index: 0; flex-shrink: 0; overflow: visible; }
-.fm-globe { position: absolute; left: 10px; bottom: 14px; z-index: 3; width: 58px; height: 58px; padding: 0; display: grid; place-items: center; cursor: pointer; border-radius: 50%; border: 3px solid var(--ink); background: radial-gradient(ellipse 55% 40% at 36% 24%, rgba(255,255,255,0.85), rgba(255,255,255,0) 70%), linear-gradient(180deg, #bfe6ff, #5aa6f0); box-shadow: 0 4px 0 var(--ink2), 0 8px 10px rgba(10,30,60,0.35); font-size: 30px; line-height: 1; text-shadow: none; pointer-events: auto; }
+.fm-globe { position: absolute; left: 18px; bottom: 14px; z-index: 3; width: 58px; height: 58px; padding: 0; display: grid; place-items: center; cursor: pointer; border-radius: 50%; border: 3px solid var(--ink); background: radial-gradient(ellipse 55% 40% at 36% 24%, rgba(255,255,255,0.85), rgba(255,255,255,0) 70%), linear-gradient(180deg, #bfe6ff, #5aa6f0); box-shadow: 0 4px 0 var(--ink2), 0 8px 10px rgba(10,30,60,0.35); font-size: 30px; line-height: 1; text-shadow: none; pointer-events: auto; }
 .fm-globe .gl { display: block; }
 .fm-globe.used { filter: grayscale(0.7) brightness(0.85); }
-.fm-globe .glt { position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); padding: 1px 6px 2px; border-radius: 8px; background: var(--ink); color: #fff; font-size: 9.5px; letter-spacing: 0.04em; white-space: nowrap; }
+.fm-globe .glt { position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); padding: 1px 6px 2px; border-radius: 8px; background: var(--ink); color: #fff; font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; }
 .fm-globe .fm-bdg { top: -7px; right: -5px; }
 .fm-globe.shk .gl { animation: fmGlobeShake 0.7s ease-in-out; }
 .fm-globe.ready { animation: fmDlWob 1.6s ease-in-out infinite; }
@@ -261,7 +273,7 @@ const CSS = `
 .fm-hgoal .gb i { display: block; height: 100%; background: linear-gradient(90deg, #ffe066, #ff9a3a); }
 .fm-hgoal .gc { flex: none; font-size: 11.5px; color: var(--gold); text-shadow: none; white-space: nowrap; }
 .fm-sgoal { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; margin: 0 auto 8px; width: min(calc(100% - 24px), 380px); box-sizing: border-box; border-radius: 14px; border: 2.5px solid var(--ink); background: #fff; color: var(--ink); font-size: 13px; font-weight: 800; cursor: pointer; text-align: left; text-shadow: none; flex: none; }
-.fm-sgoal .sg-t { flex: none; font-size: 10.5px; letter-spacing: 0.06em; opacity: 0.85; }
+.fm-sgoal .sg-t { flex: none; font-size: 11px; letter-spacing: 0.06em; opacity: 0.85; }
 .fm-sgoal .sg-n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fm-sgoal .sg-b { flex: none; width: 56px; height: 9px; border-radius: 5px; background: rgba(0, 0, 0, 0.15); overflow: hidden; }
 .fm-sgoal .sg-b i { display: block; height: 100%; background: linear-gradient(90deg, #ffb300, #ff7a1a); }
@@ -287,7 +299,7 @@ const CSS = `
 .fm-play::after { content: ""; position: absolute; top: -20%; bottom: -20%; left: -60%; width: 34%; background: linear-gradient(100deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0)); transform: skewX(-20deg); animation: fmShine 3.8s ease-in-out infinite; pointer-events: none; }
 @keyframes fmShine { 0%, 55% { left: -60%; } 80%, 100% { left: 130%; } }
 .fm-play:active { transform: translateY(6px); box-shadow: 0 2px 0 #2f7a14, 0 4px 8px rgba(10, 30, 60, 0.3), inset 0 4px 0 rgba(255, 255, 255, 0.6); }
-.fm-secrow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; width: min(100%, 400px); align-items: start; }
+.fm-secrow { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; width: min(100%, 400px); align-items: start; }
 .fm-sb { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; width: 100%; min-width: 0; margin: 0; gap: 3px; padding: 0; border: 0; background: none; cursor: pointer; --c1: #ffb347; --c2: #ff7a2f; --sh: #a8400f; }
 .fm-sb .ic {
   position: relative; width: 46px; height: 46px; flex: none; display: grid; place-items: center; border-radius: 50%; border: 3px solid var(--ink); font-size: 22px; line-height: 1; text-shadow: none;
@@ -318,14 +330,16 @@ const CSS = `
 
 .fm-main.fm-starting > * { pointer-events: none; }
 .fm-main.fm-starting .fm-play { filter: brightness(0.92); transform: translateY(5px); box-shadow: 0 3px 0 #2f7a14; }
-.fm-main.enter .fm-top { animation: fmDrop 0.5s cubic-bezier(.2, 1.3, .4, 1) backwards; }
-.fm-main.enter .fm-logorow { animation: fmDrop 0.5s cubic-bezier(.2, 1.3, .4, 1) 0.08s backwards; }
-.fm-main.enter .fm-best { animation: fmPopIn 0.55s cubic-bezier(.2, 1.4, .4, 1) 0.3s backwards, fmBubble 3.2s ease-in-out 0.9s infinite alternate; }
-.fm-main.enter .fm-info { animation: fmUp 0.5s cubic-bezier(.2, 1.3, .4, 1) 0.1s backwards; }
-.fm-main.enter .fm-playw { animation: fmUp 0.55s cubic-bezier(.2, 1.3, .4, 1) 0.18s backwards, fmBreath 1.8s ease-in-out 0.8s infinite; }
-.fm-main.enter .fm-sb { animation: fmPopIn 0.5s cubic-bezier(.2, 1.4, .4, 1) backwards; }
-.fm-main.enter .fm-sb:nth-child(2) { animation-delay: 0.05s; } .fm-main.enter .fm-sb:nth-child(3) { animation-delay: 0.1s; }
-.fm-main.enter .fm-sb:nth-child(4) { animation-delay: 0.15s; } .fm-main.enter .fm-sb:nth-child(5) { animation-delay: 0.2s; }
+/* usable at once: everything is settled within 0.4 s and PLAY + the bottom row never start invisible */
+@keyframes fmNavIn { 0% { transform: scale(0.82); } 60% { transform: scale(1.08); } 100% { transform: none; } }
+.fm-main.enter .fm-top { animation: fmDrop 0.3s cubic-bezier(.2, 1.3, .4, 1) backwards; }
+.fm-main.enter .fm-logorow { animation: fmDrop 0.3s cubic-bezier(.2, 1.3, .4, 1) 0.04s backwards; }
+.fm-main.enter .fm-best { animation: fmPopIn 0.3s cubic-bezier(.2, 1.4, .4, 1) 0.1s backwards, fmBubble 3.2s ease-in-out 0.5s infinite alternate; }
+.fm-main.enter .fm-info { animation: fmUp 0.3s cubic-bezier(.2, 1.3, .4, 1) 0.04s backwards; }
+.fm-main.enter .fm-playw { animation: fmBreath 1.8s ease-in-out 0.3s infinite; }
+.fm-main.enter .fm-sb { animation: fmNavIn 0.3s cubic-bezier(.2, 1.4, .4, 1); }
+.fm-main.enter .fm-sb:nth-child(2) { animation-delay: 0.02s; } .fm-main.enter .fm-sb:nth-child(3) { animation-delay: 0.04s; }
+.fm-main.enter .fm-sb:nth-child(4) { animation-delay: 0.06s; } .fm-main.enter .fm-sb:nth-child(5) { animation-delay: 0.08s; } .fm-main.enter .fm-sb:nth-child(6) { animation-delay: 0.1s; }
 
 @media (max-height: 760px) {
   .fm-logo { font-size: clamp(38px, 12.4vw, 54px); min-height: 46px; }
@@ -344,7 +358,7 @@ const CSS = `
   .fm-hgoal { display: none; }
   .fm-mrows .fm-mr:nth-child(n+3) { display: none; }
   .fm-ihead { display: none; }
-  .fm-sb .lb { font-size: 10px; }
+  .fm-sb .lb { font-size: 11px; }
   .fm-sb .ic { width: 38px; height: 38px; font-size: 17px; }
   .fm-bot { gap: 7px; }
   .fm-secrow { padding-top: 2px; }
@@ -357,7 +371,7 @@ const CSS = `
   .fm-cur .num { font-size: 14px; min-width: 24px; }
   .fm-play { font-size: 40px; }
   .fm-sb .ic { width: 36px; height: 36px; }
-  .fm-sb .lb { font-size: 9.5px; letter-spacing: 0; }
+  .fm-sb .lb { font-size: 11px; letter-spacing: 0; }
   .fm-sb .lb { font-size: 11px; }
 }
 
@@ -468,8 +482,8 @@ const CSS = `
 .fm-cd b { display: block; font-size: 32px; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
 
 /* ---- settings / stats ---- */
-.fm-sw { position: relative; flex: none; width: 60px; height: 36px; padding: 0; cursor: pointer; border-radius: 18px; border: 3px solid var(--ink); background: #aab6c8; box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.15); transition: background 0.15s; }
-.fm-sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(180deg, #fff, #dfe8f4); border: 2.5px solid var(--ink); transition: transform 0.15s; }
+.fm-sw { position: relative; flex: none; width: 60px; height: 44px; padding: 0; cursor: pointer; border-radius: 18px; border: 3px solid var(--ink); background: #aab6c8; box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.15); transition: background 0.15s; }
+.fm-sw::after { content: ""; position: absolute; top: 6px; left: 2px; width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(180deg, #fff, #dfe8f4); border: 2.5px solid var(--ink); transition: transform 0.15s; }
 .fm-sw.on { background: linear-gradient(180deg, #7be89d, var(--green)); }
 .fm-sw.on::after { transform: translateX(24px); }
 .fm-tgl { font-size: 18px; flex: 1; }
@@ -552,17 +566,17 @@ const CSS = `
 .fm-node.lk .n { opacity: 0.85; font-size: 19px; }
 .fm-node.far { opacity: 0.55; filter: saturate(0.3); }
 .fm-node.far .n { font-size: 17px; }
-.fm-node .nm { position: absolute; left: 50%; top: calc(100% + 2px); transform: translateX(-50%); max-width: 92px; padding: 1px 6px; border-radius: 8px; background: rgba(10, 25, 55, 0.62); color: #fff; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: none; pointer-events: none; }
+.fm-node .nm { position: absolute; left: 50%; top: calc(100% + 2px); transform: translateX(-50%); max-width: 92px; padding: 1px 6px; border-radius: 8px; background: rgba(10, 25, 55, 0.62); color: #fff; font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: none; pointer-events: none; }
 .fm-node .yav { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; border: 2px solid var(--ink); background: #fff; font-size: 14px; line-height: 1; text-shadow: none; pointer-events: none; }
 .fm-node.bonus { width: 50px; height: 50px; --nc1: #e9b8ff; --nc2: #a24cff; --nsh: #5a1fa8; animation: fmBonusGlow 1.4s ease-in-out infinite alternate; }
 .fm-node.bonus.lk { --nc1: #9a8fb0; --nc2: #6c6285; --nsh: #3f3656; animation: none; }
 .fm-node.bonus.done { --nc1: #ffe27a; --nc2: #ffae00; --nsh: #b36f00; animation: none; }
-.fm-node.bonus .bn { position: absolute; left: 50%; top: -17px; transform: translateX(-50%); font-size: 10px; letter-spacing: 0.06em; white-space: nowrap; color: #fff; text-shadow: var(--ol-sm); }
+.fm-node.bonus .bn { position: absolute; left: 50%; top: -17px; transform: translateX(-50%); font-size: 11px; letter-spacing: 0.06em; white-space: nowrap; color: #fff; text-shadow: var(--ol-sm); }
 @keyframes fmBonusGlow { from { box-shadow: 0 5px 0 var(--nsh), 0 0 6px 1px rgba(200, 120, 255, 0.5); } to { box-shadow: 0 5px 0 var(--nsh), 0 0 18px 6px rgba(220, 150, 255, 0.95); } }
 .fm-path .bbr { stroke: #d89bff; stroke-width: 4px; stroke-dasharray: 2 9; opacity: 0.9; }
 .fm-bonushd { flex: none; margin: 0 auto 4px; padding: 4px 12px; border-radius: 12px; border: 2.5px solid var(--ink); background: linear-gradient(180deg, #b36bff, #7a35d6); color: #fff; font-size: 12.5px; text-shadow: var(--ol-sm); text-align: center; white-space: nowrap; }
 .fm-stormhd { flex: none; margin: 0 auto 4px; padding: 4px 14px; border-radius: 14px; border: 2.5px solid #ff9d1a; background: rgba(14, 22, 48, 0.88); color: #fff; font-weight: 900; text-shadow: 0 1px 0 rgba(0,0,0,0.5); font-size: 14px; text-align: center; white-space: nowrap; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; }
-.fm-node.storm .sx { position: absolute; right: -14px; top: -10px; padding: 0 4px; border-radius: 8px; border: 2px solid var(--ink); background: linear-gradient(180deg, #ffe27a, #ff9d1a); color: var(--ink); font-size: 10px; line-height: 14px; text-shadow: none; pointer-events: none; z-index: 3; animation: fmDlWob 1.6s ease-in-out infinite; }
+.fm-node.storm .sx { position: absolute; right: -14px; top: -10px; padding: 0 4px; border-radius: 8px; border: 2px solid var(--ink); background: linear-gradient(180deg, #ffe27a, #ff9d1a); color: var(--ink); font-size: 11px; line-height: 14px; text-shadow: none; pointer-events: none; z-index: 3; animation: fmDlWob 1.6s ease-in-out infinite; }
 .fm-todaywrap { flex: none; width: min(calc(100% - 24px), 380px); margin: -4px auto 12px; position: relative; }
 .fm-todaywrap::before, .fm-todaywrap::after { content: ""; position: absolute; top: 0; bottom: 8px; width: 18px; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
 .fm-todaywrap::before { left: 0; background: linear-gradient(90deg, rgba(28, 22, 92, 0.85), rgba(28, 22, 92, 0)); }
@@ -606,19 +620,19 @@ const CSS = `
 .fm-book.lk .art { opacity: 0.5; }
 .fm-dnav { display: flex; justify-content: center; align-items: center; gap: 14px; margin-bottom: 8px; }
 .fm-today::-webkit-scrollbar { display: none; }
-.fm-today .tl { flex: none; font-size: 10px; letter-spacing: 0.06em; color: #cfe2ff; text-shadow: var(--ol-sm); }
+.fm-today .tl { flex: none; font-size: 11px; letter-spacing: 0.06em; color: #cfe2ff; text-shadow: var(--ol-sm); }
 .fm-tchip { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 11px; border-radius: 15px; border: 2.5px solid var(--ink); background: #fff; color: var(--ink); font-size: 12.5px; font-weight: 800; line-height: 1; letter-spacing: 0; white-space: nowrap; cursor: pointer; text-shadow: none; transform: none; filter: none; -webkit-font-smoothing: antialiased; }
 .fm-tchip.hot { background: #ffd84a; color: var(--ink); }
 .fm-todaywrap.fm-lock { filter: none !important; opacity: 1 !important; }
 .fm-todaywrap.fm-lock .fm-tchip { background: #1b2a52; color: #fff; border-color: #0d1630; opacity: 0.92; }
-.fm-lock[data-lock]::after { content: attr(data-lock); position: absolute; left: auto; right: 3px; top: 3px; bottom: auto; width: auto; transform: none; background: #0d1630; color: #fff; font-size: 9px; font-weight: 900; line-height: 1; padding: 2px 5px; border: 1.5px solid #fff; border-radius: 8px; white-space: nowrap; z-index: 5; pointer-events: none; opacity: 1; }
+.fm-lock[data-lock]::after { content: attr(data-lock); position: absolute; left: auto; right: 3px; top: 3px; bottom: auto; width: auto; transform: none; background: #0d1630; color: #fff; font-size: 11px; font-weight: 900; line-height: 1; padding: 2px 5px; border: 1.5px solid #fff; border-radius: 8px; white-space: nowrap; z-index: 5; pointer-events: none; opacity: 1; }
 .fm-todaywrap.fm-lock[data-lock]::after { top: -7px; right: 6px; }
 .fm-todaywrap.fm-lock::before { display: none; }
 .fm-tchip.fm-sz { position: relative; touch-action: manipulation; }
 .fm-sring { width: 22px; height: 22px; flex: none; display: block; pointer-events: none; }
 .fm-sring .bg { fill: none; stroke: rgba(40, 30, 90, 0.2); stroke-width: 3.5; }
 .fm-sring .fg { fill: none; stroke: #ff7a1a; stroke-width: 3.5; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; }
-.fm-sring text { font-size: 10px; text-anchor: middle; dominant-baseline: central; }
+.fm-sring text { font-size: 11px; text-anchor: middle; dominant-baseline: central; }
 .fm-tchip.fm-sz > * { pointer-events: none; }
 .fm-seatrack { display: flex; gap: 8px; overflow-x: auto; padding: 8px 4px 14px; -webkit-overflow-scrolling: touch; }
 .fm-seacard { flex: none; width: 92px; padding: 8px 4px; border-radius: 14px; border: 2.5px solid var(--ink); background: #fff; color: var(--ink); text-align: center; font-size: 11px; font-weight: 800; display: flex; flex-direction: column; align-items: center; gap: 4px; }
@@ -626,7 +640,7 @@ const CSS = `
 .fm-seacard.claimed { background: #cfe9d4; opacity: 0.8; }
 .fm-seacard.lk { background: #dbe4f3; }
 .fm-seacard .si { font-size: 26px; line-height: 1.1; }
-.fm-seacard .sn { font-size: 10.5px; opacity: 0.8; }
+.fm-seacard .sn { font-size: 11px; opacity: 0.8; }
 .fm-seacard .sb { min-height: 26px; padding: 0 8px; border-radius: 12px; border: 2px solid var(--ink); background: #3ecf6a; color: #fff; font-size: 11px; font-weight: 900; cursor: pointer; }
 .fm-seabar { height: 12px; margin: 6px 4px; border-radius: 8px; border: 2.5px solid var(--ink); background: rgba(255,255,255,.6); overflow: hidden; }
 .fm-seabar i { display: block; height: 100%; background: #ff7a3a; }
@@ -976,6 +990,10 @@ const CSS = `
 .fm-main .fm-arena b { font-size: 14px; color: #fff; text-shadow: var(--ol-sm); letter-spacing: 0.06em; }
 .fm-main .fm-arena small { display: none; }
 .fm-main .fm-arena:active { transform: translateY(2px); }
+.fm-main .fm-modes .fm-mode { padding: 3px 8px; border-radius: 15px; box-shadow: 0 4px 0 var(--m3), inset 0 3px 0 rgba(255, 255, 255, 0.4); }
+.fm-main .fm-modes .mic { font-size: 21px; }
+.fm-main .fm-modes .fm-mode b { font-size: 14px; }
+.fm-main .fm-modes .fm-mode small { font-size: 10px; }
 .fm-sum { gap: 8px; border-radius: 12px; cursor: pointer; }
 .fm-sum .sl { font-size: 12px; letter-spacing: 0.08em; color: #cfe2ff; }
 .fm-sum .sp { display: flex; gap: 4px; }
@@ -993,6 +1011,7 @@ const CSS = `
 .fm-rgoal { padding: 6px 10px; font-size: 14px; border-radius: 11px; }
 .fm-rbtns .row { display: flex; gap: 12px; }
 .fm-rbtns .row .fm-btn { flex: 1 1 0; min-width: 0; width: auto; }
+.fm-rbtns .row .fm-btn { font-size: 15px; padding-left: 6px; padding-right: 6px; white-space: nowrap; letter-spacing: 0.02em; }
 .fm-rgoal .gs { font-size: 16px; }
 .fm-rgoal.miss .gs { color: rgba(255, 255, 255, 0.3); }
 @keyframes fmClaim { 0%, 100% { transform: scale(1) translateY(0); box-shadow: 0 0 6px 1px rgba(255, 154, 58, 0.6); } 12% { transform: scale(1.12) translateY(-3px); box-shadow: 0 0 16px 5px rgba(255, 207, 58, 0.95); } 24% { transform: scale(1) translateY(0); } 40% { box-shadow: 0 0 14px 4px rgba(255, 207, 58, 0.8); } 70% { box-shadow: 0 0 6px 1px rgba(255, 154, 58, 0.6); } }
@@ -1001,7 +1020,7 @@ const CSS = `
 /* ---- compact centre: GÜNLÜK summary + SIRADAKİ HEDEF in ONE card; BUGÜN chips live in side rails ---- */
 .fm-info.cmp { padding: 5px 8px 6px; gap: 4px; margin-bottom: 10px; }
 .fm-info .fm-sgoal { width: 100%; height: 28px; margin: 0; padding: 0 9px; gap: 7px; border-width: 2px; border-radius: 10px; font-size: 12px; box-shadow: none; }
-.fm-info .fm-sgoal .sg-t { font-size: 9.5px; }
+.fm-info .fm-sgoal .sg-t { font-size: 11px; }
 .fm-info .fm-sgoal .sg-b { width: 48px; height: 8px; }
 .fm-info .fm-sgoal.claim { animation: none; }
 .fm-info .fm-sum { min-height: 24px; }
@@ -1018,7 +1037,7 @@ const CSS = `
 .fm-rc .ri { position: relative; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; border: 3px solid var(--ink); font-size: 22px; line-height: 1; text-shadow: none;
   background: radial-gradient(ellipse 60% 38% at 36% 22%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0)), linear-gradient(180deg, #ffffff, #cfe0ff); box-shadow: 0 4px 0 var(--ink2), 0 6px 8px rgba(10, 30, 60, 0.35); transition: transform 0.06s; }
 .fm-rc:active .ri { transform: translateY(3px); }
-.fm-rc .rl { max-width: 62px; padding: 1px 5px 2px; border-radius: 8px; background: rgba(14, 24, 60, 0.78); color: #fff; font-size: 10px; line-height: 1.15; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: none; }
+.fm-rc .rl { max-width: 62px; padding: 1px 5px 2px; border-radius: 8px; background: rgba(14, 24, 60, 0.78); color: #fff; font-size: 11px; line-height: 1.15; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: none; }
 .fm-rc.hot .ri { background: radial-gradient(ellipse 60% 38% at 36% 22%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0)), linear-gradient(180deg, #fff3a8, #ffc23a); animation: fmDlWob 1.6s ease-in-out infinite; }
 .fm-rc.hot .rl { background: #ff7a2f; }
 .fm-rc.red .ri { background: linear-gradient(180deg, #ff7a7a, #e5293a); }
@@ -1034,8 +1053,9 @@ const CSS = `
 @media (max-width: 360px) { .fm-rc { width: 54px; } .fm-rc .ri { width: 42px; height: 42px; font-size: 20px; } .fm-rc .rl { max-width: 54px; } }
 /* label fit @375px: bottom bar + rail chips wrap to 2 lines, fluid font, readable lock badge */
 .fm-main .fm-secrow { gap: 4px; }
-.fm-main .fm-secrow .fm-sb .lb { height: auto; min-height: 24px; max-width: 100%; padding: 0 1px; box-sizing: border-box; font-size: clamp(8.5px, 2.5vw, 10.5px); line-height: 1.1; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; hyphens: none; display: flex; align-items: flex-start; justify-content: center; }
-.fm-rc .rl { max-width: 68px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; font-size: clamp(9px, 2.6vw, 10.5px); line-height: 1.1; text-align: center; padding: 2px 5px; }
+.fm-main .fm-secrow .fm-sb .lb { height: auto; min-height: 14px; max-width: 100%; padding: 0; box-sizing: border-box; font-size: clamp(8.5px, 2.75vw, 11px); line-height: 1.2; letter-spacing: 0; white-space: nowrap; overflow: hidden; hyphens: none; display: flex; align-items: flex-start; justify-content: center; }
+.fm-rc .rl { width: max-content; max-width: 76px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: normal; word-break: normal; hyphens: none; font-size: 10.5px; line-height: 1.1; text-align: center; padding: 2px 4px; }
+.fm-rails .fm-globe .glt { font-size: 10px; letter-spacing: 0; }
 .fm-sb.fm-lock { filter: none; opacity: 1; }
 .fm-sb.fm-lock .ic, .fm-sb.fm-lock .lb { filter: grayscale(1) brightness(0.85); opacity: 0.55; }
 .fm-sb.fm-lock[data-lock]::after { left: 50%; right: auto; top: 12px; transform: translateX(-50%); font-size: 11px; line-height: 1.1; padding: 3px 7px; border-width: 1.5px; background: #0d1630; color: #fff; z-index: 6; }
@@ -1084,6 +1104,25 @@ const CSS = `
 .fm-wheel.done .wbox { transform: scale(0.82); transition: transform 0.4s; }
 @media (max-height: 640px) { .fm-wheel { gap: 8px; } .fm-wheel .wt { font-size: 28px; } }
 @media (prefers-reduced-motion: reduce) { .fm-wheel button.wgo, .fm-wheel .wbox::before { animation: none; } }
+/* wheel: never wider than the screen (320-430 px), nothing clipped at the rim, safe-area aware */
+.fm-wheel { width: 100%; max-width: 100vw; overflow-x: hidden; overflow-y: auto; padding: calc(var(--sat, env(safe-area-inset-top, 0px)) + 16px) calc(env(safe-area-inset-right, 0px) + 16px) calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 16px) calc(env(safe-area-inset-left, 0px) + 16px); }
+.fm-wheel .wbox { flex: none; width: min(78vw, 46vh, 340px); max-width: calc(100% - 32px); margin-top: 18px; }
+.fm-wheel svg.wh { overflow: visible; }
+.fm-wheel .wt, .fm-wheel .ws { max-width: 100%; overflow-wrap: normal; }
+.fm-wheel .wres { width: 100%; max-width: min(340px, calc(100vw - 32px)); }
+/* overlays: safe-area on every side, never wider than the screen */
+.fm-modal, .fm-boxov { padding: calc(var(--sat, env(safe-area-inset-top, 0px)) + 16px) calc(env(safe-area-inset-right, 0px) + 16px) calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 16px) calc(env(safe-area-inset-left, 0px) + 16px); overflow-y: auto; }
+.fm-mcard { max-width: min(340px, 100%); }
+.fm-ov { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.fm-main { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+/* tap targets >= 44 px: invisible hit-area extension on the compact chips (their look stays) */
+.fm-cur::before, .fm-rwc::before, .fm-tchip::before, .fm-diarybtn::before, .fm-sgoal::before, .fm-hgoal::before, .fm-seacard .sb::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.fm-rwc, .fm-tchip, .fm-diarybtn, .fm-sgoal, .fm-hgoal, .fm-seacard .sb { position: relative; }
+.fm-lastc { min-height: 44px; }
+/* settings: extra rows (error report, licences) */
+.fm-lic { margin: 6px 0 0; padding: 8px 10px; max-height: 38vh; overflow-y: auto; border-radius: 12px; background: rgba(23, 52, 92, 0.1); color: var(--ink); text-shadow: none; font-size: 12px; line-height: 1.35; text-align: left; letter-spacing: 0; user-select: text; -webkit-user-select: text; }
+.fm-lic b { display: block; margin-top: 6px; }
+button.fm-licbtn { display: block; margin: 0 auto; border: 0; background: none; min-height: 44px; font-family: inherit; }
 `;
 
 // ================================================================================================================ helpers
@@ -1329,6 +1368,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     toastBusy = true;
     const t = toastQ.shift();
     const box = el('div', `fm-toast ${t.kind || ''}`.trim());
+    if (t.menuOnly) box.setAttribute('data-menu', '1');
     const body = el('div', 'tb');
     add(body, el('div', 'tt', t.title), t.sub ? el('div', 'ts', t.sub) : null);
     add(box, el('div', 'ti', t.icon || '🏆'), body);
@@ -1565,7 +1605,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
   }
   function openSeason() {
     sfx('click');
-    const p = openPanel({ id: 'season', title: 'SEZON AVI', pills: ['coins', 'crystals'] });
+    const p = openPanel({ id: 'season', title: 'SEZON', pills: ['coins', 'crystals'] });
     const draw = () => {
       const s = meta.season();
       p.setSub(`🧣 ${s.tokens} · Ödül ${s.claimed}/${s.total} · ${s.daysLeft} gün kaldı`);
@@ -1574,6 +1614,13 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       const prev = nx ? (s.tiers[nx.n - 2] ? s.tiers[nx.n - 2].need : 0) : 0;
       const frac = nx ? Math.min(1, (s.tokens - prev) / Math.max(1, nx.need - prev)) : 1;
       const bar = el('div', 'fm-seabar'); const f = el('i'); f.style.width = Math.round(frac * 100) + '%'; bar.appendChild(f);
+      const w = weekCache; // this week's Rush mutator rides on the same screen (PLAN_V3 8.5)
+      if (w && w.mut) {
+        p.list.appendChild(el('div', 'fm-sec', "BU HAFTANIN RUSH'I"));
+        const mr = el('div', 'fm-row fm-td-row');
+        add(mr, el('div', 'fm-aico', w.mut.icon), add(el('div', 'fm-amid'), el('div', 'fm-an', w.mut.name), el('div', 'fm-ad', w.mut.desc)), button('fm-btn sm', 'OYNA', () => { closePanel(true); sfx('confirm'); playMode('endless'); }));
+        p.list.appendChild(mr);
+      }
       p.list.appendChild(el('div', 'fm-sec', nx ? `SONRAKİ ÖDÜL: ${s.tokens}/${nx.need} 🧣` : 'TÜM ÖDÜLLER TAMAM!'));
       p.list.appendChild(bar);
       p.list.appendChild(el('div', 'fm-sec', 'Rush koşusunda eşarp topla, ödülleri aç. Sezon bitince yeni sezon başlar.'));
@@ -1591,6 +1638,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       p.list.appendChild(tr);
     };
     draw();
+    if (!weekCache) import('./runner/runner.js').then((m) => { weekCache = m.weekInfo(); if (activePanel === p) { const k = p.body.scrollTop; draw(); p.body.scrollTop = k; } }).catch(() => { /* ignore */ });
   }
   function openPassport() {
     sfx('click');
@@ -1659,7 +1707,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     try { o.ach = ACHIEVEMENTS.filter((a) => { const pr = meta.progress(a.id); return pr.done && !pr.claimed; }).map((a) => a.id); } catch { /* ignore */ }
     try { o.post = !!meta.postcard().available; } catch { /* ignore */ }
     try { o.globe = !!meta.globeReady(); } catch { /* ignore */ }
-    try { o.wheel = !!(!WHEEL_BLOCK && save.wheelSeen && save.wheelSeen() && save.wheelDay() !== dayKey()); } catch { /* ignore */ }
+    try { o.wheel = !!(!WHEEL_BLOCK && save.wheelSeen && save.wheelSeen() && save.wheelDay() !== meta.today()); } catch { /* ignore */ }
     o.count = (o.daily ? 1 : 0) + (o.holiday ? 1 : 0) + o.tasks.length + o.season.length + o.ach.length + (o.post ? 1 : 0) + (o.globe ? 1 : 0) + (o.wheel ? 1 : 0);
     o.collectable = o.count - (o.wheel ? 1 : 0);
     return o;
@@ -1722,6 +1770,17 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       p.list.appendChild(all);
       p.setSub(it.count ? `${it.count} HAZIR` : 'BUGÜN TAMAM');
 
+      // 0. today's runs: the daily Rush + the mountain of the day (PLAN_V3 8.5: one BUGÜN card)
+      sec('GÜNÜN KOŞULARI');
+      try {
+        let dr = null; try { dr = JSON.parse(localStorage.getItem('patpat.dailyRush') || 'null'); } catch { /* ignore */ }
+        const bst = dr && dr.dist > 0 && dr.key === dayKey() ? dr.dist : 0;
+        p.list.appendChild(rowOf('🏃', "Günün Rush'ı", bst ? `${Math.round(bst)} m` : 'Herkese aynı pist: bugün dene', button(`fm-btn sm${bst ? '' : ' glow'}`, 'OYNA', () => { closePanel(true); sfx('confirm'); if (cb.onDailyRush) cb.onDailyRush(); })));
+        if (cb.onDaily && save.cigDailyOpen && save.cigDailyOpen()) {
+          p.list.appendChild(rowOf('🏔', 'Günün Dağı', info.dailyBest > 0 ? `Rekor: ${fmtTons(info.dailyBest)}` : 'Her gün yeni bir dağ', button(`fm-btn sm${info.dailyBest > 0 ? '' : ' glow'}`, 'OYNA', () => { closePanel(true); sfx('confirm'); try { meta.setMode('daily'); } catch { /* ignore */ } cb.onDaily(); })));
+        }
+      } catch { /* ignore */ }
+
       // 1. daily reward + streak
       sec('GÜNLÜK ÖDÜL');
       try {
@@ -1743,8 +1802,9 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
         }
       } catch { /* ignore */ }
 
-      // 3. season
+      // 3. season (opens at player level 6 for a new player)
       try {
+        if (!keyOpen('season')) throw new Error('locked');
         const s = meta.season();
         sec('SEZON AVI');
         const nx = s.tiers.find((t) => t.state === 'locked');
@@ -1756,7 +1816,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       // 4. wheel / globe / postcard
       sec('ŞANS');
       try {
-        const spun = !(save.wheelSeen && save.wheelSeen() && save.wheelDay() !== dayKey());
+        const spun = !(save.wheelSeen && save.wheelSeen() && save.wheelDay() !== meta.today());
         p.list.appendChild(rowOf('🎡', 'ŞANS ÇARKI', spun ? 'Yarın yeniden çevir!' : 'Günlük bedava çevirme hazır!', spun ? null : button('fm-btn sm glow', 'ÇEVİR', () => { closePanel(true); openWheel(false); })));
       } catch { /* ignore */ }
       try {
@@ -1781,20 +1841,13 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
         if (a) { sec('YAKIN BAŞARIM'); p.list.appendChild(rowOf(a.icon, a.name, a.desc, button('fm-btn sm', 'AÇ', () => openAchievements()), add(el('div', 'fm-abar'), barOf(a.value, a.goal), el('div', 'fm-bn', `${fmt(a.value)}/${fmt(a.goal)}`)))); }
       } catch { /* ignore */ }
 
-      // 7. weekly Rush mutator
-      try {
-        const w = weekCache;
-        if (w && w.mut) { sec("BU HAFTANIN RUSH'I"); p.list.appendChild(rowOf(w.mut.icon, w.mut.name, w.mut.desc, button('fm-btn sm', 'OYNA', () => { closePanel(true); sfx('confirm'); playMode('endless'); }))); }
-      } catch { /* ignore */ }
-
       // secondary entry points (the old screens stay reachable)
       sec('DİĞER');
       const more = el('div', 'fm-td-more');
-      add(more, button('fm-btn sm', '🏆 Başarımlar', () => openAchievements()), button('fm-btn sm', '📜 Görevler', () => openMissions()), button('fm-btn sm', '🧣 Sezon', () => openSeason()), button('fm-btn sm', '🎁 Günlük', () => openDaily()), button('fm-btn sm', '🛂 Pasaport', () => openPassport()), button('fm-btn sm', '⬆️ Geliştir', () => openUpgrades()));
+      add(more, button('fm-btn sm', '🏆 Başarımlar', () => openAchievements()), button('fm-btn sm', '📜 Görevler', () => openMissions()), keyOpen('season') ? button('fm-btn sm', '🧣 Sezon', () => openSeason()) : null, button('fm-btn sm', '🎁 Günlük', () => openDaily()), button('fm-btn sm', '🛂 Pasaport', () => openPassport()), button('fm-btn sm', '💪 GÜÇ', () => openPower()));
       p.list.appendChild(more);
     }
     render();
-    if (!weekCache) import('./runner/runner.js').then((m) => { weekCache = m.weekInfo(); if (activePanel === p) { const k = p.body.scrollTop; render(); p.body.scrollTop = k; } }).catch(() => { /* ignore */ });
     return p;
   }
 
@@ -1954,6 +2007,17 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     add(vr, el('div', 'fm-aico', '🖼️'), vlabel, vbtn);
     p.list.appendChild(vr);
 
+    // local error report: copies the error log (window.onerror ring buffer in localStorage) to the clipboard; nothing is sent anywhere
+    const er = el('div', 'fm-row');
+    const ebtn = button('fm-btn blue', 'KOPYALA', async () => {
+      sfx('click');
+      let ok = false;
+      try { ok = await platform.copyText(platform.errorLogText(VERSION)); } catch { ok = false; }
+      toast({ icon: ok ? '📋' : '⚠️', title: ok ? 'Hata kaydı kopyalandı' : 'Kopyalanamadı', sub: ok ? 'Geliştiriciye gönderebilirsin' : '', ms: 2200 });
+    });
+    add(er, el('div', 'fm-aico', '🐞'), el('div', 'fm-tgl', 'Hata bildir'), ebtn);
+    p.list.appendChild(er);
+
     p.list.appendChild(el('div', 'fm-sec', 'İSTATİSTİKLER'));
     const s = meta.stats();
     const tiles = [
@@ -1961,7 +2025,8 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       ['YUTULAN', fmt(s.swallowed)], ['SONSUZ REKORU', fmtTons(save && save.cigEndlessBest ? save.cigEndlessBest().tons : 0)], ['KIRILAN ENGEL', fmt(s.smashed)], ['KIL PAYI', fmt(s.closeCalls)],
       ['TOPLANAN TON', fmtTons(s.totalTons)], ['YILDIZ', `⭐ ${s.stars}`], ['BAŞARIM', `${s.achievements}/${s.achievementsTotal}`], ['SIRLAR', `${s.eggs}/${s.eggsTotal}`],
       ['ÇARPAN', `x${s.multiplier}`], ['GÖREV SETİ', fmt(s.missionSets)], ['MACERA', `⭐ ${s.campaignStars}/300`], ['BÖLÜM', `${s.campaignCleared}/100`],
-      ['ÇIĞ DAĞ', `${save && save.cigCleared ? save.cigCleared() : 0}/${DAG_COUNT}`], ['ÇIĞ ⭐', `⭐ ${save && save.cigLvTotalStars ? save.cigLvTotalStars() : 0}/${DAG_COUNT * 3}`],
+      ['KASABA', `${save && save.cigCleared ? save.cigCleared() : 0}/${DAG_COUNT}`],
+      ['KOSTÜM', `${SKINS.filter((x) => save.isOwned('skin', x.id)).length}/${SKINS.length}`], ['KARTPOSTAL', (() => { try { const k = meta.cards(); return `${k.n}/${k.total}`; } catch { return '0/' + POSTCARDS; } })()], ['ÇIĞ ⭐', `⭐ ${save && save.cigLvTotalStars ? save.cigLvTotalStars() : 0}/${DAG_COUNT * 3}`],
     ];
     const grid = el('div', 'fm-stats');
     for (const [k, v] of tiles) add(grid, add(el('div', 'fm-stat'), el('b', '', String(v)), el('span', '', k)));
@@ -1975,6 +2040,19 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     pv.href = PRIVACY_URL; pv.target = '_blank'; pv.rel = 'noopener noreferrer';
     pv.addEventListener('click', () => sfx('click'));
     cr.appendChild(pv);
+    const lic = el('div', 'fm-lic');
+    lic.style.display = 'none';
+    for (const [n, l] of LICENSES) add(lic, el('b', '', n), el('span', '', l));
+    add(lic, el('b', '', 'MIT'), el('span', '', MIT_TEXT));
+    const lbt = button('fm-priv fm-licbtn', 'Açık kaynak lisansları', () => {
+      sfx('click');
+      lic.style.display = lic.style.display === 'none' ? '' : 'none';
+      lbt.setAttribute('aria-expanded', String(lic.style.display !== 'none'));
+      if (lic.style.display !== 'none') { try { lic.scrollIntoView({ block: 'nearest' }); } catch { /* ignore */ } }
+    });
+    lbt.setAttribute('aria-expanded', 'false');
+    cr.appendChild(lbt);
+    cr.appendChild(lic);
     p.list.appendChild(cr);
     return p;
   }
@@ -2106,68 +2184,165 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
 
   // ---------------------------------------------------------------------------------------------- upgrades
 
-  function openUpgrades() {
+  function openPower() {
     sfx('click');
-    const p = openPanel({ id: 'up', title: 'GELİŞTİR', sub: 'GÜÇLENDİRME SÜRELERİ', pills: ['coins', 'crystals'] });
+    const p = openPanel({ id: 'up', title: 'GÜÇ', sub: 'KALICI GÜÇLENME', pills: ['coins', 'crystals'], tabs: POWER_BRANCHES.map((b) => `${b.icon} ${b.name}`), onTab: () => render() });
+    // GÜÇ screen (PLAN_V3 8.2): three branches (TOP / GÜÇLER / KAZANÇ), 5 tiers each; the game lanes read meta.upgradeValue(id)
+    const fmtUp = (u, v) => (u.durations ? `${String(v).replace('.', ',')} sn` : u.id === 'flakes' || u.id === 'xp' ? `×${v}` : u.id === 'topSize' ? `+${v.toFixed(2)} kademe` : u.id === 'topMagnet' ? `+${v.toFixed(2)} m` : u.id === 'topMelt' ? `-${Math.round(v * 100)}%` : `+${Math.round(v * 100)}%`);
+    const buzz = (b) => { b.classList.add('fm-shake'); sfx('error'); setTimeout(() => b.classList.remove('fm-shake'), 340); };
+
+    function powerRow(u) {
+      const lv = meta.upgradeLevel(u.id);
+      const cost = meta.upgradeCost(u.id);
+      const vals = u.durations || u.values;
+      const r = el('div', 'fm-row fm-up');
+      const mid = el('div', 'fm-amid');
+      add(mid, el('div', 'fm-an', u.name), el('div', 'fm-ad', u.desc), el('div', 'fm-ar', lv < 5 ? `${fmtUp(u, vals[lv])} → ${fmtUp(u, vals[lv + 1])}` : `${fmtUp(u, vals[lv])} (en yüksek)`));
+      const pips = el('div', 'fm-pips');
+      for (let i = 0; i < 5; i++) pips.appendChild(el('i', i < lv ? 'on' : ''));
+      mid.appendChild(pips);
+      add(r, el('div', 'fm-aico', u.icon), mid);
+      if (cost === null) r.appendChild(button('fm-btn sm on', 'MAKS ✓'));
+      else {
+        const pc = shopPrice(cost);
+        const afford = coins() >= pc;
+        const b = button(`fm-btn${afford ? '' : ' poor'}`, pc < cost ? `❄️ ${fmt(pc)} (%${couponPct()})` : `❄️ ${fmt(cost)}`, () => {
+          if (!afford || !meta.buyUpgrade(u.id)) { buzz(b); return; }
+          sfx('confirm');
+          if (cb.onReward) { try { cb.onReward('upgrade', { upgrade: u.id }); } catch { /* ignore */ } }
+          p.refreshPills(true);
+          render();
+          confetti(14);
+        });
+        r.appendChild(b);
+      }
+      return r;
+    }
 
     function render() {
       clear(p.list);
-      for (const u of UPGRADES) {
-        const lv = meta.upgradeLevel(u.id);
-        const cost = meta.upgradeCost(u.id);
-        const r = el('div', 'fm-row fm-up');
-        const mid = el('div', 'fm-amid');
-        const cur = meta.duration(u.id);
-        const nextDur = lv < 5 ? u.durations[lv + 1] : null;
-        add(mid, el('div', 'fm-an', u.name), el('div', 'fm-ad', nextDur ? `${cur} sn → ${nextDur} sn` : `${cur} sn (en yüksek)`));
-        const pips = el('div', 'fm-pips');
-        for (let i = 0; i < 5; i++) pips.appendChild(el('i', i < lv ? 'on' : ''));
-        mid.appendChild(pips);
-        add(r, el('div', 'fm-aico', u.icon), mid);
-        if (cost === null) r.appendChild(button('fm-btn sm on', 'MAKS ✓'));
-        else {
-          const pc = shopPrice(cost);
-          const afford = coins() >= pc;
-          const b = button(`fm-btn${afford ? '' : ' poor'}`, pc < cost ? `❄️ ${fmt(pc)} (%${couponPct()})` : `❄️ ${fmt(cost)}`, () => {
-            if (!afford || !meta.buyUpgrade(u.id)) {
-              b.classList.add('fm-shake'); sfx('error'); setTimeout(() => b.classList.remove('fm-shake'), 340);
-              return;
-            }
-            sfx('confirm');
-            if (cb.onReward) { try { cb.onReward('upgrade', { upgrade: u.id }); } catch { /* ignore */ } }
-            p.refreshPills(true);
-            render();
-            confetti(14);
-          });
-          r.appendChild(b);
-        }
-        p.list.appendChild(r);
+      const br = POWER_BRANCHES[p.tab] || POWER_BRANCHES[0];
+      for (const id of br.ids) { const u = UPGRADES.find((x) => x.id === id) || GUC.find((x) => x.id === id); if (u) p.list.appendChild(powerRow(u)); }
+      if (br.id === 'power') {
+        const sr = el('div', 'fm-row fm-up');
+        const smid = el('div', 'fm-amid');
+        add(smid, el('div', 'fm-an', 'KIZAK'), el('div', 'fm-ad', 'Bir çarpışmayı affeder. Koşuda çift dokunarak kullan.'), el('div', 'fm-ar', `Stok: 🛷 ${meta.sleds()}`));
+        add(sr, el('div', 'fm-aico', '🛷'), smid);
+        const spc = shopPrice(SLED_PACK.price);
+        const afford = coins() >= spc;
+        const sb = button(`fm-btn blue${afford ? '' : ' poor'}`, `${SLED_PACK.count}'LÜ ❄️ ${fmt(spc)}`, () => {
+          if (!afford || !meta.buySled(1)) { buzz(sb); return; }
+          sfx('confirm');
+          p.refreshPills(true);
+          render();
+        });
+        sr.appendChild(sb);
+        p.list.appendChild(sr);
+        p.list.appendChild(el('div', 'fm-note', `💎 Kristal: Yeti seni yakalayınca devam etmek için kullanılır (her seferinde iki katı). Şu an: ${meta.crystals}`));
       }
-
-      // sled
-      const sr = el('div', 'fm-row fm-up');
-      const smid = el('div', 'fm-amid');
-      add(smid, el('div', 'fm-an', 'KIZAK'), el('div', 'fm-ad', 'Bir çarpışmayı affeder. Koşuda çift dokunarak kullan.'), el('div', 'fm-ar', `Stok: 🛷 ${meta.sleds()}`));
-      add(sr, el('div', 'fm-aico', '🛷'), smid);
-      const spc = shopPrice(SLED_PACK.price);
-      const afford = coins() >= spc;
-      const sb = button(`fm-btn blue${afford ? '' : ' poor'}`, `${SLED_PACK.count}'LÜ ❄️ ${fmt(spc)}`, () => {
-        if (!afford || !meta.buySled(1)) {
-          sb.classList.add('fm-shake'); sfx('error'); setTimeout(() => sb.classList.remove('fm-shake'), 340);
-          return;
-        }
-        sfx('confirm');
-        p.refreshPills(true);
-        render();
-      });
-      sr.appendChild(sb);
-      p.list.appendChild(sr);
-
-      p.list.appendChild(el('div', 'fm-note', `💎 Kristal: Yeti seni yakalayınca devam etmek için kullanılır (her seferinde iki katı). Şu an: ${meta.crystals}`));
+      // rewarded gate: this row exists only once an ad SDK is wired (platform.rewardedAvailable())
+      if (br.id === 'gain' && platform.rewardedAvailable()) {
+        const rr = el('div', 'fm-row fm-up');
+        add(rr, el('div', 'fm-aico', '🎁'), add(el('div', 'fm-amid'), el('div', 'fm-an', 'BEDAVA SANDIK'), el('div', 'fm-ad', 'Kısa bir reklam izle, bir sandık kazan.')));
+        rr.appendChild(button('fm-btn blue', '📺 İZLE', () => {
+          platform.rewarded('chest').then((ok) => { if (ok) { meta.addBoxes(1); sfx('reward'); confetti(30); if (mainOpen) updateMain(); render(); } }).catch(() => { /* ignore */ });
+        }));
+        p.list.appendChild(rr);
+      }
     }
 
+    // open on the branch of the cheapest upgrade that can be bought now (else TOP)
+    let first = 0;
+    try { const c = cheapestPower(); if (c && c.afford) first = c.tab; } catch { /* ignore */ }
     render();
+    if (first > 0) { const tabs = p.el.querySelectorAll('.fm-tab'); if (tabs[first]) tabs[first].click(); }
     return p;
+  }
+  // cheapest unfinished GÜÇ upgrade: { id, tab, price, afford } (null when everything is maxed)
+  function cheapestPower() {
+    let best = null;
+    POWER_BRANCHES.forEach((b, tab) => {
+      for (const id of b.ids) {
+        const c = meta.upgradeCost(id);
+        if (c !== null && (!best || c < best.cost)) best = { id, tab, cost: c };
+      }
+    });
+    if (!best) return null;
+    best.price = shopPrice(best.cost);
+    best.have = coins();
+    best.afford = best.have >= best.price;
+    const d = GUC.find((x) => x.id === best.id) || UPGRADES.find((x) => x.id === best.id);
+    best.name = d ? d.name : ''; best.icon = d ? d.icon : '⚡';
+    return best;
+  }
+  const openUpgrades = openPower; // old name kept for callers
+
+  // ---------------------------------------------------------------------------------------------- level-up reward screen (PLAN_V3 8.4)
+  const UNLOCK_INFO = {
+    map: ['🗺️', 'MACERA AÇILDI!', 'Bölüm bölüm haritada ilerle, yıldız topla.'],
+    cig: ['⛰️', 'ÇIĞ AÇILDI!', 'Büyü ve dağın dibindeki kasabayı yık.'],
+    daily: ['🎁', 'GÜNLÜK ÖDÜL AÇILDI!', 'Her gün gir, seri yaptıkça ödül büyür.'],
+    arena: ['⚔️', 'ARENA AÇILDI!', 'Botlara karşı dev haritada büyü.'],
+    season: ['🧣', 'SEZON AÇILDI!', 'Haftalık Rush ve sezon ödülleri burada.'],
+  };
+  // One screen per pending level (meta.pendingLevelUps); the reward is paid when the player taps AL. No-op when nothing is pending.
+  function openLevelUp(onDone) {
+    closeBoxes();
+    let pend = [];
+    try { pend = meta.pendingLevelUps(); } catch { pend = []; }
+    if (!pend.length) { if (onDone) { try { onDone(); } catch { /* ignore */ } } return null; }
+    sfx('open');
+    const ov = el('div', 'fm-boxov fm-lvup');
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    ov.setAttribute('aria-label', 'Seviye atladın');
+    host.appendChild(ov);
+    boxEl = ov;
+    let done = false;
+    const finish = () => { if (done) return; done = true; closeBoxes(); if (mainOpen) updateMain(); if (onDone) { try { onDone(); } catch { /* ignore */ } } };
+    function stage() {
+      let q = [];
+      try { q = meta.pendingLevelUps(); } catch { q = []; }
+      if (!q.length) { finish(); return; }
+      const { level, reward } = q[0];
+      clear(ov);
+      add(ov, el('div', 'fm-boxt fm-ol', 'SEVİYE ATLADIN!'), el('div', 'fm-lvbig fm-ol', `SEVİYE ${level}`));
+      if (reward.unlock && UNLOCK_INFO[reward.unlock]) {
+        const [ic, ttl, line] = UNLOCK_INFO[reward.unlock];
+        const c = el('div', 'fm-rcard rare');
+        add(c, el('div', 'ri', ic), el('div', 'rt', ttl), el('div', 'rs', line));
+        ov.appendChild(c);
+      }
+      if (reward.shard) {
+        const c = el('div', 'fm-rcard');
+        const ri = el('div', 'ri');
+        ri.appendChild(previewEl('skin', reward.shard.id));
+        c.appendChild(ri);
+        add(c, el('div', 'rt', nameOf(SKINS, reward.shard.id)), el('div', 'rs', `🧩 +${reward.shard.n} parça`));
+        ov.appendChild(c);
+      }
+      const bits = rewardLine({ coins: reward.coins, crystals: reward.crystals });
+      if (bits) ov.appendChild(add(el('div', 'fm-sumlist'), el('span', '', bits)));
+      ov.appendChild(button('fm-btn big green', 'AL', () => {
+        sfx('reward');
+        let got = null;
+        try { got = meta.claimLevelUp(); } catch { got = null; }
+        if (got && cb.onReward) { try { cb.onReward('level', got); } catch { /* ignore */ } }
+        confetti(60);
+        stage();
+      }));
+    }
+    stage();
+    return { close: finish };
+  }
+  let lvTimer = 0;
+  function scheduleLevelUp(delay = 900) {
+    clearTimeout(lvTimer);
+    lvTimer = setTimeout(() => {
+      if (!mainOpen) return;
+      if (boxEl || modalEl || activePanel || resultEl || wheelEl || wheelPending() || (refs && refs._ftueBusy)) { scheduleLevelUp(1500); return; }
+      try { if (meta.pendingLevelUps().length) openLevelUp(); } catch { /* ignore */ }
+    }, delay);
   }
 
   // ---------------------------------------------------------------------------------------------- letter hunt
@@ -2221,6 +2396,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       c.appendChild(ri);
     } else c.appendChild(el('div', 'ri', icon));
     add(c, el('div', 'rt', title), el('div', 'rs', subt));
+    if (r.shard) add(c, el('div', 'rs', nameOf(SKINS, r.shard.id)), el('div', 'rs', `🧩 +${r.shard.n} parça`)); // KARAKTER shard drop
     return c;
   }
 
@@ -2344,7 +2520,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       const c = campInfo();
       return `Bölüm ${c.current} · ⭐ ${c.totalStars}`;
     }
-    if (m === 'endless') return info.endlessBest > 0 ? `REKOR ${fmt(info.endlessBest)} · ${fmtDist(info.endlessBestDist)}` : 'Yeti seni kovalıyor!';
+    if (m === 'endless') return info.endlessBest > 0 ? `REKOR ${fmt(info.endlessBest)} PUAN` : 'Yeti seni kovalıyor!';
     if (m === 'cig') {
       const c = info.cig || {};
       const st = Math.max(0, Math.min(3, c.stars | 0));
@@ -2468,7 +2644,10 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
 
   // Esc / Android Back: close the topmost overlay. Returns false when there is nothing to close (boxes and results are not cancellable).
   function back() {
-    if (boxEl || resultEl) return false;
+    if (resultEl) return false;
+    if (boxEl) return true; // a box opening is not cancellable, but Back must not exit the app
+    if (wheelEl) { const x = wheelEl.querySelector('.wx'); if (x) x.click(); return true; } // first (welcome) spin: Back is swallowed until it is done
+    if (refs && refs._ftueEnd) { refs._ftueEnd(); return true; }
     if (modalEl) { closeModal(); return true; }
     if (cardRef) { closeCard(); return true; }
     if (activePanel) { sfx('close'); closePanel(); return true; }
@@ -2859,7 +3038,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     ov.setAttribute('aria-label', 'Bölüm tamam');
     const LB = d.labels || {};
     add(ov, el('div', `fm-banner${boss ? ' boss' : ''}`, boss ? (LB.bossBanner || 'YETİ YENİLDİ!') : (LB.banner || 'BÖLÜM TAMAM!')));
-    if (lv) add(ov, el('div', 'fm-rname', `${lv.id}. ${lv.name}`));
+    if (lv) add(ov, el('div', 'fm-rname', `${lv.id}. ${tr(lv.name)}`));
 
     const bs = el('div', 'fm-bigstars');
     const starEls = [0, 1, 2].map(() => el('span', 'fm-bigstar', '★'));
@@ -2913,8 +3092,11 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       if (mi >= 0 && lv.goals[mi].text) ov.appendChild(el('div', 'fm-rspecial', `⭐ ${mi + 1}. yıldız: ${lv.goals[mi].text}`));
     }
     const btns = el('div', 'fm-rbtns');
-    if (d.hasNext) btns.appendChild(button('fm-btn big green', LB.next || 'SONRAKİ BÖLÜM ▶', done(h.onNext)));
-    btns.appendChild(add(el('div', 'row'), button('fm-btn blue', LB.retry || '↻ TEKRAR', done(h.onRetry)), button('fm-btn', LB.map ? '⛰️ ' + LB.map : '🗺️ HARİTA', done(h.onMap))));
+    // score chase: under 3 stars the fastest path is RETRY (big); a perfect clear leads on
+    const retryFirst = !!lv && stars < 3 && !!d.hasNext;
+    if (d.hasNext && !retryFirst) btns.appendChild(button('fm-btn big green', LB.next || 'SONRAKİ BÖLÜM ▶', done(h.onNext)));
+    if (retryFirst) btns.appendChild(button('fm-btn big green', LB.retry || '↻ TEKRAR', done(h.onRetry)));
+    btns.appendChild(add(el('div', 'row'), retryFirst ? button('fm-btn blue', LB.next || 'SONRAKİ ▶', done(h.onNext)) : button('fm-btn blue', LB.retry || '↻ TEKRAR', done(h.onRetry)), button('fm-btn', LB.map ? '⛰️ ' + LB.map : '🗺️ HARİTA', done(h.onMap))));
     ov.appendChild(btns);
     ov.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
     host.appendChild(ov);
@@ -2938,7 +3120,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     ov.setAttribute('aria-modal', 'true');
     ov.setAttribute('aria-label', 'Bölüm başarısız');
     add(ov, el('div', 'fm-ficon', t[0]), el('div', 'fm-banner red', t[1]));
-    if (lv) add(ov, el('div', 'fm-rname', `${lv.id}. ${lv.name}`));
+    if (lv) add(ov, el('div', 'fm-rname', `${lv.id}. ${tr(lv.name)}`));
     const dist = d.stats && Number.isFinite(d.stats.distance) ? d.stats.distance : d.distance;
     if (lv && Number.isFinite(dist) && lv.length > 0) {
       const pct = Math.max(0, Math.min(99, Math.floor((dist / lv.length) * 100)));
@@ -3005,7 +3187,11 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     go();
   }
 
+  // new content: mountains 31-40 carry a one-time "new" tag (and a pulse on the ÇIĞ button) until their card was opened
+  const seenMtn = () => (lsGet('patpat.seenMtn') || '').split(',');
+  const newMtns = () => { const o = []; try { const u = save.cigUnlocked(), sn = seenMtn(); for (let n = 31; n <= DAG_COUNT; n++) if (n <= u && !sn.includes(String(n))) o.push(n); } catch { /* ignore */ } return o; };
   function openCigCard(p, n) {
+    if (n > 30) lsSet('patpat.seenMtn', [...new Set([...seenMtn(), String(n)])].filter(Boolean).join(','));
     closeCard();
     sfx('open');
     const plan = dagPlan(n), brief = planBrief(n);
@@ -3021,7 +3207,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     add(head, lbig, add(el('div', ''), el('div', 'l1', 'DAĞ ' + n + (plan.boss ? ' · PATRON' : '') + ' · ' + brief.S + ' ETAP'), el('div', 'l2', plan.name)),
       button('fm-x', '✕', () => { sfx('close'); closeCard(); }, 'Kapat'));
     card.appendChild(head);
-    card.appendChild(el('div', 'fm-lbest', brief.tierFrom + ' → ' + brief.tierTo));
+    card.appendChild(el('div', 'fm-lbest', tr(brief.tierFrom) + ' → ' + tr(brief.tierTo)));
     const goals = el('div', 'fm-lgoals');
     plan.stars.forEach((g, i) => goals.appendChild(add(el('div', 'fm-lgoal' + (i < stars ? ' got' : '')), el('span', 'gs', '★'), el('span', '', g.text))));
     card.appendChild(goals);
@@ -3057,6 +3243,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       b.setAttribute('type', 'button');
       b.setAttribute('aria-label', 'Dağ ' + n + ': ' + dagPlan(n).name + (st ? ', ' + st + ' yıldız' : locked ? ', kilitli' : ''));
       add(b, el('span', 'n', locked ? '🔒' : boss ? '👹' : String(n)));
+      if (n > 30 && !locked && !seenMtn().includes(String(n))) { b.classList.add('fm-new'); b.setAttribute('data-new', tr('YENİ!')); }
       if (boss && !locked) b.appendChild(el('span', 'bn', String(n)));
       if (!locked) {
         const stars = el('span', 'stars');
@@ -3109,10 +3296,17 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
   }
 
   const bestOf = () => {
-    let bd = info.endlessBestDist | 0;
-    try { bd = Math.max(bd, (save && save.runnerBestDist ? save.runnerBestDist() : 0) | 0); } catch { /* ignore */ }
+    let bd = info.endlessBest | 0;   // PLAN_V3: score is the one number of the endless mode
+    try { bd = Math.max(bd, (save && save.runnerBest ? save.runnerBest() : 0) | 0); } catch { /* ignore */ }
     return bd;
   };
+
+  // MACERA: one tap = the map on the current act with the next level's card open (its button starts the level)
+  function goMacera() {
+    try { meta.setMode('camp'); } catch { /* ignore */ }
+    const c = campInfo(), p = openMap(c.current), lv = levelById(c.current);
+    if (p && lv && lv.id <= c.unlocked) setTimeout(() => { if (p.el && p.el.isConnected) openLevelCard(p, lv); }, 60);
+  }
 
   function startCig() {
     try { meta.setMode('cig'); } catch { /* ignore */ }
@@ -3194,7 +3388,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.bestS = el('span', 'bs', 'Yeti seni bekliyor!');
     r.best = add(el('div', 'fm-best'), el('span', 'bk', 'YETİ RUSH REKORU'), r.bestV, r.bestS);
     r.aura = el('div', 'fm-aura');
-    add(hero, r.best, r.achoo);
+    add(hero, r.achoo);
     r.globe = button('fm-globe', '', () => shakeGlobe(), 'Günlük Kar Küresi');
     r.globeIc = el('span', 'gl', '🔮');
     r.globeBdg = el('span', 'fm-bdg dot gold off', '!');
@@ -3206,6 +3400,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.railR = el('div', 'fm-rail r');
     r.rails = add(el('div', 'fm-rails'), r.railL, r.railR);
     add(mid, hero, r.rails);
+    root0.appendChild(r.best); // the record badge sits under the logo, never over the 3D ball
     root0.appendChild(mid);
     root0.appendChild(r.aura);
 
@@ -3227,7 +3422,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.info = infoCard;
     root0.appendChild(infoCard);
     r.sum = el('div', 'fm-sum', '');
-    r.sum.addEventListener('click', (e) => { e.stopPropagation(); sfx('open'); openDailyTasks(); });
+    r.sum.addEventListener('click', (e) => { e.stopPropagation(); sfx('open'); if (r.today && r.today.style.display !== 'none') openToday(); else openDailyTasks(); }); // the daily bar IS the BUGÜN button
     infoCard.insertBefore(r.sum, infoCard.firstChild);
     // SIRADAKİ HEDEF: a slim line inside the GÜNLÜK card (one compact block instead of two)
     r.sgoal = button('fm-sgoal', '', () => { sfx('click'); if (r._sgFn) r._sgFn(); }, 'Sıradaki hedef');
@@ -3244,21 +3439,34 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.play = button('fm-play', 'OYNA', () => { sfx('confirm'); playMode('endless'); }, 'Oyna: Yeti Rush');
     r.play.appendChild(el('small', '', 'YETİ RUSH'));
     add(bot, add(el('div', 'fm-playw'), r.play));
+    // MACERA + ÇIĞ: the two big entries under OYNA (the new-player gate shows each by run count, see applyFtue)
+    const modeBtn = (cls, ic, name, fn, aria) => {
+      const b = button('fm-sb fm-mode ' + cls, '', () => { sfx('click'); fn(); }, aria);
+      const sub = el('small', '', ''), bdg = el('span', 'fm-bdg dot off', '');
+      add(b, el('span', 'mic', ic), add(el('span', 'mtx'), el('b', '', name), sub), bdg);
+      return { b, sub, bdg };
+    };
+    const mMap = modeBtn('camp c-map', '🗺️', 'MACERA', () => goMacera(), 'Macera');
+    const mCig = modeBtn('cig c-cig', '⛰️', 'ÇIĞ', () => startCig(), 'Çığ');
+    r.modes = add(el('div', 'fm-modes'), mMap.b, mCig.b);
+    r.mapSub = mMap.sub; r.cigSub = mCig.sub; r.sMap = mMap.b; r.sCig = mCig.b; r.bCig = mCig.bdg;
+    bot.appendChild(r.modes);
     r.today = button('fm-today', '', () => { sfx('open'); openToday(); }, 'Bugün: ödüller ve görevler');
     r.todayBdg = el('span', 'fm-tbdg off', '');
     // streak flame + a slim bar = progress to the next SEZON AVI reward: the whole daily hub at a glance, one tap opens it
     r.tstat = el('span', 'tstat', '');
     r.tbarFill = el('i');
     add(r.today, el('span', 'tic', '📅'), el('span', 'ttx', 'BUGÜN'), r.tstat, r.todayBdg, add(el('span', 'tbar'), r.tbarFill));
-    bot.appendChild(r.today);
+    infoCard.appendChild(add(el('div', 'fm-todaywrap'), r.today)); // hidden state holder (badge, streak, season bar): the daily bar is the one BUGÜN entry
     r.arena = button('fm-arena', '', () => { sfx('confirm'); if (cb.onAgar) cb.onAgar(); }, 'Kartopu Arena');
-    add(r.arena, el('span', 'ico', '⚔️'), add(el('span', 'tx'), el('b', '', 'KARTOPU ARENA'), el('small', '', 'Dev harita · botlar · arkadaşlarınla oda kur')));
+    add(r.arena, el('span', 'ico', '⚔️'), add(el('span', 'tx'), el('b', '', 'KARTOPU ARENA'), el('small', '', 'Dev harita · botlar')));
     bot.appendChild(r.arena);
-    const sCig = secBtn('c-cig', '⛰️', 'ÇIĞ', () => startCig());
-    const sMap = secBtn('c-map', '🗺️', 'MACERA', () => { try { meta.setMode('camp'); } catch { /* ignore */ } openMap(); });
+    const sPow = secBtn('c-pow', '💪', 'GÜÇ', () => openPower());
+    r.sPow = sPow.b; r.bPow = sPow.bdg;
     const sShop = secBtn('c-shop', '👕', 'Dolap', () => { if (cb.onShop) cb.onShop(); });
     const sMis = secBtn('c-mis', '📜', 'Görevler', () => openMissions());
-    const sPass = secBtn('c-pass', '🛂', 'PASAPORT', () => { try { localStorage.setItem('patpat.stampsSeen', String(meta.stamps().filter((x) => x.got).length)); } catch { /* ignore */ } openPassport(); updateMain(); });
+    r.sShop = sShop.b; r.sMis = sMis.b;
+    const sPass = secBtn('c-pass', '🛂', 'Pasaport', () => { try { localStorage.setItem('patpat.stampsSeen', String(meta.stamps().filter((x) => x.got).length)); } catch { /* ignore */ } openPassport(); updateMain(); });
     r.passBdg = sPass.bdg; r.sPass = sPass.b;
     r.post = button('fm-post', '✉️', () => { sfx('click'); openPostcard(); }, 'Yeti Postası');
     r.postBdg = el('span', 'fm-bdg dot off', '!'); r.post.appendChild(r.postBdg);
@@ -3267,7 +3475,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.xchip = el('span', 'fm-xchip', ''); r.xchip.style.display = 'none';
     sMis.ic.appendChild(r.xchip);
     r.bMis = sMis.bdg; r.bShop = sShop.bdg;
-    bot.appendChild(add(el('div', 'fm-secrow'), sCig.b, sMap.b, sShop.b, sMis.b, sPass.b, sSet.b));
+    bot.appendChild(add(el('div', 'fm-secrow'), sPow.b, sShop.b, sMis.b, sPass.b, sSet.b));
     root0.appendChild(bot);
 
     host.appendChild(root0);
@@ -3310,6 +3518,32 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     return Math.max(0, Math.min(1, (se.tokens - lo) / Math.max(1, nxt.need - lo)));
   }
 
+  // SIRADAKİ HEDEF: the nearest goal of the three pillars (mission set -> next multiplier, MACERA act, ÇIĞ town); highest fraction wins, ties keep this order
+  function nearGoal() {
+    const open = keyOpen;
+    const c = [];
+    try {
+      const rows = meta.missions(), m = meta.multiplier();
+      if (open('tasks') && rows.length && m < meta.maxMultiplier()) {
+        let nr = null;   // the actual next mission (closest to done), not the abstract set
+        for (const x of rows) if (!x.done && x.goal > 0 && (!nr || x.value / x.goal > nr.value / nr.goal)) nr = x;
+        if (nr) c.push({ name: nr.text, frac: Math.min(1, nr.value / nr.goal), txt: `${Math.floor(nr.value)}/${nr.goal}`, fn: () => openMissions() });
+        else c.push({ name: `Görev seti → ×${m + 1}`, frac: 1, txt: `${rows.length}/${rows.length}`, fn: () => openMissions() });
+      }
+    } catch { /* ignore */ }
+    try {
+      const k = campInfo();
+      if (open('map') && !k.done) { const lv = levelById(k.current), n = (k.current - 1) % LEVELS_PER_ACT; c.push({ name: `MACERA Act ${lv ? lv.act : 1}`, frac: n / LEVELS_PER_ACT, txt: `${n}/${LEVELS_PER_ACT}`, fn: () => goMacera() }); }
+    } catch { /* ignore */ }
+    try {
+      const n = save.cigNext();
+      if (open('cig') && (save.cigCleared() | 0) < DAG_COUNT) { const pc = save.cigTownPct(n); c.push({ name: `Kasaba ${n}`, frac: pc / 100, txt: `%${pc}`, fn: () => startCig() }); }
+    } catch { /* ignore */ }
+    let best = null;
+    for (const g of c) if (!best || g.frac > best.frac) best = g;
+    return best;
+  }
+
   function updateMain() {
     const r = refs;
     if (!r) return;
@@ -3329,18 +3563,27 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       r.today.classList.toggle('sea', se.ready > 0);
     } catch { /* ignore */ }
 
+    try {
+      const c = campInfo();
+      r.mapSub.textContent = c.done ? `⭐ ${c.totalStars}/${c.maxStars}` : `Bölüm ${c.current} · ⭐ ${c.totalStars}/${c.maxStars}`;
+      r.cigSub.textContent = `Kasaba ${save.cigCleared() | 0}/${DAG_COUNT}`;
+    } catch { /* ignore */ }
+
     const mult = meta.multiplier();
     r.multChip.textContent = `✖️ ×${mult} ÇARPAN`;
 
     const bd = bestOf();
     const cigB = (() => { try { return save.cigEndlessBest ? save.cigEndlessBest() : null; } catch { return null; } })();
     const ccB = (() => { try { return save.cigCleared() | 0; } catch { return 0; } })();
-    r.bestV.textContent = bd > 0 ? `${fmt(bd)} m` : 'İLK KOŞU?';
+    r.bestV.textContent = bd > 0 ? `${fmt(bd)} puan` : 'İLK KOŞU?';
     let cig = { tons: 0, dist: 0 };
     try { cig = save && save.cigEndlessBest ? save.cigEndlessBest() : cig; } catch { /* ignore */ }
     let cc = 0, cs = 0;
     try { cc = save.cigCleared(); cs = save.cigLvTotalStars(); } catch { /* ignore */ }
-    r.bestS.textContent = cc > 0 ? `ÇIĞ: DAĞ ${cc} · ⭐ ${cs}` : (cig.tons > 0 ? `ÇIĞ: ${fmtTons(cig.tons)}` : (bd > 0 ? 'Yeti seni bekliyor!' : 'Yeti seni kovalıyor!'));
+    let tb = 0; try { tb = save.runnerTodayBestScore ? save.runnerTodayBestScore() | 0 : 0; } catch { /* ignore */ }
+    // score chase: today's best vs the record, and what is left to beat it
+    r.bestS.textContent = bd > 0 ? (tb >= bd ? `BUGÜN REKOR! ${fmt(tb)} puan` : tb > 0 ? `Bugün ${fmt(tb)} puan · rekora ${fmt(bd - tb)}` : `Rekoru geç: ${fmt(bd + 1)} puan`)
+      : cc > 0 ? `ÇIĞ: DAĞ ${cc} · ⭐ ${cs}` : (cig.tons > 0 ? `ÇIĞ: ${fmtTons(cig.tons)}` : 'Yeti seni kovalıyor!');
 
     // missions (3 compact rows)
     clear(r.mrows);
@@ -3393,6 +3636,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     try {
       const chips = [];
       try {
+        if (!keyOpen('season')) throw new Error('locked');
         const se = meta.season();
         const frac = seasonProgress(se);
         const gf = Math.max(0, Math.min(1, se.claimed / Math.max(1, se.total)));
@@ -3400,7 +3644,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
         chips.push({ sez: true, hot: se.ready > 0, frac, gf, lb: `Sezon ${se.claimed}/${se.total}`, rank: -2, fn: () => openSeason(), aria: "Sezon Avı" });
       } catch { /* ignore */ }
       try {
-        if (save.wheelSeen && save.wheelSeen() && save.wheelDay() !== dayKey()) chips.push({ ic: "🎡", lb: "Şans Çarkı", hot: true, rank: 0, fn: () => openWheel(false), aria: "Şans Çarkı" });
+        if (save.wheelSeen && save.wheelSeen() && save.wheelDay() !== meta.today()) chips.push({ ic: "🎡", lb: "Şans Çarkı", hot: true, rank: 0, fn: () => openWheel(false), aria: "Şans Çarkı" });
       } catch { /* ignore */ }
       try { let dr = null; try { dr = JSON.parse(localStorage.getItem("patpat.dailyRush") || "null"); } catch { /* ignore */ }
         const bst = dr && dr.dist > 0 && dr.key === dayKey() ? dr.dist : 0;
@@ -3419,8 +3663,11 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       let H = 0; try { H = r.mid.clientHeight; } catch { /* ignore */ }
       if (!(H > 0)) H = 300;
       const postOn = !r.post.classList.contains("off");
-      const capR = Math.max(1, Math.min(4, Math.floor((H + 9) / 72)));
-      const capL = Math.max(0, Math.min(3, Math.floor((H + 9 - 74 - (postOn ? 54 : 0)) / 72)));
+      // side buttons: the globe + post + the BUGÜN chips; at most 3 visible for a new player (4 later)
+      const newbie = lsGet('patpat.ftueGate') === 'on' || (meta.level | 0) < UNLOCK_LV_MAX;
+      const lead = (keyOpen('globe') ? 1 : 0) + (postOn && keyOpen('post') ? 1 : 0);
+      const capR = Math.max(1, Math.min((newbie ? 3 : 4) - lead, Math.floor((H + 9) / 72)));
+      const capL = 0; // three side icons at most: Kar Küresi (+ Yeti Postası when mail waits) + the hottest BUGÜN chips; the rest lives in BUGÜN / Dolap
       for (const n of [...r.railR.children]) n.remove();
       for (const n of [...r.railL.querySelectorAll(".fm-rc")]) n.remove();
       const mk = (c) => {
@@ -3444,46 +3691,24 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       ordered.slice(capR, capR + capL).forEach((c) => r.railL.appendChild(mk(c)));
     } catch { /* ignore */ }
 
-    // SIRADAKI HEDEF: single next goal (claimable first, else cheapest unowned item)
+    // SIRADAKİ HEDEF: exactly ONE goal of the three pillars (never a claim: claims live in BUGÜN and on the badges)
     try {
-      let goal = null;
-      let se2 = null; try { se2 = meta.season(); } catch { /* ignore */ }
-      if (db.reward) goal = { claim: true, name: 'AL: Günlük ödül', fn: () => openDaily() };
-      else if (dtl.claimable) goal = { claim: true, name: 'AL: Görev ödülü', fn: () => openDailyTasks() };
-      else if (se2 && se2.ready > 0) goal = { claim: true, name: 'AL: Sezon ödülü', fn: () => openSeason() };
-      else if ((meta.unclaimedCount() | 0) > 0) goal = { claim: true, name: 'AL: Başarım ödülü', fn: () => openMissions() };
-      else if (gr0) goal = { claim: true, name: 'AL: Kar Küresi', fn: () => shakeGlobe() };
-      else {
-        let bestIt = null;
-        for (const [list, kind] of [[SKINS, 'skin'], [TRAILS, 'trail']]) {
-          for (const it of list) {
-            if (!(it.price > 0) || it.unlock || save.isOwned(kind, it.id)) continue;
-            if (!bestIt || it.price < bestIt.it.price) bestIt = { it, kind };
-          }
-        }
-        if (bestIt) {
-          const have = save.coins | 0, pr = save.shopPrice ? save.shopPrice(bestIt.it.price) : bestIt.it.price; // (coupon aware)
-          goal = { name: bestIt.it.name, have, price: pr, frac: Math.min(1, have / pr), ready: have >= pr, fn: () => { try { localStorage.setItem('patpat.shopTab', bestIt.kind); } catch { /* ignore */ } if (cb.onShop) cb.onShop(); } };
-        }
-      }
+      const goal = nearGoal();
       if (goal) {
         r._sgFn = goal.fn;
         r.sgoal.style.display = '';
-        r.sgoal.classList.toggle('claim', !!(goal.claim || goal.ready));
+        r.sgoal.classList.remove('claim');
         clear(r.sgoal);
-        if (goal.claim) add(r.sgoal, el('span', 'sg-t', 'SIRADAKİ HEDEF'), el('span', 'sg-n', goal.name), el('span', 'sg-c', '▶'));
-        else {
-          const bar = el('span', 'sg-b'), fill = el('i');
-          fill.style.width = Math.round(goal.frac * 100) + '%';
-          bar.appendChild(fill);
-          add(r.sgoal, el('span', 'sg-t', 'HEDEF'), el('span', 'sg-n', goal.name), bar, el('span', 'sg-c', goal.ready ? 'AL! ▶' : fmt(goal.have) + '/' + fmt(goal.price) + ' ❄️'));
-        }
+        const bar = el('span', 'sg-b'), fill = el('i');
+        fill.style.width = Math.round(goal.frac * 100) + '%';
+        bar.appendChild(fill);
+        add(r.sgoal, el('span', 'sg-t', 'HEDEF'), el('span', 'sg-n', goal.name), bar, el('span', 'sg-c', goal.txt || ''));
       } else r.sgoal.style.display = 'none';
     } catch { r.sgoal.style.display = 'none'; }
     // İLK ADIMLAR celebration card (one combined toast on the next menu visit)
     try {
       const fsx = meta.firstSteps();
-      if (fsx.pending.length && !wheelPending()) { meta.firstStepsSeen(); toast({ icon: '🎁', title: 'İLK ADIMLAR ÖDÜLÜ!', sub: fsx.pending.join(' | '), kind: 'gold', ms: 3600 }); }
+      if (fsx.pending.length && !wheelPending()) { meta.firstStepsSeen(); toast({ icon: '🎁', title: 'İLK ADIMLAR ÖDÜLÜ!', sub: fsx.pending.map((x) => x.split(' · ').map((y) => y.replace(/^(Bedava skin:) (.*)$/, (m, a, b) => tr(a) + ' ' + tr(b))).map(tr).join(' · ')).join(' | '), kind: 'gold', ms: 3600, menuOnly: true }); }
     } catch { /* ignore */ }
 
     // next unlock goal
@@ -3502,7 +3727,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       r.bShop.className = `fm-bdg dot gold${g.ready ? ' pulse' : ' off'}`;
       r.bShop.textContent = '!';
     }
-    if (g) { r.bShop.className = 'fm-bdg dot gold' + (g.ready ? ' pulse' : ' off'); r.bShop.textContent = '!'; } else r.bShop.className = 'fm-bdg off';
+    { const nn = shopNewCount(save); r.bShop.className = 'fm-bdg dot gold' + ((g && g.ready) || nn ? ' pulse' : ' off'); r.bShop.textContent = '!'; }
 
     try {
       const got = meta.stamps().filter((x) => x.got).length;
@@ -3528,18 +3753,21 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.boxBdg.textContent = nb > 1 ? String(nb) : '🎁';
     r.boxBdg.className = `fm-bdg dot gold${nb > 0 ? ' pulse' : ' off'}`;
 
+    try { const cp = cheapestPower(); r.bPow.textContent = '!'; r.bPow.className = `fm-bdg dot gold${cp && cp.afford ? ' pulse' : ' off'}`; } catch { /* ignore */ }
+    { const nm = newMtns().length; r.bCig.textContent = nm ? '!' : ''; r.bCig.className = `fm-bdg dot${nm ? ' pulse' : ' off'}`; }
     const unclaimed = meta.unclaimedCount();
     r.bMis.textContent = String(unclaimed);
     r.bMis.className = `fm-bdg${unclaimed <= 0 ? ' off' : ''}`;
     // only ONE attention badge on the whole screen, by priority
     let shown = false;
-    for (const b of [att === 'reward' ? r.dlBdg : null, r.bMis, r.boxBdg, r.globeBdg, r.bShop, r.passBdg, r.postBdg]) {
+    for (const b of [att === 'reward' ? r.dlBdg : null, r.bMis, r.boxBdg, r.globeBdg, r.bPow, r.bShop, r.passBdg, r.postBdg, r.bCig]) {
       if (!b) continue;
       if (b.classList.contains('off')) continue;
       if (!shown) { shown = true; continue; }
       b.classList.add('off');
     }
     try { applyFtue(r); } catch { /* ignore */ }
+    r.modes.style.display = r.sMap.style.display === 'none' && r.sCig.style.display === 'none' ? 'none' : '';
     try {
       const l = lastGet();
       const nm = !l ? '' : l.k === 'rush' ? 'YETİ RUSH' : l.k === 'cigE' ? 'ÇIĞ SONSUZ' : l.k === 'cigL' ? 'ÇIĞ Sv ' + l.n : l.k === 'arena' ? 'KARTOPU ARENA' : 'MACERA ' + l.n;
@@ -3552,80 +3780,69 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
   function ftueRuns() { try { return save.runsTotal ? save.runsTotal() : 99; } catch { return 99; } }
+  // Is a lobby system visible? Everything is for players past the new-player gate; inside it map/cig/daily/arena/season follow the PLAYER LEVEL (meta.unlocked), the rest the run count.
+  function keyOpen(k) {
+    if (lsGet('patpat.ftueGate') !== 'on') return true;
+    return UNLOCK_LV[k] ? !!meta.unlocked(k) : isUnlocked(k, ftueRuns());
+  }
+  // Progressive lobby (meta.UNLOCKS): a brand-new save sees OYNA + settings, then one system per few runs, each with a one-time
+  // "new" tag. Veterans (no gate flag) see everything. Runs through updateMain, so items appear without a reload.
+  const UNLOCK_NAMES = { shop: 'Dolap', daily: 'Günlük ödül', tasks: 'Görevler', cig: 'ÇIĞ', map: 'MACERA', gems: '💎', rails: 'BUGÜN', globe: 'Kar Küresi', post: 'Yeti Postası', pass: 'Pasaport', arena: 'KARTOPU ARENA' };
   function applyFtue(r) {
     const gate = lsGet('patpat.ftueGate') === 'on';
     if (!gate) return;
     const runs = ftueRuns();
-    if (runs >= 4) lsSet('patpat.ftueGate', 'off');
-    const on = runs < 4;
-    const need0 = { today: 2, globe: 3, post: 3, pass: 3 };
-    const sh = (node, ok, key) => {
+    const lvl = (() => { try { return meta.level; } catch { return UNLOCK_LV_MAX; } })();
+    if (runs >= UNLOCK_END && lvl >= UNLOCK_LV_MAX) lsSet('patpat.ftueGate', 'off'); // the gate ends once the last level unlock (SEZON) is reached
+    const on = runs < UNLOCK_END || lvl < UNLOCK_LV_MAX;
+    const fresh = [];
+    const sh = (node, key) => {
       if (!node) return;
-      node.style.display = '';
-      const lock = on && !ok;
-      node.classList.toggle('fm-lock', lock);
-      if (lock) { const need = Math.max(1, (need0[key] || 3) - runs); node.setAttribute('data-lock', '🔒 ' + need + ' koşu'); try { if (getComputedStyle(node).position === 'static') node.style.position = 'relative'; } catch { /* ignore */ } } else node.removeAttribute('data-lock');
-      node.classList.remove('fm-new');
+      const ok = UNLOCK_LV[key] ? !!meta.unlocked(key) : isUnlocked(key, runs);
+      node.style.display = on && !ok ? 'none' : ''; // locked extras stay hidden (no grey locked icons): the first screens show one clear CTA
       if (ok && on && lsGet('patpat.new.' + key) !== '1') {
         node.classList.add('fm-new');
+        node.setAttribute('data-new', tr('YENİ!'));
         if (!node._newWired) { node._newWired = true; node.addEventListener('click', () => { lsSet('patpat.new.' + key, '1'); node.classList.remove('fm-new'); }, true); }
+        if (lsGet('patpat.newt.' + key) !== '1') { lsSet('patpat.newt.' + key, '1'); fresh.push(key); }
       }
     };
-    if (!r.ftHint) {
-      r.ftHint = el('div', 'fm-fthint');
-      r.ftHint.style.cssText = 'flex:none;position:relative;margin:0 0 4px;text-align:center;font-size:12px;font-weight:800;color:#fff;opacity:.8;text-shadow:0 1px 3px rgba(0,0,0,.55);pointer-events:none;z-index:3';
-      { const botEl = r.root.querySelector('.fm-bot'); if (botEl && botEl.parentNode) botEl.parentNode.insertBefore(r.ftHint, botEl); else r.root.appendChild(r.ftHint); }
+    sh(r.dl, 'daily'); sh(r.rwChip, 'tasks'); sh(r.crPill.el, 'gems'); sh(r.info, 'tasks'); sh(r.today, 'rails'); sh(r.railR, 'rails');
+    sh(r.globe, 'globe'); sh(r.post, 'post'); sh(r.sPass, 'pass'); sh(r.arena, 'arena');
+    sh(r.sCig, 'cig'); sh(r.sMap, 'map'); sh(r.sShop, 'shop'); sh(r.sPow, 'shop'); sh(r.sMis, 'tasks');
+    // one combined toast per unlock moment (run 1: the welcome card does the talking)
+    if (fresh.length && runs >= 2 && !wheelPending() && !r._ftueBusy) {
+      const names = [...new Set(fresh.map((k) => tr(UNLOCK_NAMES[k])))].slice(0, 3).join(' · ');
+      toast({ icon: '✨', title: 'YENİ AÇILDI!', sub: names, kind: 'gold', ms: 2800, menuOnly: true });
     }
-    const left = Math.max(0, 2 - runs);
-    r.ftHint.textContent = left > 0 ? `Daha fazlası ${left} koşu sonra açılıyor ✨` : (runs < 3 ? 'Daha fazlası 1 koşu sonra açılıyor ✨' : '');
-    let tight = false; try { tight = window.innerHeight < 700; } catch { /* ignore */ }
-    r.ftHint.style.display = 'none'; void tight;
-    sh(r.twrap, runs >= 2, 'today');
-    sh(r.globe, runs >= 3, 'globe');
-    sh(r.post, runs >= 3, 'post');
-    sh(r.sPass, runs >= 3, 'pass');
     if (runs >= 1 && lsGet('patpat.ftue') !== '1' && !r._ftueBusy && !wheelPending()) ftueFirstRun(r); // the ŞANS ÇARKI goes first
   }
   function ftueFirstRun(r) {
+    if (lsGet('patpat.ftueCeleb') === '1') { lsSet('patpat.ftue', '1'); return; } // already paid once (app closed mid-card): never pay twice
+    lsSet('patpat.ftueCeleb', '1');
     r._ftueBusy = true;
     const ov = el('div', 'fm-ftue');
     const card = el('div', 'fm-ftcard');
     ov.appendChild(card);
-    const finish = () => { lsSet('patpat.ftue', '1'); ov.remove(); r._ftueBusy = false; };
-    const coach = () => {
-      const steps = [
-        ['🏂', 'OYNA', 'Büyük düğme: Yeti Rush koşusu. Kaydır, zıpla, kar topla!'],
-        ['⚔️', 'KARTOPU ARENA', 'Botlara karşı dev haritada büyü, arkadaşlarınla oda kur.'],
-        ['⛰️', 'ÇIĞ / MACERA', 'Çığ dağları ve macera haritası: yıldız topla, yeni şeyler aç.'],
-      ];
-      let i = 0;
-      const draw = () => {
-        clear(card);
-        const [ic, t, d] = steps[i];
-        add(card, el('div', 'ftc-step', `${i + 1}/${steps.length}`), el('div', 'ftc-ic', ic), el('div', 'ftc-t', t), el('div', 'ftc-d', d));
-        const row = el('div', 'ftc-row');
-        row.appendChild(button('ftc-skip', 'GEÇ', () => { sfx('click'); finish(); }));
-        row.appendChild(button('ftc-go', i < steps.length - 1 ? 'İLERİ ▶' : 'BAŞLA!', () => { sfx('click'); if (++i >= steps.length) finish(); else draw(); }));
-        card.appendChild(row);
-      };
-      draw();
-    };
-    if (lsGet('patpat.ftueCeleb') === '1') coach();
-    else {
-      lsSet('patpat.ftueCeleb', '1');
-      let bonus = 60;
-      try { save.addCoins(bonus); } catch { bonus = 0; }
-      let tease = null;
-      try { tease = SKINS.filter((x) => x.price > 0 && !(x.unlock && (x.unlock.stars || x.unlock.secret)) && !save.isOwned('skin', x.id)).sort((a, b) => a.price - b.price)[0]; } catch { /* ignore */ }
-      let have = 0; try { have = save.coins; } catch { /* ignore */ }
-      add(card, el('div', 'ftc-ic', '🎉'), el('div', 'ftc-t', 'İLK KOŞUN!'), el('div', 'ftc-d', `İlk kar taneleri cebinde. Hoş geldin bonusu: +${bonus} ❄️`));
-      if (tease) {
-        const bar = el('span', 'gb'); const f = el('i'); f.style.width = `${Math.min(100, Math.round(have / tease.price * 100))}%`; bar.appendChild(f);
-        add(card, add(el('div', 'ftc-skin'), el('b', '', `👕 ${tease.name}`), bar, el('small', '', have >= tease.price ? 'Dolapta seni bekliyor!' : `${fmt(have)}/${fmt(tease.price)} ❄️ · bir sonraki koşuda!`)));
-      }
-      card.appendChild(add(el('div', 'ftc-row'), button('ftc-go', 'SÜPER!', () => { sfx('confirm'); coach(); })));
-      try { confetti(70); sfx('confirm'); } catch { /* ignore */ }
+    const finish = (shop) => { lsSet('patpat.ftue', '1'); ov.remove(); r._ftueBusy = false; r._ftueEnd = null; if (shop && cb.onShop) cb.onShop(); };
+    r._ftueEnd = () => finish(false);
+    let bonus = WELCOME.ftue;
+    try { save.addCoins(bonus); } catch { bonus = 0; }
+    // the cheapest buyable ball, at the coupon price when the wheel gave one: the first purchase is one tap away
+    let tease = null;
+    try { tease = SKINS.filter((x) => x.price > 0 && !(x.unlock && (x.unlock.stars || x.unlock.secret)) && !save.isOwned('skin', x.id)).sort((a, b) => a.price - b.price)[0]; } catch { /* ignore */ }
+    let have = 0; try { have = save.coins; } catch { /* ignore */ }
+    const price = tease ? shopPrice(tease.price) : 0;
+    add(card, el('div', 'ftc-ic', '🎉'), el('div', 'ftc-t', 'İLK KOŞUN!'), el('div', 'ftc-d', `İlk kar taneleri cebinde. Hoş geldin bonusu: +${bonus} ❄️`));
+    if (tease) {
+      const bar = el('span', 'gb'); const f = el('i'); f.style.width = `${Math.min(100, Math.round(have / price * 100))}%`; bar.appendChild(f);
+      add(card, add(el('div', 'ftc-skin'), el('b', '', `👕 ${tease.name}`), bar, el('small', '', have >= price ? 'Dolapta seni bekliyor!' : `${fmt(have)}/${fmt(price)} ❄️ · bir sonraki koşuda!`)));
     }
+    const row = el('div', 'ftc-row');
+    if (tease && have >= price) row.appendChild(button('ftc-skip', 'SONRA', () => { sfx('click'); finish(false); }));
+    row.appendChild(button('ftc-go', tease && have >= price ? 'DOLABA GİT!' : 'SÜPER!', () => { sfx('confirm'); finish(!!tease && have >= price); }));
+    card.appendChild(row);
+    try { confetti(70); sfx('confirm'); } catch { /* ignore */ }
     r.root.appendChild(ov);
   }
 
@@ -3656,6 +3873,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
   function scheduleWheel(delay = 650) {
     clearTimeout(wheelT);
     if (wheelEl || !wheelPending()) return;
+    if (lsGet('patpat.ftueGate') === 'on' && ftueRuns() < 1) return; // brand-new player: straight to OYNA, the welcome wheel waits for the first run
     wheelT = setTimeout(() => {
       if (!mainOpen || wheelEl || !wheelPending()) return;
       // wait until nothing else is on screen (FTUE splash, a panel, the shop, a result) -- then the wheel is the only popup
@@ -3663,9 +3881,24 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       openWheel(true);
     }, delay);
   }
-  function openWheel(first) {
+  // The 50% coupon is worthless with an empty wallet: the welcome spin also pays enough ❄️ for the cheapest ball at the coupon price.
+  function wheelGift() {
+    let cheap = 0;
+    try { cheap = Math.min(...SKINS.filter((x) => x.price > 0 && !(x.unlock && (x.unlock.stars || x.unlock.secret)) && !save.isOwned('skin', x.id)).map((x) => x.price)); } catch { /* ignore */ }
+    return welcomeGift(cheap, save.coins);
+  }
+  function openWheel(first, extra) {
     if (wheelEl) return;
-    if (!first) { try { if (save.wheelDay() === dayKey()) { toast({ icon: '🎡', title: 'ŞANS ÇARKI', sub: 'Yarın yeniden çevir!', ms: 1800 }); return; } } catch { return; } }
+    if (!first && !extra) {
+      try {
+        if (save.wheelDay() === meta.today()) {
+          // extra spin: the offer exists only when a rewarded ad can really be shown (platform.rewardedAvailable())
+          if (platform.rewardedAvailable()) toast({ icon: '🎡', title: 'EK ÇEVİRME', sub: 'Reklam izle, bir kez daha çevir', kind: 'gold', ms: 3500, onTap: () => { platform.rewarded('wheel').then((ok) => { if (ok) openWheel(false, true); }).catch(() => { /* ignore */ }); } });
+          else toast({ icon: '🎡', title: 'ŞANS ÇARKI', sub: 'Yarın yeniden çevir!', ms: 1800 });
+          return;
+        }
+      } catch { return; }
+    }
     sfx('open');
     const NS = 'http://www.w3.org/2000/svg';
     const ov = el('div', 'fm-wheel');
@@ -3708,7 +3941,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     (host || document.body).appendChild(ov);
     wheelEl = ov;
 
-    let spun = false, cur = 0;
+    let spun = false, cur = 0, gift = 0;
     function close() {
       ov.remove();
       if (wheelEl === ov) wheelEl = null;
@@ -3728,9 +3961,9 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       const seg = WSEG[idx];
       // pay out up front (closing the app mid-spin must not lose / repeat the prize); the reveal follows the animation
       try {
-        if (first) { wheelForced = false; save.grantCoupon(50); save.markWheelSeen(); save.setWheelDay(dayKey()); } // daily spins start tomorrow
+        if (first) { wheelForced = false; save.grantCoupon(WELCOME.couponPct); save.markWheelSeen(); save.setWheelDay(meta.today()); gift = wheelGift(); save.addCoins(gift); } // daily spins start tomorrow
         else {
-          save.setWheelDay(dayKey());
+          save.setWheelDay(meta.today());
           if (seg.coins) save.addCoins(seg.coins);
           if (seg.cr) meta.addCrystals(seg.cr);
           if (seg.box) meta.addBoxes(seg.box);
@@ -3770,7 +4003,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       if (seg.disc) {
         const d = el('div', 'rd');
         add(d, document.createTextNode('Marketteki ilk alımında '), el('b', '', '%50 İNDİRİM!'));
-        add(card, el('div', 'ri', '🎟'), el('div', 'rt', 'TEBRİKLER!'), d, el('div', 'rd', '🎟 Kuponun Dolap\'ta seni bekliyor.'));
+        add(card, el('div', 'ri', '🎟'), el('div', 'rt', 'TEBRİKLER!'), d, el('div', 'rd', '🎟 Kuponun Dolap\'ta seni bekliyor.'), el('div', 'rd', `+${fmt(gift)} ❄️ hediye!`));
       } else {
         const what = seg.coins ? `+${fmt(seg.coins)} ❄️` : seg.cr ? `+${seg.cr} 💎` : '🎁 Kostüm sandığı (+1 kutu)';
         add(card, el('div', 'ri', seg.coins ? '❄️' : seg.cr ? '💎' : '🎁'), el('div', 'rt', 'TEBRİKLER!'), el('div', 'rd', what), el('div', 'rd', 'Yarın yine çevir!'));
@@ -4045,12 +4278,16 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     setTimeout(() => { if (refs) refs.root.classList.remove('enter'); }, 1000);
     startMainTimers();
     scheduleWheel();
+    scheduleLevelUp();
     if (hasArenaInvite() && callbacks.onAgar) setTimeout(() => { if (hasArenaInvite()) { try { callbacks.onAgar(); } catch { /* ignore */ } } }, 350);
   }
 
   function hideMain() {
     mainOpen = false;
+    for (let i = toastQ.length - 1; i >= 0; i--) if (toastQ[i].menuOnly) toastQ.splice(i, 1); // menu-only banners never ride into a run
+    try { for (const b of toastLayer.querySelectorAll('[data-menu]')) b.style.display = 'none'; } catch { /* ignore */ }
     clearTimeout(wheelT);
+    clearTimeout(lvTimer);
     stopMainTimers();
     closePanel(true);
     closeResult();
@@ -4092,6 +4329,6 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     // Mystery boxes never pop up by themselves any more: a bare openBoxes(n) call (the old post-run auto-open) is ignored, boxes stay
     // banked and open from the lobby (💎 pill). Pass { user: true } as the 3rd argument for an explicit open.
     openBoxes: (n, onDone, opts) => { if (opts && opts.user) return openBoxes(n, onDone); if (onDone) { try { onDone(); } catch { /* ignore */ } } return null; },
-    openToday, openDaily, openAchievements, openPassport, openPostcard, openMissions, openUpgrades, openHunt, openSettings, closePanel, destroy,
+    openToday, openDaily, openAchievements, openPassport, openPostcard, openMissions, openUpgrades, openPower, openLevelUp, cheapestPower, openHunt, openSettings, closePanel, destroy,
   };
 }

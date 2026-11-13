@@ -23,7 +23,7 @@ Oyundaki Ayarlar > "Gizlilik Politikası" bağlantısı da aynı sayfayı açar 
 
 Oyun verileri uygulamanın yerel depolama alanında (`localStorage`) tutar: ❄️ kar tanesi ve 💎 kristal sayıları, açtığın kostümler ve izler, rekorlar ve bölüm yıldızları, görev / başarım / günlük seri / sezon ilerlemesi, ayarlar (dil, ses, müzik, titreşim, görünüm), Arena takma adın ve Arena rekorların, öğretici ve ilk kullanım işaretleri, bildirim izninin sorulup sorulmadığı.
 
-Bu veriler cihazından dışarı gönderilmez. Uygulamayı kaldırdığında (web sürümünde tarayıcının site verilerini temizlediğinde) silinir. Android'in otomatik yedekleme özelliği açıksa işletim sistemi bu verileri senin Google hesabına yedekleyebilir; bu bizim kontrolümüzde değildir.
+Bu veriler cihazından dışarı gönderilmez. Uygulamayı kaldırdığında (web sürümünde tarayıcının site verilerini temizlediğinde) silinir. Android otomatik yedekleme bu uygulamada kapalıdır; verilerin Google hesabına yedeklenmez ve yeni bir telefona aktarılmaz. Oyun, hata ayıklama için son 20 hata kaydını yalnızca cihazında tutar (ağ yok); Ayarlar > "Hata bildir" ile bunu sen kopyalayıp istersen bize gönderebilirsin.
 
 ### 2. İnternete bağlanılan durumlar
 
@@ -79,7 +79,7 @@ Bu sayfa güncellenirse yukarıdaki tarih değişir. Reklam, satın alma, hesap 
 
 The game keeps its data in the app's local storage (`localStorage`): ❄️ snowflake and 💎 crystal counts, unlocked costumes and trails, records and level stars, quest / achievement / daily-streak / season progress, settings (language, sound, music, vibration, look), your Arena nickname and Arena records, tutorial and first-run flags, and whether the notification permission was asked.
 
-This data is never sent off your device. It is deleted when you uninstall the app (on the web version: when you clear the browser's site data). If Android's automatic backup is on, the operating system may back this data up to your Google account; that is outside our control.
+This data is never sent off your device. It is deleted when you uninstall the app (on the web version: when you clear the browser's site data). Android automatic backup is disabled for this app; your data is not backed up to your Google account and does not transfer to a new device. For debugging the game keeps the last 20 error messages on your device only (no network); you can copy them via Settings > "Report a bug" and send them to us if you wish.
 
 ### 2. When the game connects to the internet
 
