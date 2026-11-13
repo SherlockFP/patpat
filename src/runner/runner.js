@@ -11,6 +11,7 @@ import { BuffSet, BUFFS, rollBuff, BUFF_LEN, DESTRUCTION, destructionTier, RUN_P
 import { music } from './music.js';
 import { RhythmLane } from './rhythm.js';
 import { patchMaterial } from '../shaders.js';
+import { nfBall } from './nearfade.js';
 import { gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionLine, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
 import { starProgress } from '../campaign.js';
 
@@ -554,7 +555,7 @@ export class Runner {
     this.hintOn = false;
     if (this.tut || level === 1) {
       // the very first run: one quiet line until the first swipe (or 5 s), never a popup; tips wait while it is up
-      ui.hint?.(true, '← → şerit · ↑ zıpla · ↓ eğil');
+      ui.hint?.(true, '↔ ↑ ↓ KAYDIR');   // (swipe glyphs, not a keyboard legend)
       if (this.tut) ui.runnerYetiCue?.();   // why you run: 2 s "YETİ'DEN KAÇ!" + a Yeti silhouette behind the ball
       this.hintOn = true;
       this.after(5, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); });
@@ -2217,7 +2218,7 @@ export class Runner {
     const hush = this.quietRun || this.bannerT > 0 || this.time - this.floatT < 1.3 || this.time < this.tagT;
     if (hush) ui.runnerDanger?.(0, 0, 0); else ui.runnerDanger?.(this.dangerBonus(), this.chainBonus(), this.riskT > 0 ? 4 : 0);
     const near = this.state === 'play' ? Math.max(0, Math.min(1, (9 - this.gap) / 5)) : 0;
-    ui.chaseVig?.(near);
+    ui.chaseVig?.(this.state === 'play' && !this.boss ? Math.max(near, clamp(3.5 - this.time, 0, 1)) : near);   // (opening 3 s: a red edge even before the Yeti is close, so the chase reads from the first frame)
     this.ctx.audio.yetiNear?.(near);        // chase layer: rumble + footfalls speeding up as the Yeti closes in (fades out on its own)
     if (this.chapters && this.state === 'play' && this.countT <= 0) this.chapterTick();
     this.updateGoal();
@@ -3729,18 +3730,17 @@ export class Runner {
     const LB = { rec: 'REKOR', boss: 'BOSS', combo: 'KOMBO', wall: 'DUVAR', fall: 'DÜŞÜŞ', melt: 'ERİME', yeti: 'YETİ', smash: 'ÇARPMA', explode: 'PATLAMA' };
     const IC = { rec: '🏆', boss: '🧌', combo: '🔥', wall: '🧱', fall: '🕳️', melt: '💧', yeti: '👹', smash: '💥', explode: '💣' };
     const el = this._rcpEl = document.createElement('div');
-    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);width:min(92vw,380px);box-sizing:border-box;top:max(23vh,calc(env(safe-area-inset-top,0px) + 190px));z-index:60;padding:10px 12px 8px;border-radius:18px;background:rgba(15,30,55,.6);color:#fff;font:800 16px system-ui,sans-serif;text-align:center;touch-action:manipulation;opacity:0;transition:opacity .15s';
-    let h = '<div style="letter-spacing:.12em;opacity:.85">BÖLÜM ÖZETİ</div><div style="font-size:26px;line-height:1.1">' + NUM(dist) + ' m</div><div style="position:relative;height:62px;margin:8px 10px 0"><div style="position:absolute;left:0;right:0;top:30px;height:6px;border-radius:3px;background:rgba(255,255,255,.2)"></div><div class="rf" style="position:absolute;left:0;top:30px;height:6px;width:0;border-radius:3px;background:#7fd0ff;transition:width 1s linear"></div>';
+    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);width:min(92vw,380px);box-sizing:border-box;top:calc(env(safe-area-inset-top,0px) + 150px);z-index:60;padding:5px 12px 3px;border-radius:14px;background:rgba(15,30,55,.78);color:#fff;font:800 13px system-ui,sans-serif;text-align:center;pointer-events:none;opacity:0;transition:opacity .15s';   // slim banner under the HUD, never over the ball or the lane
+    let h = '<div style="letter-spacing:.1em;line-height:16px"><span style="opacity:.85">BÖLÜM ÖZETİ</span> · <span style="font-size:15px">' + NUM(dist) + ' m</span></div><div style="position:relative;height:46px;margin:4px 10px 0"><div style="position:absolute;left:0;right:0;top:19px;height:5px;border-radius:3px;background:rgba(255,255,255,.2)"></div><div class="rf" style="position:absolute;left:0;top:19px;height:5px;width:0;border-radius:3px;background:#7fd0ff;transition:width 1s linear"></div>';
     for (const e of ev) {
       const f = Math.min(1, Math.max(0, e.s / dist));
       const ic = e.k === 'death' ? (IC[this.cause] || '💀') : IC[e.k];
-      h += '<div class="ri" style="position:absolute;left:' + (f * 100).toFixed(1) + '%;top:0;transform:translateX(-50%) scale(0);font-size:26px;line-height:28px;transition:transform .18s cubic-bezier(.3,1.8,.5,1);transition-delay:' + (f * 0.8).toFixed(2) + 's">' + ic + (e.n ? '<span style="font-size:13px">' + e.n + '</span>' : '') + '<div style="font-size:10px;line-height:12px;opacity:.85">' + (LB[e.k === 'death' ? this.cause : e.k] || '') + '</div></div>';
+      h += '<div class="ri" style="position:absolute;left:' + (f * 100).toFixed(1) + '%;top:0;transform:translateX(-50%) scale(0);font-size:20px;line-height:22px;transition:transform .18s cubic-bezier(.3,1.8,.5,1);transition-delay:' + (f * 0.8).toFixed(2) + 's">' + ic + (e.n ? '<span style="font-size:11px">' + e.n + '</span>' : '') + '<div style="font-size:9px;line-height:11px;opacity:.85">' + (LB[e.k === 'death' ? this.cause : e.k] || '') + '</div></div>';
     }
     el.innerHTML = h + '</div>';
     document.body.appendChild(el);
     let fin = false;
     const end = () => { if (fin) return; fin = true; this._rcpKill(); done(); };
-    el.addEventListener('pointerdown', (e) => { e.stopPropagation(); end(); });
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (fin) return;
       el.style.opacity = '1';
@@ -4215,9 +4215,9 @@ export class Runner {
     if (!this.boss) {
       const dCam = this.camBackS - gapV;
       const d3 = Math.hypot(dCam, this.camUpH);
-      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, 0.14);   // (14% of the view height at most: the head never fills the bottom corner)
+      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, 0.14 + 0.1 * loom);   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
       const side = b.u > 0.01 ? -1 : 1, hw = (tr.halfWidth(Math.max(0, gs)) || 3.8) - 0.3;
-      uT = clamp(b.u + side * 3.4 * yetiSide(dCam), -hw, hw);
+      uT = clamp(b.u + side * (3.4 - 0.8 * loom) * yetiSide(dCam), -hw, hw);
       if (dCam < 1.5) y.group.visible = false;      // right under / behind the camera: out of the picture anyway (and no draw call)
       if (dCam < 5) this.avalanche.group.visible = false;   // its powder wall sits 6 m behind the Yeti: behind the camera too (3 draw calls saved while the Yeti is far)
     }
@@ -4409,10 +4409,10 @@ export class Runner {
     cam.position.copy(this.camPos);
     cam.up.copy(this.camUp);
     cam.lookAt(this.camLook);
-    if (!dying && playing) {      // the ball stays in the middle 60% of the width: a tight turn or a speed burst used to push it to the screen edge
+    if (!dying && playing) {      // the ball stays in the middle 40% of the width (centre 30-70%, so a big ball is never cropped): a tight turn or a speed burst used to push it to the screen edge
       cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
       _v2.copy(this.ctx.ball.group.position).project(cam);
-      const ex = _v2.x > 0.5 ? _v2.x - 0.5 : _v2.x < -0.5 ? _v2.x + 0.5 : 0;
+      const ex = _v2.x > 0.4 ? _v2.x - 0.4 : _v2.x < -0.4 ? _v2.x + 0.4 : 0;
       if (ex) cam.rotateY(-Math.atan(ex * Math.tan(cam.fov * 0.00872665) * cam.aspect));
     }
 
@@ -4421,6 +4421,7 @@ export class Runner {
     const lean = this.jnLeanT > 0 ? this.jnLean * (this.jnLeanT / 0.45) : 0;
     this.tilt += (clamp(-b.vu * 0.006 - lean * 0.35, -0.052, 0.052) - this.tilt) * Math.min(1, dt * 8);     // <= 3 degrees
     cam.rotateZ(this.tilt);
+    if (!dying && playing) { cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert(); _v2.copy(this.ctx.ball.group.position).applyMatrix4(cam.matrixWorldInverse); const dp = -_v2.z; _v2.applyMatrix4(cam.projectionMatrix); nfBall.value.set(_v2.x, _v2.y, dp, 0); } else nfBall.value.z = 0;   // (the shaders in nearfade.js fade what sits between camera and ball)
     // Trauma shake: smooth rotational noise that keeps running through hit-stop (peaks ≈ 3° at trauma 1).
     if (!snap && this.trauma > 0) {
       const a = Math.min(1, this.trauma) ** 2, t = (this.shakeClock += dt);

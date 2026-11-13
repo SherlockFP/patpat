@@ -456,6 +456,8 @@ html, body {
 .cig-hud .cg-bar i { display: block; height: 100%; width: 100%; transform-origin: left center; transform: scaleX(var(--f, 0)); background: linear-gradient(90deg, #7fc2ff, #ffffff); transition: transform 0.15s linear; }
 .cig-hud .cg-row { display: flex; gap: 14px; font-weight: 900; font-size: 13px; color: #fff; text-shadow: 0 2px 0 var(--ink), 1px 1px 0 var(--ink), -1px 1px 0 var(--ink), 1px -1px 0 var(--ink), -1px -1px 0 var(--ink); }
 .cig-hud .cg-row span:last-child { color: #cfe6ff; }
+.cig-hud .cg-tn { padding: 1px 9px 2px; border-radius: 10px; background: rgba(8, 22, 48, 0.72); }   /* gold on a bright sky needs its own dark pill */
+#hud.cig-endless:has(.cmb.on, #toast-soft .ts) .hud-tons { font-size: 37px; }   /* combo badge / toast up: the hero number steps back ~30% so the upper third is not five stacked things */
 #hud.cig-endless .hud-progress { visibility: hidden; }
 #hud.cig-endless .hud-tons { font-size: 53px; top: calc(var(--sat) + 40px); }   /* tons is the hero number of the endless HUD (x1.2), the COMBO badge is the small one */
 #hud.cig-endless .cmb .ch.k em { font-size: 26px; }
@@ -615,6 +617,7 @@ html, body {
 .ag-clog { display: flex; flex-direction: column; gap: 1px; }
 .ag-cl { font-size: 12px; line-height: 1.2; text-shadow: 0 1px 0 var(--ink), 1px 1px 0 var(--ink), -1px 1px 0 var(--ink); word-break: normal; transition: opacity 0.4s; min-height: 14px; }
 .ag-cl b { font-weight: 900; }
+.ag-cl:has(> span:not(:empty)) { width: fit-content; max-width: 100%; padding: 1px 7px; border-radius: 9px; background: rgba(8, 22, 48, 0.62); }   /* chat lines keep their own dark pill: white text on the yellow sector was unreadable */
 .ag-cbtn { pointer-events: auto; width: 40px; height: 40px; border-radius: 50%; border: 3px solid var(--ink); background: linear-gradient(180deg, #7dc4ff, #2f7dff); font-size: 18px; cursor: pointer; }
 .ag-cpanel { display: none; pointer-events: auto; flex-direction: column; gap: 5px; padding: 6px; border-radius: 12px; background: rgba(12, 32, 66, 0.82); border: 2px solid var(--ink); }
 .ag-cpanel.on { display: flex; }
@@ -880,7 +883,7 @@ html, body {
 .hud-flow .flow-lbl { color: #ffe27a; }
 
 /* ---- FTUE ---- */
-.ftue-splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(#bfe6ff,#f4fbff);color:var(--ink,#17345c);font-family:inherit;transition:opacity .35s}
+.ftue-splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(#bfe6ff,#f4fbff);color:var(--ink,#17345c);font-family:inherit;transition:opacity .15s}
 .ftue-splash.out{opacity:0;pointer-events:none}
 .ftue-splash .fs-logo{font-size:clamp(44px,14vw,84px);font-weight:900;letter-spacing:2px;text-shadow:0 4px 0 #fff}
 .ftue-splash .fs-sub{font-size:22px;font-weight:800;color:#ff7a2f}
@@ -1173,14 +1176,15 @@ html .fm-main > .fm-best .bv { font-size: 22px; }
 
 /* ---- hybrid pass (integrator): Rush goal strip + chapter strip, hint off the ball, solid pills for floats, ÇIĞ gauge ---- */
 #hud.rush.rush.rush .hud-goal { top: calc(var(--sat) + 90px); width: 262px; height: 22px; border-radius: 11px; border-width: 2px; background: rgb(8, 22, 48); }
-#hud.rush.rush.rush .hud-goal .goal-lbl { display: block; font-size: 13px; line-height: 18px; letter-spacing: 0.02em; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; }
+#hud.rush.rush.rush .hud-goal .goal-lbl { -webkit-text-stroke: 3px rgba(8, 22, 48, 0.92); paint-order: stroke fill; display: block; font-size: 13px; line-height: 18px; letter-spacing: 0.02em; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; }
 .chap-bar { position: absolute; left: 0; right: 0; margin: 0 auto; top: calc(var(--sat) + 116px); width: 206px; height: 4px; border-radius: 2px; background: rgba(8, 22, 48, 0.5); overflow: hidden; pointer-events: none; }
 .chap-bar i { display: block; height: 100%; width: 0; background: #6dff8f; transition: width 0.15s linear; }
 .chap-bar.dirty i { background: #8fd0ff; }
 .chap-bar.bonus i { background: #ffd23a; }
-.chap-pill { position: absolute; left: 50%; top: calc(var(--sat) + 132px); transform: translateX(-50%); opacity: 0; pointer-events: none; padding: 4px 14px 5px; border-radius: 14px; background: rgba(10, 25, 55, 0.92); color: #ffd23a; font-weight: 900; font-size: 15px; letter-spacing: 0.05em; white-space: nowrap; text-shadow: 0 1px 0 var(--ink); }
+.chap-pill { position: absolute; left: 50%; top: calc(var(--sat) + 132px); transform: translateX(-50%); opacity: 0; pointer-events: none; padding: 4px 14px 5px; border-radius: 14px; background: rgba(10, 25, 55, 0.92); color: #ffd23a; font-weight: 900; font-size: clamp(11px, 4vw, 15px); letter-spacing: 0.05em; white-space: nowrap; max-width: 92vw; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 0 var(--ink); }
 .chap-pill.bonus { color: #fff3a0; background: rgba(120, 70, 0, 0.92); }
 .chap-pill.on { animation: chapIn 1.3s ease-out forwards; }
+body:has(.chap-pill.on) #rcol { visibility: hidden; }   /* the side chips (season scarf ...) wait out the 1.3 s chapter name */
 @keyframes chapIn { 0% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.9); } 14% { opacity: 1; transform: translateX(-50%) scale(1.06); } 28% { transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
 #hint { bottom: calc(var(--sab) + 4%); }
 #hint .finger { text-shadow: 0 2px 6px rgba(0, 20, 50, 0.6); }
@@ -1228,3 +1232,23 @@ html .fm-main > .fm-best .bv { font-size: 22px; }
 #hud.cig-lvl ~ #toast-soft:not(.res) { padding: 0 12px 0 100px; box-sizing: border-box; }
 #hud.cig-lvl ~ #toast-soft:not(.res) .ts { max-width: 100%; font-size: 13px; }
 #hud.cig-lvl.has-gauge .hud-top .hud-progress { background: none; border-color: transparent; box-shadow: none; }
+
+/* ---- frame-critic pass 3: one thing at a time in the Rush top third, chapter flag, cannon bar tint ---- */
+body:has(#toast-soft:not(.res) .ts) #hud.rush .hud-goal:not(.rage):not(.fury), body:has(#toast-soft:not(.res) .ts) .chap-bar { visibility: hidden; }   /* a toast owns the strip for its 1.25 s */
+#hud.rush.rush.rush .cmb:has(small:not(:empty)) { top: calc(var(--sat) + 4px); }   /* the first-change "MULTIPLIER" micro-label rides above x4: the chip no longer reaches the flake counter */
+.chap-bar { height: 8px; border-radius: 4px; top: calc(var(--sat) + 114px); box-shadow: 0 0 0 1px rgba(8, 22, 48, 0.85); }
+.chap-bar i { border-radius: 4px; }
+.chap-bar b { top: -2px; font-size: 12px; }
+.chap-bar::after { content: '🚩'; position: absolute; left: 100%; top: -9px; margin-left: 3px; font-size: 16px; line-height: 1; }
+.chap-bar.near::after { animation: flagPulse 0.45s ease-in-out infinite alternate; }
+.chap-bar.near i { box-shadow: 0 0 8px #fff; }
+@keyframes flagPulse { to { transform: scale(1.45) rotate(8deg); } }
+#hud.rush.rush.rush .hud-goal.cannon { border-color: #4fc3ff; box-shadow: 0 0 8px rgba(79, 195, 255, 0.6); }   /* a perk timer, not a mission: blue, snowflake and x-count */
+.hud-goal.cannon .goal-fill { background: linear-gradient(90deg, #2f7dff, #8fe3ff); }
+@media (prefers-reduced-motion: reduce) { .chap-bar.near::after { animation: none; } }
+#result.rr #btn-card.btn.big { position: fixed; top: calc(var(--sat) + 10px); right: 12px; width: 42px; height: 42px; min-width: 0; margin: 0; padding: 0; font-size: 19px; line-height: 1; border-radius: 50%; z-index: 5; box-shadow: 0 3px 0 #b57400; }   /* the share camera lives in a corner: RETRY is the one lit button */
+.cig-hud .cg-row { align-items: center; justify-content: center; flex-wrap: nowrap; white-space: nowrap; }
+.cig-hud .cg-nx { color: #cfe6ff; }
+.cig-hud .cg-nx:not(:empty)::before { content: "\00b7"; margin-right: 8px; color: #fff; }
+.cig-hud .cg-row:has(.cg-nx:not(:empty)) #cg-best { display: none; }   /* metres + the next stage on ONE line; the record waits for the result card */
+#hud.rush .hud-goal.cannon .goal-lbl::before { content: "\2744\FE0F  "; }

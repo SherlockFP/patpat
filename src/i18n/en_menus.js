@@ -241,6 +241,7 @@ const unit = (x) => x.replace(' sn', ' s').replace(',', '.');
 const chips = (str) => str.split('  ').map((c) => { const m = c.match(/^(\S+) (.+)$/); return m && /^(👕|✨)/u.test(m[1]) ? m[1] + ' ' + (words[m[2]] || m[2]) : c; }).join('  ');
 const P = (re, rep) => [re, rep];
 export const patterns = [
+  P(/^(\S+) ACT TAMAM! SANDIK(: .*)?$/, '$1 ACT COMPLETE! CHEST$2'),   // (first: the reward-list pattern below swallows a leading emoji and leaves it Turkish)
   P(/^(\S+) SIRADAKİ HEDEF: (.*)$/, '$1 NEXT GOAL: $2'),   // (first: the wardrobe's item-name function pattern below would swallow it)
   // ---- hybrid-casual meta (kept first: the first match wins, and en_ui has broad catch-alls such as REKOR (.+) and (.+)'[yn]?[ae])
   P(/^([\d.,]+ sn|[+×][\d.,]+%?) → ([\d.,]+ sn|[+×][\d.,]+%?)$/, (m, a, c) => unit(a) + ' → ' + unit(c)), P(/^([\d.,]+ sn|[+×][\d.,]+%?) \(en yüksek\)$/, (m, a) => unit(a) + ' (max)'),

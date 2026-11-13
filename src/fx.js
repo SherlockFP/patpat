@@ -413,11 +413,12 @@ export class Fx {
     const gy = w.groundY(ball.x, ball.d) + w.rampAt(ball.x, ball.d);
     const lift = Math.max(0, ball.y - ball.r - gy);
     this.shadow.position.set(ball.x, gy + 0.06, -ball.d);
-    this.shadow.scale.setScalar(ball.r * 2.6 * (1 + lift * 0.05));
+    const lob = ball.rim && ball.rim.visible;      // lobby hero ball: a bigger, darker drop shadow
+    this.shadow.scale.setScalar(ball.r * (lob ? 3.3 : 2.6) * (1 + lift * 0.05));
     // Lie along the slope instead of half-buried / half-floating.
     const hs = Math.max(0.5, ball.r);
     this.shadow.rotation.x = -Math.atan((w.groundY(ball.x, ball.d - hs) - w.groundY(ball.x, ball.d + hs)) / (2 * hs));
-    this.shadow.material.opacity = Math.max(0.2, 1 - lift * 0.08) * 0.85;   // (the shaders add a tight contact occlusion on top)
+    this.shadow.material.opacity = Math.max(0.2, 1 - lift * 0.08) * (lob ? 1 : 0.85);   // (the shaders add a tight contact occlusion on top)
 
     this.updateTrail(dt, ball);
     this.updateKick(dt, ball);
@@ -456,7 +457,7 @@ export class Fx {
       this.puff(
         p.x - hx * back - hz * lat, p.y - r * 0.82, p.z - hz * back + hx * lat,
         -hx * sp * 0.08 - hz * side * (0.8 + sj * 1.6), 1 + Math.random() * 2.4 * kk, -hz * sp * 0.08 + hx * side * (0.8 + sj * 1.6),
-        (0.28 + 0.42 * r) * (0.8 + 0.4 * kk), 0.5, this._sc, 0.5);
+        (0.28 + 0.42 * r) * (0.8 + 0.4 * kk), 0.5, this._sc, 0.4);   // (< 50% alpha: a pale spray must not swallow the white ball on dust)
     }
   }
 
@@ -543,7 +544,7 @@ export class Fx {
     }
     const e = this._fl[this._flI]; this._flI = (this._flI + 1) % FL_N;
     e.textContent = text;
-    e.style.left = x + 'px'; e.style.top = y + 'px';
+    e.style.left = Math.max(48, Math.min((typeof innerWidth === 'number' ? innerWidth : 390) - 48, x)) + 'px'; e.style.top = y + 'px';      // (16 px margin + half a label)
     e.style.color = typeof color === 'number' ? '#' + color.toString(16).padStart(6, '0') : color;
     e.style.animationName = (this._flA ^= 1) ? 'fxflA' : 'fxflB';
   }
@@ -566,6 +567,12 @@ export class Fx {
   // Level-up burst at world pos {x, y, z} (z = -d): a gold ring of soft puffs + a rising column + a faint gold flash. Pool puffs only; half as many in the lite rung.
   levelUp(pos) {
     if (!pos) return;
+    const cam = this.camera;
+    if (cam && typeof innerWidth === 'number') {      // the anchor stays 56 px (16 px margin + the ring's own radius) inside the screen edge: a ring cut by the edge is noise
+      const m = 1 - 112 / innerWidth;
+      _p.copy(pos).project(cam);
+      if (_p.z < 1 && (_p.x > m || _p.x < -m)) { _p.x = _p.x > 0 ? m : -m; _p.unproject(cam); pos = _p; }
+    }
     const n = SU.uLite.value ? 6 : 12;
     _c2.setHex(0xffd23a);
     for (let k = 0; k < n; k++) {

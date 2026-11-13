@@ -1291,6 +1291,7 @@ function updateCamera(dt, snap = false) {
     back = 2.6 + r * 2.2; up = 0.55 + r * 0.9; ox = b.x + Math.sin(t) * 1.4;
     ball.spin.rotateY(dt * 0.7);
   }
+  ball.rim.visible = menu;
   const ending = G.state === 'end' || G.state === 'result';
   if (ending) {
     const et = Math.min(G.endT, 6);
@@ -1391,13 +1392,13 @@ function hideEnemyBars() {
 // dark rim around the white ball: strengthens with the storm / fog around it so it never melts into the white-blue
 let rimMesh = null;
 function updateBallRim() {
-  if (G.mode !== 'cig') { if (rimMesh) rimMesh.visible = false; return; }
+  if (G.mode !== 'cig' && G.mode !== 'runner') { if (rimMesh) rimMesh.visible = false; return; }
   if (!rimMesh) {
     rimMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({ color: 0x1d3c68, side: THREE.BackSide, transparent: true, opacity: 0, depthWrite: false, fog: false }));
     rimMesh.renderOrder = 2; rimMesh.frustumCulled = false;
     ball.group.add(rimMesh);
   }
-  const o = Math.min(0.75, 0.12 + (fx.mistNear || 0) * 0.6 + (G.lv && G.lv.twist === 'fog' ? 0.25 : 0));
+  const o = G.mode === 'runner' || ball.rim.visible ? 0.9 : Math.min(0.75, 0.12 + (fx.mistNear || 0) * 0.6 + (G.lv && G.lv.twist === 'fog' ? 0.25 : 0));   // Rush: always a navy edge (white ball on pale dust / blue slope)
   rimMesh.material.opacity += (o - rimMesh.material.opacity) * 0.15;
   rimMesh.visible = ball.group.visible;
   rimMesh.scale.setScalar(ball.snow.scale.x * 1.07);
@@ -1583,7 +1584,7 @@ function updateBallUniform() {
 // Debug hooks: advance the simulation with a fixed step regardless of rAF throttling (muted headless tests use these).
 if (DEBUG) {
   window.cig = {
-    G, ball, CFG,
+    G, ball, CFG, menus,
     set auto(v) { AUTO = !!v; if (game) game.auto = AUTO; },
     get auto() { return AUTO; },
     get world() { return world; },
@@ -1727,7 +1728,7 @@ async function boot() {
     sp.className = 'ftue-splash';
     sp.innerHTML = '<div class="fs-logo">PATPAT</div><div class="fs-sub">YETİ</div>';
     document.body.appendChild(sp);
-    const done = () => { sp.classList.add('out'); setTimeout(() => sp.remove(), 350); };
+    const done = () => { sp.classList.add('out'); setTimeout(() => sp.remove(), 180); };   // (fade < 0.2 s: no ghost logo over the first frame)
     startEndless().then(done, done);
   }
   try { (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => { loadEndless().catch(() => {}); }); } catch { /* optional */ }

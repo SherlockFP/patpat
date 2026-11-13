@@ -167,8 +167,9 @@ export class UI {
         '.res-extra .rx-up{display:block;width:100%;box-sizing:border-box;font-family:inherit;margin:0 auto 6px;padding:6px 12px;border-radius:12px;background:rgba(23,52,92,.85);border:2px solid #ffcf3a;color:#fff;font-weight:900;font-size:15px;text-align:center;cursor:pointer}',
         '.res-extra .rx-up.ok{background:linear-gradient(180deg,#ffd45a,#ff9a1a);color:#3a1c00;border-color:var(--ink)}',
         '.res-extra .rx-up .ru-b{height:7px;margin-top:5px;border-radius:4px;background:rgba(255,255,255,.25);overflow:hidden}.res-extra .rx-up .ru-b i{display:block;height:100%;background:linear-gradient(90deg,#ffe066,#ff9a3a)}',
-        '.res-extra .rx-up.ok{animation:pwPulse 1s ease-in-out infinite}.res-extra .rx-up.ok .ru-b{background:rgba(58,28,0,.25)}.res-extra .rx-up.ok .ru-b i{background:#3a1c00}',
+        '.res-extra .rx-up.ok{animation:pwPulse 1s ease-in-out infinite}.res-extra .rx-up.ok .ru-b{background:rgba(58,28,0,.4)}.res-extra .rx-up.ok .ru-b i{background:#fff6c0}',
         '#result.rr .res-tons.dl,#result.rr .res-tons{font-size:20px}',
+        '#result.runner.rr .res-top{margin-top:auto}#result.runner.rr .res-mid{margin:4px 0 auto}',      // score block + card are centred together (no hole between them)
         '#result.rr .res-sub{font-size:15px;color:#cfe6ff}',
         '#result.rr.rec .res-title{color:#ffe066}',
         '.res-extra .rx-row{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}',
@@ -334,10 +335,10 @@ export class UI {
     let e = this.el.chapBar;
     if (!i.chapterId && !i.chapter) { if (e && !e.hidden) e.hidden = true; return; }
     if (!e) { e = this.el.chapBar = document.createElement('div'); e.className = 'chap-bar'; e.append(document.createElement('i'), document.createElement('b')); this.el.hud.appendChild(e); }
-    const pct = Math.round(clamp01(i.chapterFrac) * 100), k = pct * 4 + (i.chapterBonus ? 1 : 0) + (i.chapterClean ? 2 : 0);
+    const pct = Math.round(clamp01(i.chapterFrac) * 100), near = i.chapterLeft > 0 && i.chapterLeft <= 100, k = pct * 8 + (i.chapterBonus ? 1 : 0) + (i.chapterClean ? 2 : 0) + (near ? 4 : 0);
     if (k === this._chK && !e.hidden) return;
     this._chK = k; e.hidden = false;
-    e.classList.toggle('bonus', !!i.chapterBonus); e.classList.toggle('dirty', !i.chapterClean);
+    e.classList.toggle('bonus', !!i.chapterBonus); e.classList.toggle('dirty', !i.chapterClean); e.classList.toggle('near', near);   // (the flag at the end pulses inside the last 100 m)
     e.firstChild.style.width = `${pct}%`;
     const lb = i.chapterBonus ? 'BONUS' : 'BÖL ' + i.chapter;      // micro-label left of the bar (en: CH n): the bar is the chapter progress
     if (lb !== this._chL) { this._chL = lb; e.lastChild.textContent = lb; }
@@ -472,7 +473,7 @@ export class UI {
     let seaTok = 0;
     try { seaTok = Math.floor(Number(p && (p.seasonTokens ?? (p.stats && p.stats.seasonTokens))) || meta.stats().seasonTokens || 0); } catch { seaTok = 0; }
     if (seaTok > 0) chips.push(chip(`+${fmtN(seaTok)} 🧣`));
-    let html = coins ? `<div class="rx-row">${chip(`❄️ +${fmtN(coins)}`)}</div>` : '';
+    let html = `<div class="rx-row">${chip(`❄️ +${fmtN(coins)}`)}</div>` + this.progressBlock();      // flakes and the XP / season bars sit up front on every run, short ones too
     let nup = null;
     try { nup = this.hooks?.nextPower?.() || null; } catch { nup = null; }
     this._nupAfford = !!(nup && nup.afford);
@@ -481,7 +482,7 @@ export class UI {
       const left = Math.max(0, nup.price - nup.have), fr = Math.round(clamp01(nup.have / Math.max(1, nup.price)) * 100);
       html = `<button type="button" class="rx-up${nup.afford ? ' ok' : ''}"><div>${nup.icon} ${tr('Sıradaki:')} <b>${tr(nup.name)}</b> · ${nup.afford ? tr('ALABİLİRSİN!') + ' ▶' : fmtN(left) + ' ❄️ ' + tr('kaldı')}</div><div class="ru-b"><i style="width:${nup.afford ? 100 : fr}%"></i></div></button>` + html;
     }
-    let det = `<div class="rx-row">${chips.join('')}</div>` + this.progressBlock();
+    let det = `<div class="rx-row">${chips.join('')}</div>`;
     if (p && p.perk) det += `<div class="rx-line">${p.perk.icon} ${tr(p.perk.name)}</div>`;
     if (p && p.mutator) det += `<div class="rx-line"><span>${tr('BU HAFTA: ' + p.mutator.name)}</span> ${p.mutator.icon}${p.mutator.score > 1 ? ' · ' : ''}${p.mutator.score > 1 ? `<span>${tr('x' + p.mutator.score + ' puan')}</span>` : ''}</div>`;
     if (p && p.weeklyBest) det += `<div class="rx-line">🏆 Haftalık rekor! ${fmtN(p.weeklyRecord || score)}</div>`;
@@ -866,11 +867,11 @@ export class UI {
     if (mChanged) {
       g.classList.toggle('hidden', !mode);
       this.el.hud.classList.toggle('has-goal', !!mode);
-      g.classList.remove('cp', 'rec', 'rage', 'new', 'fury');
-      if (mode) g.classList.add(mode === 'boss' ? 'rage' : mode === 'fury' ? 'fury' : mode === 'cannon' ? 'rec' : mode === 'clean' ? 'cp' : mode);
+      g.classList.remove('cp', 'rec', 'rage', 'new', 'fury', 'cannon');
+      if (mode) g.classList.add(mode === 'boss' ? 'rage' : mode === 'fury' ? 'fury' : mode === 'cannon' ? 'cannon' : mode === 'clean' ? 'cp' : mode);
     }
     if (mode && (mChanged || val !== this.gVal || text !== this.gTxt)) {
-      this.el.goalLbl.textContent = text ? text : mode === 'clean' ? (val > 0 ? `TEMİZ KAT: ${val} m` : 'TEMİZ KAT') : mode === 'cp' ? `SIRADAKİ: ${val} m` : mode === 'rec' ? `REKORA ${val} m` : mode === 'new' ? 'YENİ REKOR!' : mode === 'cannon' ? `KAR KANONU: ${val}` : mode === 'boss' ? 'YETİ ÖNÜNDE!' : mode === 'fury' ? 'YETİ ÖFKESİ' : '⚠ YETİ ÖFKESİ';
+      this.el.goalLbl.textContent = text ? text : mode === 'clean' ? (val > 0 ? `TEMİZ KAT: ${val} m` : 'TEMİZ KAT') : mode === 'cp' ? `SIRADAKİ: ${val} m` : mode === 'rec' ? `REKORA ${val} m` : mode === 'new' ? 'YENİ REKOR!' : mode === 'cannon' ? `KAR KANONU ×${val}` : mode === 'boss' ? 'YETİ ÖNÜNDE!' : mode === 'fury' ? 'YETİ ÖFKESİ' : '⚠ YETİ ÖFKESİ';
     }
     if (mode && (mChanged || pct !== this.gPct)) this.el.goalFill.style.width = `${pct}%`;
     this.gMode = mode; this.gVal = val; this.gPct = pct; this.gTxt = text;
@@ -1497,7 +1498,7 @@ export class UI {
     if (bk !== c.bk) { c.bk = bk; this.el.cgBest.textContent = bk ? `REKOR ${fmtTons(bk / 1000)}` : ''; }
     // the ladder is the goal: "sıradaki: MEGA ÇIĞ · 12 t" (next tier and the snow tons still missing); nothing on the last tier
     let nx = this.el.cgNext;
-    if (!nx) { nx = this.el.cgNext = document.createElement('div'); nx.className = 'cg-row'; this.el.cigHud.appendChild(nx); }
+    if (!nx) { nx = this.el.cgNext = document.createElement('span'); nx.className = 'cg-nx'; this.el.cgDist.parentNode.appendChild(nx); }   // (same row as the metres: one centre line)
     const nk = d.nextName ? 'sıradaki: ' + UP(d.nextName) + ' · ' + fmtTons(Math.ceil(d.nextTons || 0)) : '';
     if (nk !== c.nx) { c.nx = nk; nx.textContent = nk; }
   }
@@ -1622,7 +1623,7 @@ export class UI {
     const hot = this.el.hud && this._cmN > 3 && this.el.hud.classList.contains('rush');
     if (prio < 2 && hot) return;   // no info toasts while a combo runs
     if (opts && opts.info && this._mOn) return;   // one goal at a time: postcard / chapter tips wait for a moment without a mission pill
-    this._say('t', { text: String(text), prio, ms: 1250, drop: !!(opts && opts.drop), show: () => this._toastNow(text, opts) });
+    this._say('t', { text: String(text), prio, ms: 1500, drop: !!(opts && opts.drop), show: () => this._toastNow(text, opts) });
   }
   _toastNow(text, opts) {
     const box = this.el.toastSoft;

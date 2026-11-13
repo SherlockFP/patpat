@@ -833,7 +833,7 @@ const CSS = `
 
 /* =============================================================== LEVEL RESULT / FAILED / INTRO */
 .fm-resov {
-  position: absolute; inset: 0; z-index: 85; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(var(--sat, env(safe-area-inset-top, 0px)) + 16px) 16px calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 16px);
+  position: absolute; inset: 0; z-index: 85; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(var(--sat, env(safe-area-inset-top, 0px)) + 24px) 16px calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 16px);
   background: radial-gradient(ellipse at 50% 38%, rgba(30, 70, 140, 0.8), rgba(8, 18, 40, 0.94)); animation: fmFade 0.25s; overflow-y: auto; touch-action: pan-y;
 }
 .fm-resov { background: radial-gradient(ellipse at 50% 38%, rgba(20, 50, 105, 0.9), rgba(5, 12, 28, 0.97)); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
@@ -866,18 +866,31 @@ const CSS = `
 .fm-info.one { display: none; }
 .fm-resov { justify-content: flex-start; gap: 9px; }   /* (flex centring clips the top of a tall card: auto margins centre it and still scroll) */
 .fm-resov > :first-child { margin-top: auto; } .fm-resov > :last-child { margin-bottom: auto; flex: none; }
-.fm-resov > * { flex-shrink: 0; }
+.fm-resov > * { flex-shrink: 0; z-index: 1; }
+.fm-resov > .fm-cfl { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }   /* confetti lives inside the result card and under its text (an absolute child does not take part in the first/last-child auto margins) */
+.fm-resov .fm-goal { gap: 3px; padding: 6px 10px 7px; }
+.fm-resov .fm-goal .gt { font-size: 14px; }
 .fm-resov.fail { background: radial-gradient(ellipse at 50% 38%, rgba(120, 30, 40, 0.82), rgba(24, 8, 16, 0.95)); }
+.fm-resov.tight { gap: 5px; padding-top: calc(var(--sat, env(safe-area-inset-top, 0px)) + 12px); padding-bottom: calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 10px); }
+.fm-resov.tight .fm-banner { padding: 5px 20px 7px; font-size: 22px; }
+.fm-resov.tight .fm-rname { font-size: 15px; }
+.fm-resov.tight .fm-bigstars { margin: 0; } .fm-resov.tight .fm-bigstar { font-size: 34px; } .fm-resov.tight .fm-bigstar:nth-child(2) { font-size: 44px; }
+.fm-resov.tight .fm-rgoals { gap: 3px; } .fm-resov.tight .fm-rgoal { padding: 3px 10px; font-size: 13px; }
+.fm-resov.tight .fm-rchips { gap: 4px !important; } .fm-resov.tight .fm-rchip { padding: 2px 8px; font-size: 14px; border-width: 2px; } .fm-resov.tight .fm-rchip.hero { font-size: 16px; }
+.fm-resov.tight .fm-rspecial { padding: 4px 10px; font-size: 14px; border-width: 2px; border-radius: 12px; box-shadow: 0 3px 0 #4b1fa8; }
+.fm-resov.tight .fm-goal { padding: 4px 10px 5px; } .fm-resov.tight .fm-goal .gt { font-size: 13px; }
+.fm-resov.tight .fm-rbtns { gap: 6px; margin-top: 0; } .fm-resov.tight .fm-btn.big { min-height: 48px; font-size: 21px; padding: 8px 14px; }
 .fm-banner {
-  position: relative; padding: 8px 24px 10px; border: 3px solid var(--ink); border-radius: 14px; font-size: clamp(24px, 8vw, 32px); line-height: 1; text-align: center; transform: rotate(-2deg);
+  position: relative; padding: 8px 24px 10px; border: 3px solid var(--ink); border-radius: 14px; font-size: clamp(22px, 7vw, 28px); line-height: 1.02; text-align: center; transform: rotate(-2deg);
   background: linear-gradient(180deg, #ffb06a, var(--orange)); box-shadow: 0 6px 0 var(--orange-dark), inset 0 3px 0 rgba(255, 255, 255, 0.45); text-shadow: var(--ol); animation: fmPopIn 0.5s cubic-bezier(.2, 1.4, .4, 1);
 }
 .fm-banner.boss { background: linear-gradient(180deg, #ff8a7a, #e0392b); box-shadow: 0 6px 0 #8a1a12, inset 0 3px 0 rgba(255, 255, 255, 0.45); }
 .fm-banner.red { background: linear-gradient(180deg, #ff8a8a, #e63b3b); box-shadow: 0 6px 0 #8f1c1c, inset 0 3px 0 rgba(255, 255, 255, 0.45); }
 .fm-rname { font-size: 18px; letter-spacing: 0.06em; color: #cfe2ff; }
 .fm-bigstars { display: flex; gap: 6px; align-items: flex-end; margin: 4px 0; }
-.fm-bigstar { font-size: 56px; line-height: 1; color: rgba(255, 255, 255, 0.22); text-shadow: 0 5px 0 rgba(0, 0, 0, 0.3); transform: scale(0.55); transition: none; }
-.fm-bigstar:nth-child(2) { font-size: 72px; margin-bottom: 5px; }
+.fm-bigstar { font-size: 46px; line-height: 1; color: rgba(255, 255, 255, 0.22); text-shadow: 0 5px 0 rgba(0, 0, 0, 0.3); transform: scale(0.55); transition: none; }
+.fm-bigstar:nth-child(2) { font-size: 58px; margin-bottom: 4px; }
+.fm-rhint { margin-top: -6px; max-width: 340px; text-align: center; font-size: 13px; line-height: 1.2; color: #ffe27a; font-weight: 800; }
 .fm-bigstar.on { color: var(--gold); text-shadow: 0 5px 0 #b36f00, 3px 3px 0 var(--ink), -3px 3px 0 var(--ink), 3px -3px 0 var(--ink), -3px -3px 0 var(--ink), 0 0 24px rgba(255, 207, 58, 0.9); animation: fmStarPop 0.6s cubic-bezier(.2, 1.8, .4, 1) forwards; }
 @keyframes fmStarPop { 0% { transform: scale(0.2) rotate(-40deg); } 60% { transform: scale(1.35) rotate(8deg); } 100% { transform: scale(1) rotate(0); } }
 .fm-rgoals { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 340px; }
@@ -889,12 +902,12 @@ const CSS = `
 .fm-rchips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 340px; }
 .fm-rchip { padding: 4px 10px; border-radius: 14px; border: 3px solid var(--ink); background: linear-gradient(180deg, #fff, #dcecff); color: var(--ink); font-size: 16px; text-shadow: none; opacity: 0; animation: fmPopIn 0.45s cubic-bezier(.2, 1.4, .4, 1) forwards; }
 .fm-rchip.gold { background: linear-gradient(180deg, #fff3a8, var(--gold)); }
-.fm-rchip.hero { grid-column: 1 / -1; font-size: 28px; padding: 8px 16px; text-align: center; }
+.fm-rchip.hero { grid-column: 1 / -1; font-size: 20px; padding: 3px 14px; text-align: center; }
 .fm-up.fm-hl { box-shadow: 0 0 0 3px #ffd23a, 0 0 18px rgba(255, 210, 58, 0.8); }
 .fm-rspecial { width: 100%; max-width: 340px; padding: 10px 12px; text-align: center; border-radius: 16px; border: 3px solid var(--ink); background: linear-gradient(180deg, #c79bff, #7a3cf0); font-size: 17px; line-height: 1.2; box-shadow: 0 5px 0 #4b1fa8; animation: fmPopIn 0.5s cubic-bezier(.2, 1.4, .4, 1) both; }
 .fm-rbtns { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px; margin-top: 4px; }
 .fm-rbtns .row { display: flex; gap: 10px; }
-.fm-rbtns .row .fm-btn { flex: 1; }
+.fm-rbtns .row .fm-btn { flex: 1 1 0; min-width: 0; padding-left: 6px; padding-right: 6px; font-size: clamp(14px, 4.2vw, 18px); white-space: nowrap; }
 .fm-ftip { max-width: 320px; text-align: center; font-size: 15px; line-height: 1.35; color: #ffd9d9; }
 .fm-ficon { font-size: 84px; line-height: 1; text-shadow: none; filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35)); animation: fmPopIn 0.5s cubic-bezier(.2, 1.4, .4, 1); }
 
@@ -1288,7 +1301,9 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const colors = ['#ff5d73', '#ffb02e', '#ffe14a', '#5fe08a', '#3fc1ff', '#b07bff', '#ffffff'];
     const inRun = !mainOpen && !activePanel && !modalEl && !boxEl && !resultEl;
     if (inRun) n = Math.min(n, 16);
-    if (fxLayer.childElementCount > 140) return;
+    let L = fxLayer;
+    if (resultEl) { L = resultEl.querySelector(':scope > .fm-cfl'); if (!L) { L = el('div', 'fm-cfl'); resultEl.insertBefore(L, resultEl.lastElementChild); } }
+    if (L.childElementCount > 140) return;
     for (let i = 0; i < n; i++) {
       const c = el('i', 'fm-cf');
       setCss(c, '--x', `${Math.random() * 100}%`);
@@ -1297,7 +1312,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       setCss(c, '--d', `${(inRun ? 1.0 + Math.random() * 0.7 : 1.8 + Math.random() * 1.6).toFixed(2)}s`);
       setCss(c, '--c', colors[i % colors.length]);
       c.style.animationDelay = `${(Math.random() * 0.4).toFixed(2)}s`;
-      fxLayer.appendChild(c);
+      L.appendChild(c);
       setTimeout(() => c.remove(), inRun ? 2400 : 3800);
     }
   }
@@ -3015,7 +3030,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
   // data: { level (object or id), stars, goalsMet:[bool,bool,bool], rewards (meta.completeLevel result), hasNext }
   // handlers: { onNext, onRetry, onMap }. Rewards are assumed already granted by meta.completeLevel().
   // SONRAKİ ÖDÜL: next shop goal (+ level XP) as a compact progress block
-  function goalBlockEl(gained) {
+  function goalBlockEl(gained, compact) {
     gained = Math.max(0, Number(gained) || 0);
     let g = null, li = null;
     try { g = nextGoal(save); } catch { g = null; }
@@ -3032,7 +3047,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     }
     if (li) {
       box.appendChild(add(el('div', 'gs'), el('span', '', `SEVİYE ${li.level + 1}`), el('span', '', `${fmt(Math.max(0, li.need - li.cur))} XP`)));
-      box.appendChild(bar(li.frac, li.frac));
+      if (!compact) box.appendChild(bar(li.frac, li.frac));
     }
     return box;
   }
@@ -3059,6 +3074,10 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const starEls = [0, 1, 2].map(() => el('span', 'fm-bigstar', '★'));
     for (const s of starEls) bs.appendChild(s);
     ov.appendChild(bs);
+    if (lv && stars < 3) {      // the missing star as a subline of the star row (not a purple button-like card that pushes RETRY off screen)
+      const mi = lv.goals.findIndex((g, i) => !met[i]);
+      if (mi >= 0 && lv.goals[mi].text) ov.appendChild(el('div', 'fm-rhint', `⭐ ${mi + 1}. yıldız: ${lv.goals[mi].text}`));
+    }
     for (let i = 0; i < stars; i++) {
       setTimeout(() => {
         if (resultEl !== ov) return;
@@ -3100,12 +3119,8 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     if (rw.justUnlockedEndless) ov.appendChild(el('div', 'fm-rspecial', '∞ YETİ RUSH AÇILDI!'));
     if (d.special) ov.appendChild(el('div', 'fm-rspecial', d.special));
 
-    { const gb = goalBlockEl(rw.coins || d.coins); if (gb) ov.appendChild(gb); }
+    { const gb = goalBlockEl(rw.coins || d.coins, true); if (gb) ov.appendChild(gb); }
     const done = (fn) => () => { sfx('confirm'); closeResult(); if (fn) { try { fn(); } catch { /* ignore */ } } };
-    if (lv && stars < 3) {
-      const mi = lv.goals.findIndex((g, i) => !met[i]);
-      if (mi >= 0 && lv.goals[mi].text) ov.appendChild(el('div', 'fm-rspecial', `⭐ ${mi + 1}. yıldız: ${lv.goals[mi].text}`));
-    }
     const btns = el('div', 'fm-rbtns');
     // score chase: under 3 stars the fastest path is RETRY (big); a perfect clear leads on
     const retryFirst = !!lv && stars < 3 && !!d.hasNext;
@@ -3115,6 +3130,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     ov.appendChild(btns);
     ov.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
     host.appendChild(ov);
+    if (ov.scrollHeight > ov.clientHeight + 1) ov.classList.add('tight');   // the tallest cards (3 stars + chest + perfect + unlock lines) shrink to one screen instead of clipping RETRY
     resultEl = ov;
     if (stars === 0) sfx('back');
     return { close: closeResult };
@@ -3554,6 +3570,10 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       const n = save.cigNext();
       if (open('cig') && (save.cigCleared() | 0) < DAG_COUNT) { const pc = save.cigTownPct(n); c.push({ name: `Kasaba ${n}`, frac: pc / 100, txt: `%${pc}`, fn: () => startCig() }); }
     } catch { /* ignore */ }
+    try {
+      const sm = stormOf(), n = sm.ids.length, got = sm.ids.filter((i) => sm.got[i]).length;
+      if (open('map') && n && got < n) c.push({ name: 'Fırtına x2', frac: 2 + got / n, txt: `${got}/${n}`, fn: () => { try { meta.setMode('camp'); } catch { /* ignore */ } openMap(sm.ids.find((i) => !sm.got[i])); } });   // the live x2 event beats the slow goals
+    } catch { /* ignore */ }
     let best = null;
     for (const g of c) if (!best || g.frac > best.frac) best = g;
     return best;
@@ -3665,9 +3685,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
         const bst = dr && dr.dist > 0 && dr.key === dayKey() ? dr.dist : 0;
         chips.push({ ic: "🏃", lb: bst ? `${Math.round(bst)} m` : "Günün Rush'ı", hot: !bst, rank: 2, fn: () => { if (cb.onDailyRush) cb.onDailyRush(); }, aria: "Günün Rush'ı" });
       } catch { /* ignore */ }
-      const sm = stormOf();
-      const sl = sm.ids.filter((i) => !sm.got[i]).length;
-      if (sl) chips.push({ ic: "⭐", lb: "Fırtına x2", hot: true, rank: 0, fn: () => { try { meta.setMode("camp"); } catch { /* ignore */ } openMap(sm.ids.find((i) => !sm.got[i])); } });
+      // (the Storm lives in the ONE next-goal row now, nearGoal(): one tap target instead of a daily bar plus a round pill)
       let wl = 0; try { const w = new Date(); wl = Math.max(0, new Date(w.getFullYear(), w.getMonth(), w.getDate() - ((w.getDay() + 6) % 7) + 7) - w); } catch { /* ignore */ }
       const wd = Math.floor(wl / 86400000);
       chips.push({ ic: "🛒", lb: wd < 1 ? "Pazar yarın" : `Pazar ${wd}g`, hot: wd < 1, rank: 3, fn: () => { try { localStorage.setItem("patpat.shopTab", "pazar"); } catch { /* ignore */ } if (cb.onShop) cb.onShop(); }, aria: "Yeti Pazarı" });
@@ -3807,7 +3825,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
   const UNLOCK_NAMES = { shop: 'Dolap', daily: 'Günlük ödül', tasks: 'Görevler', cig: 'ÇIĞ', map: 'MACERA', gems: '💎', rails: 'BUGÜN', globe: 'Kar Küresi', post: 'Yeti Postası', pass: 'Pasaport', arena: 'KARTOPU ARENA' };
   function applyFtue(r) {
     const gate = lsGet('patpat.ftueGate') === 'on';
-    if (!gate) return;
+    if (!gate) { if (r.arena) r.arena.style.display = meta.unlocked('arena') ? '' : 'none'; return; }   // (a level-1 save never shows the Arena pill, gate flag or not: it opens at player level 5)
     const runs = ftueRuns();
     const lvl = (() => { try { return meta.level; } catch { return UNLOCK_LV_MAX; } })();
     if (runs >= UNLOCK_END && lvl >= UNLOCK_LV_MAX) lsSet('patpat.ftueGate', 'off'); // the gate ends once the last level unlock (SEZON) is reached

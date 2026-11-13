@@ -17,7 +17,7 @@
 //   8  english leak scan                                      9  fullscreen                    11  soak (heap after GC)
 //   12 frame pacing (Rush, rAF deltas)                        13 first-run frames first_00..03.png at 0.5/2/5/10 s (fresh save)
 //   14 cig mountain 1 start/mid/end (cig_1_*.png)             15 cig mountain 12 start/mid/end (cig_12_*.png)
-//   16 debug overlay stats (?debug shown, reads calls/tris text)   10 is the final blank-frame check (always printed)
+//   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   10 is the final blank-frame check (always printed)
 import { spawn, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -275,6 +275,10 @@ async function firstRun(ctx, lang) {
   const d1 = await ev(hudDist);
   await shot(lang === 'tr' ? 's2_play_tr' : 's1_play', ctx);   // (s2 is the deliberate Turkish run: its HUD is Turkish on purpose)
   if (d1 > d0) ctx.pass(`playing Rush, distance ${d0} -> ${d1} m, load ${ms} ms`); else ctx.fail(`distance not increasing (${d0} -> ${d1})`);
+  if (!lang) {   // the English HUD (quest chip, hints, goal strip) must not carry a Turkish letter
+    const hud = await ev(`document.getElementById('hud').innerText`), tr = hud.match(/[ğüşıöçİĞÜŞÖÇ]/g);
+    if (tr) ctx.fail(`EN HUD text has Turkish letters ${[...new Set(tr)].join('')}: "${hud.replace(/\s+/g, ' ').slice(0, 120)}"`); else ctx.pass(`EN HUD text has no Turkish letters: "${hud.replace(/\s+/g, ' ').slice(0, 60)}"`);
+  }
 }
 
 // fresh save, frames measured from Page.navigate: shows the real first-run path incl. loading glitches
@@ -327,6 +331,20 @@ async function returning(ctx) {
       ctx.pass(`nav "${lb}" opens and closes`);
     } catch (e) { (/not visible/.test(e.message) ? ctx.warn : ctx.fail)(`nav "${lb}": ${e.message}`); await key('Escape'); await sleep(400); }
   }
+}
+
+// Rush HUD states that a random bot rarely shows at once: the cannon perk bar (blue, snowflake, x count), the chapter flag pulsing inside the last 100 m, then a toast taking the strip (goal pill + chapter bar hide)
+async function hudStates(ctx) {
+  await load('?endless&notut', seed3());
+  await waitFor(`${rushPlay}&&(${hudDist})>=0`, 30000, 'rush playing');
+  await ev(`(()=>{const g=document.getElementById('hud-goal');g.classList.remove('hidden','cp','rec','rage','new','fury');g.classList.add('cannon');document.getElementById('hud-goal-lbl').textContent='SNOW CANNON ×5';document.getElementById('hud-goal-fill').style.width='60%';let b=document.querySelector('.chap-bar');if(!b){b=document.createElement('div');b.className='chap-bar';b.innerHTML='<i></i><b>CH 1</b>';document.getElementById('hud').appendChild(b)}b.hidden=false;b.classList.add('near');b.firstChild.style.width='92%'})()`);
+  await sleep(500); await shot('rush_cannon', ctx);
+  const a = await ev(`(()=>{const g=getComputedStyle(document.getElementById('hud-goal'));const b=document.querySelector('.chap-bar');return{pill:g.visibility,cannon:document.querySelector('#hud-goal').classList.contains('cannon'),bar:b?getComputedStyle(b).visibility:'none',flag:b?getComputedStyle(b,'::after').animationName:'none',reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,cls:b?b.className:''}})()`);
+  if (a.cannon && a.pill === 'visible' && a.bar === 'visible' && (a.flag !== 'none' || a.reduced)) ctx.pass(`cannon pill + near flag (pulses unless reduced motion, which this headless shell emulates): ${JSON.stringify(a)}`); else ctx.fail(`cannon pill / flag state wrong: ${JSON.stringify(a)}`);
+  await ev(`(()=>{const t=document.getElementById('toast-soft');t.innerHTML='<div class="ts"><span class="ti">📮</span><span>POSTCARD: Pine Forest 2/18</span></div>'})()`);
+  await sleep(300); await shot('rush_toast', ctx);
+  const b = await ev(`(()=>({pill:getComputedStyle(document.getElementById('hud-goal')).visibility,bar:(()=>{const b=document.querySelector('.chap-bar');return b?getComputedStyle(b).visibility:'none'})()}))()`);
+  if (b.pill === 'hidden' && (b.bar === 'hidden' || b.bar === 'none')) ctx.pass(`toast up: goal pill and chapter bar hidden (${JSON.stringify(b)})`); else ctx.fail(`toast up but strip still shows: ${JSON.stringify(b)}`);
 }
 
 let rushStats = null, rushGl = null;   // rushStats: rAF data of the last Rush run, reused by s12 when s4 ran first
@@ -438,8 +456,31 @@ async function cigFrames(ctx, n) {
   await at(8000);
   if (await ev(RESULT_UP)) ctx.warn(`mountain ${n}: result already up at 8 s, no mid frame`); else await shot(`cig_${n}_mid`, ctx);
   const end = await waitFor(RESULT_UP, Math.max(1000, t + 42000 - Date.now()), 'result').then(() => true, () => false);
-  if (end) { await sleep(900); await shot(`cig_${n}_end`, ctx); const tx = await ev(`document.getElementById('result').innerText.replace(/\\s+/g,' ').slice(0,80)`); ctx.pass(`mountain ${n}: finale/result reached at ${((Date.now() - t) / 1000).toFixed(0)} s: "${tx}"`); }
+  if (end) { await sleep(900); await shot(`cig_${n}_end`, ctx); await sleep(1700); await fitCheck(ctx, `mountain ${n} result (real run, 2.6 s in)`); const tx = await ev(`document.getElementById('result').innerText.replace(/\\s+/g,' ').slice(0,80)`); ctx.pass(`mountain ${n}: finale/result reached at ${((Date.now() - t) / 1000).toFixed(0)} s: "${tx}"`); }
   else ctx.warn(`mountain ${n}: no result within 42 s of start (?auto bot still running), no end frame`);
+}
+
+// result overlay of a real run: banner below the top edge, every button inside the screen, nothing to scroll
+async function fitCheck(ctx, what) {
+  const m = await ev(`(()=>{const o=document.querySelector('.fm-resov');if(!o)return null;const bt=[...o.querySelectorAll('.fm-rbtns .fm-btn')].map(b=>Math.round(b.getBoundingClientRect().bottom)),bn=o.querySelector('.fm-banner').getBoundingClientRect();return{bt,top:Math.round(bn.top),sh:o.scrollHeight,ch:o.clientHeight,h:innerHeight}})()`);
+  if (!m) { ctx.warn(`${what}: no result overlay to measure`); return; }
+  if (m.bt.length && Math.max(...m.bt) <= m.h && m.top >= 8 && m.sh <= m.ch + 1) ctx.pass(`${what} fits one screen: button bottoms ${m.bt.join('/')} of ${m.h}, title top ${m.top}, card ${m.sh}/${m.ch}`);
+  else ctx.fail(`${what} does not fit: ${JSON.stringify(m)}`);
+}
+
+// the tallest mountain result card (star 3 missed, 4 chips, NEXT REWARD): RETRY and MOUNTAINS must sit inside one 390x844 screen, the title below the top edge, the card must not scroll
+async function resultLayouts(ctx) {
+  await load('?debug', seedOf());
+  await waitFor(`!!(window.cig&&cig.menus&&cig.plan)`, 25000, 'debug hooks');
+  await ev(`(()=>{const P=cig.plan(12);cig.menus.showLevelComplete({level:{id:P.n,name:P.name,boss:P.boss,act:1,length:P.length,goals:P.stars.map(s=>({text:s.text}))},stars:2,goalsMet:[true,true,false],rewards:{coins:60,crystals:0},hasNext:true,labels:{banner:'KASABA %100 YIKILDI',next:'SONRAKİ DAĞ ▶',map:'DAĞLAR',retry:'↻ TEKRAR'},chips:['🏘️ 100%','⚪ 12.4 m','⚖️ 3.2 kt','⏱ 0:41']},{})})()`);
+  await sleep(2300); await shot('res_miss3', ctx);
+  const m = await ev(`(()=>{const o=document.querySelector('.fm-resov'),bt=[...o.querySelectorAll('.fm-rbtns .fm-btn')].map(b=>Math.round(b.getBoundingClientRect().bottom)),bn=o.querySelector('.fm-banner').getBoundingClientRect();return{bt,top:Math.round(bn.top),sh:o.scrollHeight,ch:o.clientHeight,h:innerHeight}})()`);
+  if (m.bt.length >= 2 && Math.max(...m.bt) <= m.h && m.top >= 8 && m.sh <= m.ch + 1) ctx.pass(`mountain result with star 3 missed fits one screen: button bottoms ${m.bt.join('/')} of ${m.h}, title top ${m.top}, card ${m.sh}/${m.ch}`);
+  else ctx.fail(`mountain result with star 3 missed does not fit: ${JSON.stringify(m)}`);
+  // the other tall case: a perfect 3-star clear with the act chest, the perfect-act line and the Rush unlock on top of 6 chips
+  await ev(`(()=>{const P=cig.plan(12);cig.menus.showLevelComplete({level:{id:P.n,name:P.name,boss:P.boss,act:1,length:P.length,goals:P.stars.map(s=>({text:s.text}))},stars:3,goalsMet:[true,true,true],rewards:{coins:60,crystals:2,chest:{coins:200},perfect:true,justUnlockedEndless:true},hasNext:true,labels:{banner:'KASABA %100 YIKILDI',next:'SONRAKİ DAĞ ▶',map:'DAĞLAR',retry:'↻ TEKRAR'},chips:['🏘️ 100%','⚪ 12.4 m','⚖️ 3.2 kt','⏱ 0:41','❄️ 60']},{})})()`);
+  await sleep(2300); await shot('res_full3', ctx);
+  await fitCheck(ctx, 'mountain result, 3 stars + chest + perfect + Rush unlock');
 }
 
 async function endlessDaily(ctx) {
@@ -627,10 +668,12 @@ async function main() {
   await scenario(2, 'first-run TR', 30000, (c) => firstRun(c, 'tr'));
   await scenario(3, 'returning player + bottom nav', 30000, returning);
   await scenario(4, 'rush 1-minute playtest', 90000, rushPlaytest);
+  await scenario(18, 'rush HUD states (cannon bar, flag, toast)', 30000, hudStates);
   await scenario(12, 'frame pacing (Rush)', 30000, s12);
   await scenario(13, 'first-run frames 0.5/2/5/10 s', 30000, firstFrames);
   await scenario(14, 'cig mountain 1 frames', 60000, (c) => cigFrames(c, 1));
   await scenario(15, 'cig mountain 12 frames', 60000, (c) => cigFrames(c, 12));
+  await scenario(17, 'mountain result card (star 3 missed)', 30000, resultLayouts);
   await scenario(5, 'cig mountains 1/33/37', 30000, async (c) => { for (const n of [1, 33, 37]) await mountain(c, n, 3); });
   await scenario(6, 'cig endless + daily', 30000, endlessDaily);
   await scenario(7, 'arena solo', 30000, arena);
