@@ -159,7 +159,7 @@ const pairs = [
   ['❄️ 200  👕 Kaktüs', '❄️ 200  👕 Cactus'], ['Ödül: ❄️ 150  👕 Çam Topu', 'Reward: ❄️ 150  👕 Pine Ball'], ['SET ÖDÜLÜ: 💎 2  ✨ Neon Mavi', null],
   ['Ödül: ❄️ 200 · seri 3/7', 'Reward: ❄️ 200 · streak 3/7'], ['REKORA 12 m', 'TO RECORD'], ['REKOR 1.200', 'RECORD 1.200'],
   ['DAĞ 37 · Şimşek Geçidi', 'MOUNTAIN 37 · Lightning Pass'], ['👕 SIRADAKİ HEDEF: Gün Batımı', '👕 NEXT GOAL: Sunset'], ['Yeni damga: Aç Top!', 'New stamp: Hungry Ball!'], ['Bölüm 1 · ⭐ 0/300', 'Stage 1 · ⭐ 0/300'],
-  ['👕 Ahtapot: 65 ❄️ kaldı', '👕 Octopus: 65 ❄️ left'], ['💎 Kristal: Yeti seni yakalayınca devam etmek için kullanılır (her seferinde iki katı). Şu an: 1', '💎 Crystals: used to continue when the Yeti catches you (double cost each time). You have: 1'],
+  ['👕 Ahtapot: 65 ❄️ kaldı', '👕 Octopus: 65 ❄️ left'], ['💎 Kristal: devam etmek için (her seferinde 2 katı). Şu an: 1', '💎 Crystals: to continue (cost doubles each time). You have: 1'], ['KIZAK · 🛷 0', 'SLED · 🛷 0'], ["YETİ'DEN KAÇ!", 'RUN FROM THE YETI!'], ['🏘️ Yuvarlan, yut, büyü!', '🏘️ Roll, eat, grow!'], ['Kasabayı ezmek için 2.6 m ol', 'Grow to 2.6 m to crush the town'],
   ['+664 ESKİ REKORDAN', '+664 vs old record'], ['sende', 'you have'], ['EZME SERİSİ', 'SMASH STREAK'], ['ÇARPAN x3', 'MULTIPLIER x3'],
   ['BEDAVA SANDIK', 'FREE CHEST'], ['EK ÇEVİRME', 'EXTRA SPIN'], ['Günün Dağı', "Today's Mountain"],
 ];

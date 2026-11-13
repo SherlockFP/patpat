@@ -126,14 +126,15 @@ export const recordEqDist = (s, score, bestScore) => (s >= 50 && score > 0 ? s +
 
 /** ÇIĞ-only mission ids: they cannot advance in Rush (backs up rows without `modes`). */
 const CIG_ONLY = { cigtier: 1, cigtons: 1, cigdist: 1, swallow: 1, stars: 1, destroy: 1 };
+const EASY = { jump: 5, coins: 4, dist: 4, stomp: 3, smash: 3, buffs: 2 };
 /** The open mission closest to done in `rows` (meta.missions(): { text, value, goal, done }): highest value / goal, a tie keeps the first. null when none is open. Allocates nothing. */
-export function pickMission(rows) {
+export function pickMission(rows, skip) {
   let best = null, bf = -1;
   if (!rows) return null;
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    if (!r || r.done || r.modes === 'cig' || CIG_ONLY[r.id] || !(r.goal > 0)) continue;
-    const f = r.value / r.goal;
+    if (!r || r.done || (skip && r.id === skip) || r.modes === 'cig' || CIG_ONLY[r.id] || !(r.goal > 0)) continue;
+    const f = r.value / r.goal + (EASY[r.id] || 0) * 1e-3;   // (a tie at 0 goes to the mission that moves early: jump, flakes, distance; never the rare 'turn')
     if (f > bf) { bf = f; best = r; }
   }
   return best;

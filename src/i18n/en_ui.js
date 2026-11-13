@@ -1,5 +1,6 @@
 // English dictionary: ui.js, main.js, sharecard.js, cigplan.js, campaign.js, skins.js, config.js, cigplus.js, shop.js, world.js, scenery.js, shaders.js
 export const words = {
+  'Yemek için üstünden geç: büyü!': 'Roll over food to grow!',
   // ---- death / result (ui.js) ----
   'DÖNEMEDİN!': "COULDN'T TURN!",
   'Kavşakta okun gösterdiği yöne kaydır.': 'At the junction, swipe the way the arrow points.',
@@ -15,6 +16,8 @@ export const words = {
   'ÇARPTIN!': 'CRASHED!',
   'Büyük engellerin yanından dolan.': 'Go around the big obstacles.',
   'BİTİŞ!': 'FINISH!',
+  'Sıradaki:': 'Next:', 'ALABİLİRSİN!': 'YOU CAN BUY IT!',
+  'Yuvarlan, yut, büyü': 'Roll, eat, grow', "YETİ'DEN KAÇ!": 'RUN FROM THE YETI!',
   'OLMADI!': 'NOT QUITE!',
   'Küçük kayaya zıpla, büyük kayanın yanından dolan.': 'Jump small rocks, go around big ones.',
   'Gölgeye dikkat: yuvarlanan kaya şeridi kapatır.': 'Watch the shadow: a rolling boulder blocks the lane.',
@@ -223,6 +226,7 @@ const w = (s) => words[s] || s;
 export const patterns = [
   [/^\+([\d.,]+) ESKİ REKORDAN$/, '+$1 vs old record'],
   [/^🏘️ KASABAYI YIK · en az ([\d.,]+) m ol$/, '🏘️ DESTROY THE TOWN · be at least $1 m'],
+  [/^Kasabayı ezmek için ([\d.,]+) m ol$/, 'Grow to $1 m to crush the town'],
   [/^🏘️ KASABA %(\d+)$/, '🏘️ TOWN $1%'],
   [/^KASABA %(\d+) YIKILDI$/, 'TOWN $1% DESTROYED'],
   [/^Kasabanın %(\d+) kadarını yık$/, 'Destroy $1% of the town'],

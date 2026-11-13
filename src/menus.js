@@ -272,6 +272,8 @@ const CSS = `
 .fm-hgoal .gb { flex: none; width: 54px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
 .fm-hgoal .gb i { display: block; height: 100%; background: linear-gradient(90deg, #ffe066, #ff9a3a); }
 .fm-hgoal .gc { flex: none; font-size: 11.5px; color: var(--gold); text-shadow: none; white-space: nowrap; }
+.fm-bot .fm-sgoal { height: 26px; margin: -6px 0 0; padding: 0 10px; gap: 7px; border-width: 2px; border-radius: 13px; font-size: 12px; box-shadow: none; width: min(calc(100% - 40px), 340px); }
+.fm-bot .fm-sgoal .sg-b { width: 44px; height: 8px; }
 .fm-sgoal { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; margin: 0 auto 8px; width: min(calc(100% - 24px), 380px); box-sizing: border-box; border-radius: 14px; border: 2.5px solid var(--ink); background: #fff; color: var(--ink); font-size: 13px; font-weight: 800; cursor: pointer; text-align: left; text-shadow: none; flex: none; }
 .fm-sgoal .sg-t { flex: none; font-size: 11px; letter-spacing: 0.06em; opacity: 0.85; }
 .fm-sgoal .sg-n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -515,6 +517,9 @@ const CSS = `
 .fm-pips i { width: 20px; height: 10px; border-radius: 5px; border: 2px solid var(--ink); background: rgba(23, 52, 92, 0.15); }
 .fm-pips i.on { background: linear-gradient(180deg, #fff3a8, var(--gold)); }
 .fm-up .fm-btn { min-width: 86px; }
+.fm-up.sled { flex-wrap: wrap; }   /* the pack button sits under the text: the description gets the full width */
+.fm-up.sled .fm-amid { flex: 1 1 0; }
+.fm-up.sled .fm-btn { flex: 1 0 100%; }
 
 /* ---- hunt ---- */
 .fm-word { display: flex; justify-content: center; gap: 6px; padding: 6px 0; }
@@ -1128,7 +1133,8 @@ button.fm-licbtn { display: block; margin: 0 auto; border: 0; background: none; 
 // ================================================================================================================ helpers
 
 const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const fmt = (n) => String(Math.max(0, Math.floor(Number.isFinite(n) ? n : 0))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const GRP = getLang() === 'en' ? ',' : '.';   // one thousands separator per language (the record card used to say 4.000 while the result said 2,627)
+const fmt = (n) => String(Math.max(0, Math.floor(Number.isFinite(n) ? n : 0))).replace(/\B(?=(\d{3})+(?!\d))/g, GRP);
 function fmtDist(m) {
   m = Math.max(0, Math.round(m || 0));
   return m >= 1000 ? `${(m / 1000).toFixed(1).replace('.', ',')} km` : `${m} m`;
@@ -2224,9 +2230,9 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       const br = POWER_BRANCHES[p.tab] || POWER_BRANCHES[0];
       for (const id of br.ids) { const u = UPGRADES.find((x) => x.id === id) || GUC.find((x) => x.id === id); if (u) p.list.appendChild(powerRow(u)); }
       if (br.id === 'power') {
-        const sr = el('div', 'fm-row fm-up');
+        const sr = el('div', 'fm-row fm-up sled');
         const smid = el('div', 'fm-amid');
-        add(smid, el('div', 'fm-an', 'KIZAK'), el('div', 'fm-ad', 'Bir çarpışmayı affeder. Koşuda çift dokunarak kullan.'), el('div', 'fm-ar', `Stok: 🛷 ${meta.sleds()}`));
+        add(smid, el('div', 'fm-an', `KIZAK · 🛷 ${meta.sleds()}`), el('div', 'fm-ad', 'Bir çarpışmayı affeder. Koşuda çift dokunarak kullan.'));
         add(sr, el('div', 'fm-aico', '🛷'), smid);
         const spc = shopPrice(SLED_PACK.price);
         const afford = coins() >= spc;
@@ -2238,7 +2244,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
         });
         sr.appendChild(sb);
         p.list.appendChild(sr);
-        p.list.appendChild(el('div', 'fm-note', `💎 Kristal: Yeti seni yakalayınca devam etmek için kullanılır (her seferinde iki katı). Şu an: ${meta.crystals}`));
+        p.list.appendChild(el('div', 'fm-note', `💎 Kristal: devam etmek için (her seferinde 2 katı). Şu an: ${meta.crystals}`));
       }
       // rewarded gate: this row exists only once an ad SDK is wired (platform.rewardedAvailable())
       if (br.id === 'gain' && platform.rewardedAvailable()) {
@@ -3051,7 +3057,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
         sfx('confirm');
         try { if (navigator.vibrate) navigator.vibrate(i === stars - 1 ? [18, 30, 28] : 14); } catch { /* ignore */ }
         if (i === stars - 1) confetti(stars >= 3 ? 90 : 40);
-      }, 350 + i * 350);
+      }, 250 + i * 200);   // (each star lights together with its ticked row, all within ~650 ms)
     }
     if (stars === 0) confetti(20);
 
@@ -3341,7 +3347,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.crPill = makePill('💎', 'cr', () => { sfx('click'); if (meta.boxes > 0) openBoxes(meta.boxes); else openMissions(); }, 'fm-cur');
     r.boxBdg = el('span', 'fm-bdg dot gold off', '🎁');
     r.crPill.el.appendChild(r.boxBdg);
-    for (const [bx, tx] of [[r.dl, 'Günlük ödül'], [r.coinsPill.el, '❄️ Al'], [r.crPill.el, '💎 Al']]) { bx.style.position = 'relative'; bx.title = tx; bx.appendChild(el('span', 'fm-cl', tx)); }
+    for (const [bx, tx] of [[r.dl, 'Günlük ödül'], [r.coinsPill.el, '❄️ Al'], [r.crPill.el, '💎 Al']]) { bx.style.position = 'relative'; bx.title = tx; if (bx === r.dl) bx.appendChild(el('span', 'fm-cl', tx)); }   // (the currency pills already carry a '+': no 'Al' caption under them)
     r.rwChip = button('fm-rwc off', '', () => { sfx('open'); openDailyTasks(); }, 'Hazır ödüller');
     add(top, r.av, r.dl, r.coinsPill.el, r.crPill.el, r.rwChip);
     {
@@ -3428,7 +3434,6 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.sgoal = button('fm-sgoal', '', () => { sfx('click'); if (r._sgFn) r._sgFn(); }, 'Sıradaki hedef');
     r.sgoal.addEventListener('click', (e) => e.stopPropagation());
     r.sgoal.style.display = 'none';
-    infoCard.insertBefore(r.sgoal, r.sum.nextSibling);
     r.twrap = r.rails; // the FTUE gate locks the BUGÜN shortcuts (now the rails) for the first runs
 
     // ---- bottom: OYNA (straight into YETİ RUSH) + ÇIĞ SONSUZ · MACERA · Dolap · Görevler · Ayarlar ----
@@ -3439,6 +3444,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.play = button('fm-play', 'OYNA', () => { sfx('confirm'); playMode('endless'); }, 'Oyna: Yeti Rush');
     r.play.appendChild(el('small', '', 'YETİ RUSH'));
     add(bot, add(el('div', 'fm-playw'), r.play));
+    bot.appendChild(r.sgoal);   // the ONE next goal sits right under PLAY
     // MACERA + ÇIĞ: the two big entries under OYNA (the new-player gate shows each by run count, see applyFtue)
     const modeBtn = (cls, ic, name, fn, aria) => {
       const b = button('fm-sb fm-mode ' + cls, '', () => { sfx('click'); fn(); }, aria);
@@ -3636,7 +3642,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     try {
       const chips = [];
       try {
-        if (!keyOpen('season')) throw new Error('locked');
+        if (!meta.unlocked('season')) throw new Error('locked');   // (hidden until the season unlock level, gate or not)
         const se = meta.season();
         const frac = seasonProgress(se);
         const gf = Math.max(0, Math.min(1, se.claimed / Math.max(1, se.total)));
@@ -3767,6 +3773,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       b.classList.add('off');
     }
     try { applyFtue(r); } catch { /* ignore */ }
+    try { if (!meta.unlocked('daily')) r.globe.style.display = 'none'; else if (lsGet('patpat.ftueGate') !== 'on') r.globe.style.display = ''; } catch { /* ignore */ }   // Snow Globe waits for the daily unlock level
     r.modes.style.display = r.sMap.style.display === 'none' && r.sCig.style.display === 'none' ? 'none' : '';
     try {
       const l = lastGet();

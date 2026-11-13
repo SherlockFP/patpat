@@ -1,5 +1,8 @@
 // English strings for YETI RUSH (src/runner/*.js)
 export const words = {
+  // set-piece names (the ETAP strip)
+  'GİRDAP': 'WHIRL', 'DALGALAR': 'WAVES', 'ATLAYIŞ RAMPASI': 'SKI JUMP', 'UÇURUM': 'CHASM', 'HALAT': 'ZIPLINE', 'BUZ KÖPRÜ': 'ICE BRIDGE', 'YARIM BORU': 'HALF-PIPE',
+  'BUZ TÜNELİ': 'ICE TUNNEL', 'DÖNGÜ': 'LOOP', 'BURGU': 'CORKSCREW', 'KAVŞAK': 'JUNCTION', 'BASAMAKLAR': 'STAIRS', 'PORTAL': 'PORTAL',
   // buff cards
   'Mıknatıs': 'Magnet', 'Kar taneleri sana akar': 'Snowflakes flow to you',
   'Çift Kar': 'Double Snow', 'Kar yığınları 2 kat büyütür': 'Snow piles grow you 2x',
@@ -169,6 +172,8 @@ export const patterns = [
   [/^KIL PAYI (\d)\/3$/, 'CLOSE CALL $1/3'],       // YETİ DÜELLOSU: boulder near-misses
   [/^RİTİM x(\d+)$/, 'RHYTHM x$1'],
   [/^RİTİM BİTTİ$/, 'RHYTHM OVER'],
+  [/^ETAP (\d+) · (.+)$/, 'SECTION $1 · $2'],      // the set-piece strip (names in `words`)
+  [/^🧣 Sezon (\d+)$/, '🧣 Season $1'],
   [/^RİTİM$/, 'RHYTHM'],
   [/^SİNERJİ! (\S+) (.+)$/, (m, ic, n) => 'SYNERGY! ' + ic + ' ' + W(n)],
   [/^YENİ REKOR! \+(\d+)$/, 'NEW RECORD! +$1'],

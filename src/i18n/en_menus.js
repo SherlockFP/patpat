@@ -248,7 +248,8 @@ export const patterns = [
   P(/^🧩 \+(\d+) parça$/, (m, n) => '🧩 +' + n + (n === '1' ? ' shard' : ' shards')),
   P(/^Ödül: (.+) · seri (\d)\/7$/, (m, a, b) => 'Reward: ' + chips(a) + ' · streak ' + b + '/7'), P(/^Gün (\d+): (.+)$/, (m, a, b) => 'Day ' + a + ': ' + chips(b)),
   // specific rules BEFORE the emoji-chip catch-all below (it would swallow them)
-  P(/^💎 Kristal: Yeti seni yakalayınca devam etmek için kullanılır \(her seferinde iki katı\)\. Şu an: (\d+)$/, '💎 Crystals: used to continue when the Yeti catches you (double cost each time). You have: $1'),
+  P(/^💎 Kristal: devam etmek için \(her seferinde 2 katı\)\. Şu an: (\d+)$/, '💎 Crystals: to continue (cost doubles each time). You have: $1'),
+  P(/^KIZAK · (🛷 \d+)$/, 'SLED · $1'),
   P(/^(\S+) (.*): HAZIR!$/, '$1 $2: READY!'), P(/^(\S+) (.*): (\S+) ❄️ kaldı$/, '$1 $2: $3 ❄️ left'),
   P(/^(Ödül: |SET ÖDÜLÜ: )?([❄💎🎁🛷👕✨]\uFE0F? [^ ·]+(?: [^ ·]+)*(?:  [❄💎🎁🛷👕✨]\uFE0F? [^ ·]+(?: [^ ·]+)*)*)$/u, (m, pre, c) => (pre ? (pre === 'Ödül: ' ? 'Reward: ' : 'SET REWARD: ') : '') + chips(c)),
   // ---- menu modes / SIRADAKİ HEDEF (stage B)

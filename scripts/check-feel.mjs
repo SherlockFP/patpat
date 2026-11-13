@@ -95,6 +95,8 @@ for (const [tr, en] of EN) eq(`EN ${tr}`, t(tr), en);
   eq('a done mission is never picked', pickMission([rows[2]]), null);
   eq('no rows -> no mission', pickMission(null), null);
   eq('a tie keeps the first', pickMission([{ text: 'a', value: 1, goal: 2 }, { text: 'b', value: 2, goal: 4 }]).text, 'a');
+  eq('a 0-progress tie goes to the mission that moves early, not the first', pickMission([{ id: 'turn', text: 't', value: 0, goal: 3 }, { id: 'jump', text: 'j', value: 0, goal: 5 }]).id, 'jump');
+  eq('a skipped (stuck) mission is rotated out', pickMission([{ id: 'turn', text: 't', value: 0, goal: 3 }, { id: 'jump', text: 'j', value: 0, goal: 5 }], 'jump').id, 'turn');
   eq('missions left in the set', missionsLeft(rows), 2);
   eq('mission fraction', missionFrac(rows[0]), 1 / 3);
   eq('set pays multiplier +1', nextMult(3), 4); eq('multiplier ceiling is 30', nextMult(30), 30); eq('bad multiplier is safe', nextMult(NaN), 2);

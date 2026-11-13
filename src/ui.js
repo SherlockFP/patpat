@@ -166,7 +166,8 @@ export class UI {
         '#result.rr #btn-card{order:1;align-self:center;width:auto;font-size:14px;padding:5px 18px;border-width:2px;border-radius:14px;box-shadow:0 3px 0 var(--ink)}',
         '.res-extra .rx-up{margin:0 auto 6px;padding:6px 12px;border-radius:12px;background:rgba(23,52,92,.85);border:2px solid #ffcf3a;color:#fff;font-weight:900;font-size:15px;text-align:center;cursor:pointer}',
         '.res-extra .rx-up.ok{background:linear-gradient(180deg,#ffd45a,#ff9a1a);color:#3a1c00;border-color:var(--ink)}',
-        '.res-extra .rx-up small{font-size:12px;font-weight:800;opacity:.85}',
+        '.res-extra .rx-up .ru-b{height:7px;margin-top:5px;border-radius:4px;background:rgba(255,255,255,.25);overflow:hidden}.res-extra .rx-up .ru-b i{display:block;height:100%;background:linear-gradient(90deg,#ffe066,#ff9a3a)}',
+        '.res-extra .rx-up.ok{animation:pwPulse 1s ease-in-out infinite}.res-extra .rx-up.ok .ru-b{background:rgba(58,28,0,.25)}.res-extra .rx-up.ok .ru-b i{background:#3a1c00}',
         '#result.rr .res-tons.dl,#result.rr .res-tons{font-size:20px}',
         '#result.rr .res-sub{font-size:15px;color:#cfe6ff}',
         '#result.rr.rec .res-title{color:#ffe066}',
@@ -417,7 +418,7 @@ export class UI {
     window.__cigUi = this;
     b.style.display = '';
     { const old = document.getElementById('btn-share'); if (old) old.style.display = 'none'; }   // the image card replaces the old text share
-    b.textContent = 'PAYLAŞ 📸';
+    b.textContent = '📸'; b.setAttribute('aria-label', 'PAYLAŞ'); b.title = 'PAYLAŞ';
     b.classList.toggle('rec', !!o.isRec);
     b.onclick = () => { b.disabled = true; shareCard(o).finally(() => { b.disabled = false; }); };
   }
@@ -472,7 +473,11 @@ export class UI {
     let html = `<div class="rx-row">${chips.join('')}</div>`;
     let nup = null;
     try { nup = this.hooks?.nextPower?.() || null; } catch { nup = null; }
-    if (nup && nup.name) html = `<div class="rx-up${nup.afford ? ' ok' : ''}">${nup.icon} <b>${tr(nup.name)}</b> ❄️ ${fmtN(nup.price)} <small>(${tr('sende')} ${fmtN(nup.have)})</small></div>` + html;   // ONE visible reason to come back
+    this._nupAfford = !!(nup && nup.afford);
+    if (nup && nup.name) {   // ONE next target, one number: "Next: Magnet · 120 ❄️ left" + a fill bar; amber and pulsing once it is affordable
+      const left = Math.max(0, nup.price - nup.have), fr = Math.round(clamp01(nup.have / Math.max(1, nup.price)) * 100);
+      html = `<div class="rx-up${nup.afford ? ' ok' : ''}"><div>${nup.icon} ${tr('Sıradaki:')} <b>${tr(nup.name)}</b> · ${nup.afford ? tr('ALABİLİRSİN!') : fmtN(left) + ' ❄️ ' + tr('kaldı')}</div><div class="ru-b"><i style="width:${nup.afford ? 100 : fr}%"></i></div></div>` + html;
+    }
     let det = this.progressBlock();
     if (p && p.perk) det += `<div class="rx-line">${p.perk.icon} ${tr(p.perk.name)}</div>`;
     if (p && p.mutator) det += `<div class="rx-line"><span>${tr('BU HAFTA: ' + p.mutator.name)}</span> ${p.mutator.icon}${p.mutator.score > 1 ? ' · ' : ''}${p.mutator.score > 1 ? `<span>${tr('x' + p.mutator.score + ' puan')}</span>` : ''}</div>`;
@@ -498,6 +503,9 @@ export class UI {
     if (mrep.html) det += mrep.html;
     if (!rk.score && tipTxt) det += `<div class="rx-dim">${tipTxt}</div>`;
     if (det) html += `<div class="rx-qtoggle">▸ Detaylar</div><div class="rx-qlist hidden">${det}</div>`;
+    // the mission line lives IN the stats card (one box, one progress fill) instead of a separate chip under the score
+    const mChip = !!nq && !!rl.goal && rl.goal === p.nextGoalText && p.nextGoalKind === 'mission';
+    if (mChip) html = `<div class="rx-ms" style="--f:${Math.round(clamp01(nf) * 100)}%">${tr(rl.goal)}</div>` + html;
     ex.innerHTML = html;
     const qt = ex.querySelector('.rx-qtoggle');
     const upEl = ex.querySelector('.rx-up');
@@ -516,9 +524,8 @@ export class UI {
     // ONE number (score), the signed gap to the best, ONE next goal
     this.el.resTons.textContent = tr(rl.delta && rl.delta[0] === '+' ? rl.delta + ' ESKİ REKORDAN' : rl.delta);   // the bare +N had no label
     this.el.resTons.classList.toggle('dl', !!rl.delta && rl.delta[0] !== '+');
-    this.el.resSub.textContent = tr(rl.goal);
-    // a mission goal is a progress chip (the fill is the mission's progress), anything else stays plain text
-    this.el.resSub.classList.toggle('chip', !!nq && !!rl.goal && rl.goal === p.nextGoalText && p.nextGoalKind === 'mission');
+    this.el.resSub.textContent = mChip ? '' : tr(rl.goal);
+    this.el.resSub.classList.remove('chip');
     this.el.resSub.style.setProperty('--f', `${Math.round(clamp01(nf) * 100)}%`);
     this.el.resCoins.classList.add('hidden');
     this.el.resCoins.innerHTML = '';
@@ -555,17 +562,21 @@ export class UI {
     let b = document.getElementById('btn-power');
     let runs = 0; try { runs = save.runsTotal(); } catch { runs = 0; }
     let aff0 = false; try { aff0 = !!h?.affordPower?.(); } catch { aff0 = false; }
-    const on = !!(h && h.power) && (runs >= 2 || aff0);   // run 1 shows it too when the bank already buys something
-    if (!on) { if (b) b.style.display = 'none'; return; }
-    if (!b) { b = document.createElement('button'); b.id = 'btn-power'; b.className = 'btn mid'; (document.getElementById('btn-card') || this.el.retry).after(b); }
-    let aff = false; try { aff = !!h.affordPower?.(); } catch { aff = false; }
-    b.style.display = '';
-    b.textContent = '💪 GÜÇ';
-    b.classList.toggle('pulse', aff);
-    b.onclick = () => h.power();
+    const lvOk = !!(h && h.power) && (runs >= 2 || aff0);   // (the player-level reward below still follows this gate)
+    const on = !!(h && h.power) && (aff0 || !!this._nupAfford);   // GÜÇ is a button only when something is affordable; otherwise the 'Sıradaki' bar in the card opens it
+    if (!on) {
+      if (b) b.style.display = 'none';
+    } else {
+      if (!b) { b = document.createElement('button'); b.id = 'btn-power'; b.className = 'btn mid'; const c = document.getElementById('btn-card'); if (c) c.before(b); else this.el.retry.after(b); }
+      let aff = false; try { aff = !!h.affordPower?.(); } catch { aff = false; }
+      b.style.display = '';
+      b.textContent = '💪 GÜÇ';
+      b.classList.toggle('pulse', aff);
+      b.onclick = () => h.power();
+    }
     // a pending player level: its reward screen opens over the result once the score has counted up
     clearTimeout(this._lvT);
-    try { if (h.levelUp) this._lvT = setTimeout(() => { if (!this.el.result.classList.contains('hidden')) h.levelUp(); }, 1500); } catch { /* optional */ }
+    try { if (lvOk && h.levelUp) this._lvT = setTimeout(() => { if (!this.el.result.classList.contains('hidden')) h.levelUp(); }, 1500); } catch { /* optional */ }
   }
 
   // TEKRAR: big label + an optional small target line (no sub line = plain label, also used to reset it for other result screens)
@@ -1175,7 +1186,7 @@ export class UI {
   float(text, x, y, cls = '') {
     const now = performance.now();
     const prio = cls === 'big' || cls === 'bad';
-    if (this.el.hud.classList.contains('rush') && y < window.innerHeight * 0.27) y = window.innerHeight * 0.27;   // never into the top HUD block
+    if (this.el.hud.classList.contains('rush') && y < window.innerHeight * 0.22) y = window.innerHeight * 0.22;   // a thin strip in the top third, never into the top HUD block
     const mk = () => {
       const d = document.createElement('div');
       d.className = `float ${cls}`;
@@ -1199,18 +1210,21 @@ export class UI {
     mk();
   }
 
-  banner(text, level = 1) {
+  // ms (optional): a short banner (combo milestone ~0.8 s) that is dropped, never queued, when another message is up: it can never show a stale value
+  banner(text, level = 1, ms = 0) {
     const t = String(text);
     const count = /^\d+$/.test(t);   // countdown digits replace each other instantly
     this._say('c', {
-      text: t, prio: level >= 4 ? 3 : level >= 2 ? 2 : 1, ms: count ? 900 : 1400, count,
+      text: t, prio: level >= 4 ? 3 : level >= 2 ? 2 : 1, ms: ms || (count ? 900 : 1400), count, drop: !!ms,
       show: () => {
         const b = document.createElement('div');
-        b.className = `b l${level}`;
+        b.className = `b l${level}${count ? ' cnt' : ''}`;
         b.textContent = t;
+        if (ms) b.style.animationDuration = ms + 'ms';
         this.el.banner.innerHTML = '';
         this.el.banner.appendChild(b);
-        return () => { b.getAnimations?.().forEach((an) => an.cancel()); b.style.opacity = '0'; this.el.banner.innerHTML = ''; };
+        const tm = setTimeout(() => { if (b.parentNode) b.remove(); }, (ms || 1400) + 150);   // (the fade ends at opacity 0 but the node stayed: gone for good)
+        return () => { clearTimeout(tm); b.getAnimations?.().forEach((an) => an.cancel()); b.style.opacity = '0'; this.el.banner.innerHTML = ''; };
       },
     });
   }
@@ -1339,6 +1353,28 @@ export class UI {
     this._mutT = setTimeout(() => el.classList.add('hidden'), 5000);   // the weekly-mutator chip is a hello, not a permanent HUD item
   }
 
+  // first run: 2 s "YETİ'DEN KAÇ!" and a thin Yeti-distance bar (👹 ▬▬ ⚪) under the goal pill: the Yeti is why you run
+  runnerYetiCue() {
+    this.banner("YETİ'DEN KAÇ!", 3, 1400);
+    let e = this._yCue;
+    if (!e) {
+      e = this._yCue = document.createElement('div'); e.className = 'yeti-cue';
+      const a = document.createElement('span'), b = document.createElement('span');
+      a.textContent = '👹'; b.textContent = '⚪';
+      e.append(a, document.createElement('i'), b);
+      this.el.hud.appendChild(e);
+    }
+    e.classList.remove('on'); void e.offsetWidth; e.classList.add('on');
+  }
+
+  // set-piece name strip ("ETAP 3 · BUZ TÜNELİ"): its own element, so combo toasts / banners never swallow it
+  runnerSection(text) {
+    let e = this._secEl;
+    if (!e) { e = this._secEl = document.createElement('div'); e.className = 'sec-strip'; this.el.hud.appendChild(e); }
+    e.textContent = text;
+    e.classList.remove('on'); void e.offsetWidth; e.classList.add('on');
+  }
+
   runnerPerkIcon(icon, name) {
     let el = this._perkIco;
     if (!icon) { if (el) el.classList.add('hidden'); return; }
@@ -1348,6 +1384,8 @@ export class UI {
       this.el.hud.appendChild(el);
     }
     el.textContent = icon;
+    const pn = document.createElement('span'); pn.className = 'pn'; pn.textContent = name || ''; el.appendChild(pn);
+    el.classList.add('say'); clearTimeout(this._perkSayT); this._perkSayT = setTimeout(() => el.classList.remove('say'), 3500);   // the name shows for 3.5 s, then only the icon stays
     this._chipsTouch();
     el.setAttribute('aria-label', name || '');
     el.classList.remove('hidden');
@@ -1393,7 +1431,7 @@ export class UI {
   hunger(frac, warn = false) {
     if (!this._hgOn) {
       this._hgOn = true;
-      this._hgQ = -1; this._hgHue = -1; this._hgWarn = false;
+      this._hgQ = -1; this._hgHue = -1; this._hgWarn = false; this._hgShow = true;
       this.el.hunger.classList.remove('hidden');
       this.el.hud.classList.add('has-hunger');
     }
@@ -1407,6 +1445,8 @@ export class UI {
     }
     const w = !!warn;
     if (w !== this._hgWarn) { this._hgWarn = w; this.el.hunger.classList.toggle('warn', w); }
+    const sh = w || f < 0.5;   // a full meter is noise: it only shows once food is actually running low
+    if (sh !== this._hgShow) { this._hgShow = sh; this.el.hunger.classList.toggle('hidden', !sh); }
   }
   hungerHide() {
     if (!this._hgOn) return;

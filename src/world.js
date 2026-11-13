@@ -1021,7 +1021,7 @@ export class World {
     const frac = inner > 0 ? clamp((hw - inner) / hw, 0, 1) : 1;
     let allowed = (foodRelAt(gr) * gr ** 3 * seg * frac) / CFG.growK;
     // The very first stretches are generous: the first minute must feel like a feast.
-    if (d < 400) allowed *= 1.35;
+    if (d < 400) allowed *= d < 60 && !this.lvl ? 4 : 1.35;   // (endless: the first 60 m are a dense prop cluster so "eat to grow" is obvious at once)
     if (this.lvl) {
       allowed *= this.foodMulAt(d, gr);
       // early mountains feel empty otherwise: roughly double the edible props

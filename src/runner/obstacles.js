@@ -2028,7 +2028,7 @@ Object.assign(Obstacles.prototype, {
           const g = this._critterGroup(plan, c, s, free0, rm, prevRoute);
           if (!g) { made = false; this._nextCrit = s + vs * 1.5; break; }
           free = g.free; ext = g.ext; rext = 3;
-          this._nextCrit = s + rng.range(7.5, 12.5) * vs;
+          this._nextCrit = s + rng.range(7.5, 12.5) * vs * (this.critMul || 1);   // (critMul < 1 while the open mission is "squash N critters": it must be reachable)
           for (const l of g.lanes) persist.push({ lane: l, s0: s - 1, s1: s + g.ext - 6 });       // the group walks on in its lane(s): no obstacle row there meanwhile
           break;
         }
@@ -2211,7 +2211,7 @@ Object.assign(Obstacles.prototype, {
       for (let i = 0; i < n; i++) {
         const si = s + i * sp;
         if (si > sB) break;
-        if (inAv(si)) continue;
+        if (inAv(si) || si < 40) continue;   // (the ball starts at s 16: no coin right in front of it in frame one)
         const free = !snake || plan.rows.some((r) => Math.abs(si - r.s) < r.ext + 3);
         const u = free ? route(si) : clamp(route(si) + amp * Math.sin(i * 0.75 + ph), LANES[0], LANES[NL - 1]);
         this._pickup('flake', si, u, this._flakeH(si, arcs));

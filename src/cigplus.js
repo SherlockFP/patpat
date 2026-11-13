@@ -2251,7 +2251,11 @@ export class CigGame {
   }
   _tips() {
     const L = this.L, b = this.ball, G = this.G;
-    if (!L || G.t - (this._tipT || 0) < 0.25) return;
+    if (!L) {   // endless: ONE first-seconds line that says why you grow
+      if (G.t > 1 && G.t < 5 && !this._tipSeen().eat) this._tip('eat', TIPS.eat);
+      return;
+    }
+    if (G.t - (this._tipT || 0) < 0.25) return;
     this._tipT = G.t;
     const S = this._tipSeen(), its = L.items;
     for (let i = 0; i < its.length; i++) {
@@ -3270,6 +3274,7 @@ function newStats() {
 
 const _stickPos = new THREE.Vector3();
 const TIPS = {
+  eat: 'Yemek için üstünden geç: büyü!',
   gate: 'Bariyer kapıyı kırmak için yeterince büyü: yeşil yanınca çarp!',
   crate: 'Kasalara çarp: kır, topla, zincir yap!',
   hot: 'Kızıl sıcak nokta karı eritir: etrafından dolan!',

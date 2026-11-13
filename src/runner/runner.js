@@ -151,6 +151,8 @@ const _bi = { biome: null, index: 0, t: 0, next: null };   // biomeAt() scratch:
 const RAGE_SKIP = new Set(['zipline', 'rail', 'loop', 'corkscrew']); // sections where the Yeti keeps its boulders
 const GLOW_KINDS = new Set(['star', 'x2', 'superjump', 'crystal', 'timewarp', 'ghost', 'risk', 'clone', 'helmet', 'magnet', 'rocket', 'cannon']);
 const ROUND_KINDS = new Set(['helix', 'halfpipe', 'tube', 'loop', 'corkscrew']);
+// set pieces that get a name strip when the ball enters them ("ETAP 3 · BUZ TÜNELİ"): variety you can read, not only see
+const SECTION_NAME = { helix: 'GİRDAP', waves: 'DALGALAR', skiJump: 'ATLAYIŞ RAMPASI', chasm: 'UÇURUM', zipline: 'HALAT', iceBridge: 'BUZ KÖPRÜ', halfpipe: 'YARIM BORU', tube: 'BUZ TÜNELİ', loop: 'DÖNGÜ', corkscrew: 'BURGU', junction: 'KAVŞAK', stairs: 'BASAMAKLAR', portal: 'PORTAL' };
 const DEG = Math.PI / 180;
 const MAX_ROLL = 12 * DEG;                                             // chase camera roll limit (banked / twisted track)
 const COS_LOOK = Math.cos(25 * DEG), SIN_LOOK = Math.sin(25 * DEG);   // look direction limit off the track's forward
@@ -522,6 +524,7 @@ export class Runner {
     this.ctx.meta?.track?.('run_start', { mode: 'endless' });
     this.obstacles.setNextLetter?.(this.ctx.meta?.letterHunt?.()?.nextLetter ?? null);
     this.yetiN = 0; this.dblT = 0; this.turboN = 0; this.turboT = 0;
+    this.secN = 0; this._secPc = null;
     this.bait = 0; this.baitT = 0; this.baitBonus = 0; this.baitTap = -9; this.baitChip(); this.seasonTokens = 0; this.scarfChip(); this.bread = 0; this.breadChip(); this.cannonChip();
     this.obstacles.setYetiLetter?.('Y');
     this.bossIntro = 0; this.ghostPassed = false; this.ghostRec = null; this.ghostLen = 0;
@@ -552,10 +555,11 @@ export class Runner {
     if (this.tut || level === 1) {
       // the very first run: one quiet line until the first swipe (or 5 s), never a popup; tips wait while it is up
       ui.hint?.(true, '← → şerit · ↑ zıpla · ↓ eğil');
+      if (this.tut) ui.runnerYetiCue?.();   // why you run: 2 s "YETİ'DEN KAÇ!" + a Yeti silhouette behind the ball
       this.hintOn = true;
       this.after(5, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); });
     }
-    this._pcId = null; this._mrow = null; this._msT = 0; this._recV = -1; this._starK = -1;
+    this._pcId = null; this._mrow = null; this._msT = 0; this._mSkip = null; this._mPk = null; this._recV = -1; this._starK = -1;
     this.chapterInit();
     this.starPips = this.starPips || [1, 1, 1];
     if (!level && !this.hintOn) this.goalIntro();
@@ -586,8 +590,8 @@ export class Runner {
 
   // chip on the run start: "BU HAFTA: Ters Dünya ⇄" (once per start, not per frame)
   mutChip() {
-    const ui = this.ctx.ui;
-    ui.runnerMutator?.(this.mut ? `BU HAFTA: ${this.mut.name} ${this.mut.icon}` : null, this.mut ? this.mut.desc : '');
+    this._mutLine = this.mut ? `BU HAFTA: ${this.mut.name} ${this.mut.icon}` : '';   // (folded into the start banner, goalIntro: no separate pill)
+    this.ctx.ui.runnerMutator?.(null);
   }
 
   dangerBonus() { return dangerBonus(this.stumbleT > 0); }
@@ -705,9 +709,16 @@ export class Runner {
   laneW() { return RCFG.laneW; }
   laneMax() { return (LANES.length - 1) / 2; }
   laneSnap(l) { const n = LANES.length, m = (n - 1) / 2; return clamp(n % 2 ? Math.round(l) : Math.floor(l) + 0.5, -m, m); }
+  sectionStrip(pc) {
+    this._secPc = pc;
+    const nm = SECTION_NAME[pc.kind];
+    if (!nm || this.level || this.state !== 'play' || this.tut) return;
+    this.ctx.ui.runnerSection?.('ETAP ' + (this.secN = (this.secN | 0) + 1) + ' · ' + nm);
+  }
   syncLanes() {
     const b = this.b, pc = this.track.pieceAt(b.s);
     if (b.s < 100) this.widenS = -1;
+    if (pc && pc !== this._secPc) this.sectionStrip(pc);
     if (!pc || !pc.n) return;
     if (pc.n !== LANES.length) { setLanes(pc.n); this.lane = this.laneSnap(this.lane); }
     if (pc.widen && pc.s0 > (this.widenS ?? -1)) { this.widenS = pc.s0; this.float('ŞERİT AÇILDI!', 'big'); this.kick += 1.5; }
@@ -1537,7 +1548,7 @@ export class Runner {
     el.textContent = '❄️×' + Math.max(0, this.cannonN);
   }
 
-  scarfChip() {
+  scarfChip(say) {
     let el = this._scarfEl;
     if (!this.seasonTokens) { if (el) el.style.display = 'none'; return; }
     if (!el) {
@@ -1546,7 +1557,8 @@ export class Runner {
       this._col().appendChild(el);
     }
     el.style.display = 'block';
-    el.textContent = '🧣' + this.seasonTokens;
+    el.textContent = say ? '🧣 Sezon ' + this.seasonTokens : '🧣' + this.seasonTokens;   // (the pickup spells it out for 4 s, then it shrinks back to the badge)
+    if (say) this.after(4, () => { if (this._scarfEl && this.seasonTokens) this._scarfEl.textContent = '🧣' + this.seasonTokens; });
   }
 
   baitChip() {
@@ -2211,7 +2223,7 @@ export class Runner {
     const bi = biomeAt(this.b.s, _bi);
     if (!this.level) {
       if (bi.biome.id !== this._pcId) { this._pcId = bi.biome.id; this.postcard(bi.biome); }
-      if (this.time >= this._msT) { this._msT = this.time + 0.5; this._mrow = pickMission(this.ctx.meta?.missions?.()); }   // (a fresh row list twice a second)
+      if (this.time >= this._msT) { this._msT = this.time + 0.5; this._mrow = this._missionNow(); this.obstacles.critMul = this._mrow && this._mrow.id === 'stomp' ? 0.5 : 1; }   // (a fresh row list twice a second)
     } else if (this.time >= (this._msT || 0)) this.updateStars();
     const prog = this.level ? clamp(this.b.s / this.level.length, 0, 1) : bi.t;
     const key = this.level ? this.level : bi.biome;
@@ -2370,6 +2382,18 @@ export class Runner {
     if (l && l.textContent !== text) l.textContent = text;
   }
 
+  // The mission strip's row: the closest open one; a mission that has not moved for 120 m is rotated out for the rest of the run.
+  _missionNow() {
+    const rows = this.ctx.meta?.missions?.();
+    let m = pickMission(rows, this._mSkip);
+    if (m) {
+      const k = m.id + ':' + m.value;
+      if (k !== this._mPk) { this._mPk = k; this._mPs = this.b.s; }
+      else if (this.b.s - this._mPs > 120) { this._mSkip = m.id; this._mPk = null; m = pickMission(rows, m.id) || m; }
+    }
+    return m;
+  }
+
   // Run start, runs 3+: one 2-second line "GÖREV: 3 yaratık ez (1/3) · ÇARPAN x4" (the open mission closest to done and what the set pays).
   goalIntro() {
     const meta = this.ctx.meta;
@@ -2378,7 +2402,7 @@ export class Runner {
     this._msT = this.time + 0.5;
     const ui = this.ctx.ui;
     this.hintOn = true;
-    ui.hint?.(true, missionLine(m, this.quietRun ? 0 : nextMult(meta?.multiplier?.() ?? 1), t));   // (first runs: no multiplier jargon)
+    ui.hint?.(true, missionLine(m, this.quietRun ? 0 : nextMult(meta?.multiplier?.() ?? 1), t) + (this._mutLine ? ' · ' + t(this._mutLine) : ''));   // (first runs: no multiplier jargon)
     this.after(2, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); });
   }
 
@@ -3347,7 +3371,7 @@ export class Runner {
         if (this.yetiN < 4 && e.letter === 'YETİ'[this.yetiN]) {
           this.yetiN++;
           audio.milestone(4); platform.haptic('success');
-          const got = 'YETİ'.slice(0, this.yetiN).split('').join('-');
+          const got = 'YETİ'.slice(0, this.yetiN).split('').join(' ') + ' _'.repeat(4 - this.yetiN);   // Y _ _ _: the word hunt reads as a word, not a lone letter
           if (this.yetiN < 4) { this.float(got, 'big'); this.obstacles.setYetiLetter?.('YETİ'[this.yetiN]); }
           else {
             this.obstacles.setYetiLetter?.(null);
@@ -3366,7 +3390,7 @@ export class Runner {
       case 'scarf':
         this.seasonTokens = (this.seasonTokens || 0) + 1;
         this.ctx.meta?.track?.('season_token', { n: 1 });
-        this.score += 50 * this.mult; audio.star(3); platform.haptic('light'); this.scarfChip();
+        this.score += 50 * this.mult; audio.star(3); platform.haptic('light'); this.scarfChip(true);
         break;
       case 'timewarp':
         this.warpT = 3.5;
@@ -4332,6 +4356,11 @@ export class Runner {
       tr.toWorld(gsY, b.u, 0, _yp); tr.frame(gsY, _f2); _yp.addScaledVector(_f2.up, 2);
       const YR = 4.2, dx = _v.x - _yp.x, dy = _v.y - _yp.y, dz = _v.z - _yp.z, dl = Math.hypot(dx, dy, dz) || 1e-3;
       if (dl < YR) { const k = YR / dl; _v.set(_yp.x + dx * k, _yp.y + dy * k + (YR - dl) * 0.5, _yp.z + dz * k); }
+    }
+    if (dying && this.cause !== 'fall' && this.cause !== 'yeti') {
+      // the death view never drifts so far that the ball is a speck: >= ~40 px on a 390x844 screen (distance <= ~30 radii)
+      const bp = this.ctx.ball.group.position, dx = _v.x - bp.x, dy = _v.y - bp.y, dz = _v.z - bp.z, dl = Math.hypot(dx, dy, dz) || 1e-3, mx = 30 * Math.max(0.3, b.r);
+      if (dl > mx) _v.set(bp.x + dx * mx / dl, bp.y + dy * mx / dl, bp.z + dz * mx / dl);
     }
     // Look target: a point on the track ahead (the lead term cancels the filter's lag at speed).
     const laS = b.s + this.camLa + (snap ? 0 : b.vs * 0.1);

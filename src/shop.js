@@ -6,6 +6,7 @@
 // Buying: save.spend(price) -> save.own(kind,id) -> save.select(kind,id) -> onSelect(kind,id).
 // Items are sorted by rarity (SIRADAN -> NADİR -> EPİK -> EFSANE), then price. Items with unlock.secret stay
 // hidden ("GİZLİ", name and look concealed) until save.isOwned(kind, id) becomes true.
+import { getLang } from './i18n.js';
 import { SKINS, ABILITIES, TRAILS, RARITY, sortCatalog } from './skins.js';
 import { meta, ACHIEVEMENTS, UPGRADES as POWER_UPGRADES, SLED_PACK } from './meta.js';
 import * as Perks from './runner/perks.js';
@@ -631,7 +632,7 @@ const CSS = `
 }
 `;
 
-const fmt = (n) => String(Math.max(0, Math.floor(n))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const fmt = (n) => String(Math.max(0, Math.floor(n))).replace(/\B(?=(\d{3})+(?!\d))/g, getLang() === 'en' ? ',' : '.');
 
 function h(tag, cls, text) {
   const e = document.createElement(tag);

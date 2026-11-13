@@ -338,18 +338,22 @@ async function rushPlaytest(ctx) {
   await ev(RAF_INSTALL);
   ctx.pass(`time page-load -> first playable frame (HUD+state=play): ${tFirst} ms`);
   const KS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+  let secShot = false;
+  const sections = new Set();   // set-piece name strips seen in the toast line
   let played = 0, frame = 0, deaths = 0, tick = 0, lastT = Date.now(), resultShot = false, powerShot = false, retryMs = [], paceDone = false;
   const rows = [];
   const cap = Date.now() + 74000;
   const afterResult = async (td) => {   // result screen is up: shoot once, retry, back to playing
     await sleep(600);
     if (!resultShot) { resultShot = true; await shot('rush_result', ctx); const t = await ev(`document.getElementById('result').innerText.replace(/\\s+/g,' ').slice(0,100)`); ctx.pass(`result screen: "${t}"`); }
-    if (!powerShot && await ev(`!!document.getElementById('btn-power')&&document.getElementById('btn-power').style.display!=='none'`)) {   // GÜÇ entry on the result: opens the panel over it, closes again
+    // GÜÇ entry on the result: the button (only while something is affordable) or the 'Next: ...' bar of the card; opens the panel over it, closes again
+    const pwSel = !powerShot && await ev(`(()=>{const b=document.getElementById('btn-power');return b&&b.style.display!=='none'?'#btn-power':document.querySelector('.rx-up')?'.rx-up':''})()`);
+    if (pwSel) {
       powerShot = true;
-      await tapSel('#btn-power', null, 3000).catch(() => {}); await sleep(700); await shot('rush_power', ctx);
+      await tapSel(pwSel, null, 3000).catch(() => {}); await sleep(700); await shot('rush_power', ctx);
       const open = await ev(`!!document.querySelector('.fm-x')`);
       if (open) { await tapSel('.fm-x', null, 3000).catch(() => {}); await sleep(300); ctx.pass('result GÜÇ button opens the GÜÇ panel and it closes again'); } else ctx.fail('result GÜÇ button did not open a panel');
-    } else if (!powerShot) ctx.warn('result: no GÜÇ button (needs runsTotal >= 2)');
+    } else if (!powerShot) ctx.warn('result: no GÜÇ button and no Next bar');
     await tapSel('#btn-retry', null, 5000).catch(async () => { await tapSel('#result button', /AGAIN|RETRY|TEKRAR/i, 3000); });
     await waitFor(`${rushPlay}`, 15000, 'play after retry');
     retryMs.push(Date.now() - td); lastT = Date.now();
@@ -361,6 +365,7 @@ async function rushPlaytest(ctx) {
     if (st.rv) { await tapSel('#btn-revive-end', null, 3000).catch(() => {}); continue; }
     if (st.res) { deaths++; await afterResult(Date.now()); continue; }
     if (st.play) { if (tick++ % 2 === 0) await key(KS[(Math.random() * KS.length) | 0]); }
+    if (st.play && tick % 3 === 0) { const sx = await ev(`((document.querySelector('.sec-strip')||{}).textContent||'').match(/SECTION \\d+ · [A-Z -]+/g)||[]`); for (const x of sx) sections.add(x); if (sx.length && !secShot) { secShot = true; await ev('window.__raf.skip=true'); await shot('rush_section', ctx); await ev('window.__raf.skip=false;window.__raf.ign=3'); } }
     if (frame < 12 && played >= frame * 5000) {
       const r = await ev(`({d:${hudDist},sc:(document.getElementById('hud-tons')||{}).textContent})`);
       await ev('window.__raf.skip=true'); await shot('rush_' + String(frame).padStart(2, '0'), ctx); await ev('window.__raf.skip=false;window.__raf.ign=3');
@@ -375,6 +380,7 @@ async function rushPlaytest(ctx) {
   await glTake(); rushGl = glLine(GLACC);
   if (frame < 12 || played < 60000) ctx.fail(`only ${frame}/12 frames, played ${(played / 1000).toFixed(0)} s in ${(74000 / 1000)} s wall cap`);
   console.log('  ' + rows.join('\n  '));
+  if (sections.size) ctx.pass(`section strips seen: ${[...sections].join(' | ')}`); else ctx.warn('no SECTION strip seen in 60 s (set pieces are random)');
   ctx.pass(`60 s Rush playtest, ${rows.length} frames, deaths ${deaths}, played ${(played / 1000).toFixed(0)} s, bot=random keys, save with 3 previous runs`);
   await ev(`window.__raf.stop=true`);
   if (!resultShot) {   // bot survived: stop steering and let it crash, to exercise result + retry (no ?debug, so no runner.die())
@@ -432,7 +438,8 @@ async function endlessDaily(ctx) {
   const base = seedOf();
   await load('?debug&auto&cig=endless', base);
   await waitFor(`window.cig&&cig.G.mode==='cig'&&cig.G.state==='play'`, 25000, 'endless playing');
-  const a = await ev('cig.summary()'); await sleep(3000); const b = await ev('cig.summary()');
+  await sleep(1500); await shot('s6_endless_early', ctx);   // ~1.5 s in: the EAT TO GROW hint and the dense opening cluster
+  const a = await ev('cig.summary()'); await sleep(2500); const b = await ev('cig.summary()');
   await shot('s6_endless', ctx);
   if (b.d > a.d || b.state !== 'play') ctx.pass(`CIG endless: d ${a.d}->${b.d} m, state ${b.state}`); else ctx.fail(`CIG endless distance stuck ${a.d}`);
   await load('?debug&auto&play&daily', base);
@@ -466,8 +473,10 @@ async function leaks(ctx) {
   await tapSel('.fm-sb.c-set'); await sleep(600); await scan('settings'); await key('Escape'); await sleep(500);
   await tapSel('.fm-sb.c-shop'); await sleep(900); await scan('wardrobe/shop'); await key('Escape'); await sleep(700);
   await ev('cig.agar()'); await waitFor(`!!${FIND('.ag-btn.go')}`, 10000, 'arena lobby'); await scan('arena lobby');
+  await load('?endless&notut', seed3());   // in-run Rush HUD: the mission pill (#hud-goal-lbl), score row, chips
+  await waitFor(`${rushPlay}&&(${hudDist})>=0`, 30000, 'rush playing'); await sleep(2500); await scan('Rush HUD (mission pill)');
   const names = Object.keys(found);
-  if (!names.length) ctx.pass('no Turkish-only letters in menu, mountain list, settings, wardrobe, arena lobby');
+  if (!names.length) ctx.pass('no Turkish-only letters in menu, mountain list, settings, wardrobe, arena lobby, in-run Rush HUD');
   for (const k of names) ctx.warn(`English leak in ${k}: ${found[k].slice(0, 8).map((s) => JSON.stringify(s)).join(', ')}${found[k].length > 8 ? ' +' + (found[k].length - 8) + ' more' : ''}`);
 }
 
@@ -617,7 +626,7 @@ async function main() {
   await scenario(5, 'cig mountains 1/33/37', 30000, async (c) => { for (const n of [1, 33, 37]) await mountain(c, n, 3); });
   await scenario(6, 'cig endless + daily', 30000, endlessDaily);
   await scenario(7, 'arena solo', 30000, arena);
-  await scenario(8, 'english leak scan', 30000, leaks);
+  await scenario(8, 'english leak scan', 45000, leaks);
   await scenario(9, 'fullscreen', 30000, fullscreen);
   await scenario(11, 'soak', 40000, soak);
   await scenario(16, 'debug overlay stats', 30000, debugStats);

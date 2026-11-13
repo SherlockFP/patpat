@@ -9,6 +9,7 @@
 // Everything lives in its own localStorage key (`freemon.meta.v1`); every storage access is wrapped in try/catch and a
 // corrupted blob falls back to a fresh state. Importing this module never touches `document` / `localStorage`.
 // Rewards that touch the shop economy (❄️, skins, trails) go through the `save` object handed to init().
+import { getLang } from './i18n.js';
 import { SKINS, TRAILS, ABILITIES } from './skins.js';
 import { ACTS, CAMPAIGN_SIZE, LEVELS_PER_ACT, levelById, evalGoals, BONUS_COUNT, BONUS_STARS, bonusReward } from './campaign.js';
 
@@ -312,7 +313,7 @@ function ownedSkinCount() {
 
 // =================================================================================================== missions
 
-const fmtN = (n) => String(Math.floor(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const fmtN = (n) => String(Math.floor(n)).replace(/\B(?=(\d{3})+(?!\d))/g, getLang() === 'en' ? ',' : '.');
 const inc = (d, v) => v + 1;
 const best = (f) => (d, v) => Math.max(v, num(f(d)));
 

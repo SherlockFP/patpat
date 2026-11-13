@@ -380,7 +380,7 @@ function comboMilestone(n) {
   G.shake += 0.15 + 0.1 * k; camZoom = Math.max(camZoom, 0.1); G.fovKick = Math.max(G.fovKick, 5 + 2 * k);
   audio.milestone(1 + k); audio.pop(0.9, CM_AT[k]);
   platform.haptic(k ? 'success' : 'medium');
-  ui.banner?.('KOMBO x' + CM_AT[k] + '!', 2 + (k > 1 ? 1 : 0));
+  ui.banner?.('KOMBO x' + CM_AT[k] + '!', 2 + (k > 1 ? 1 : 0), 800);
   game._msg?.(2, '🪙 +' + coins + ' KOMBO ÖDÜLÜ');
 }
 
@@ -398,7 +398,7 @@ function showIntroChip(plan) {
   const parts = [];
   if (plan.boss && !plan.daily) parts.push('<b class="pat' + (plan.bigBoss ? ' big' : '') + '">' + (plan.bigBoss ? '👑 ' : '👹 ') + 'PATRON SEVİYESİ</b>');
   if (plan.mod && (!plan.daily || plan.mod.special)) parts.push('<b class="mod">' + plan.mod.icon + ' ' + plan.mod.name + '</b>');
-  if (plan.town) parts.push('<b class="mod">🏘️ KASABAYI YIK · en az ' + fmtD(2 * plan.town.min) + ' m ol</b>');   // the goal, told up front
+  if (plan.town) parts.push('<b class="mod town">🏘️ Yuvarlan, yut, büyü!<br>Kasabayı ezmek için ' + fmtD(2 * plan.town.min) + ' m ol</b>');   // the goal and WHY you grow, told up front
   nightEl.style.display = plan.mod && plan.mod.night && !plan.daily ? 'block' : 'none';
   if (!parts.length) { introChip.style.display = 'none'; return; }
   introChip.innerHTML = parts.join('');
@@ -689,6 +689,7 @@ function ensureLevelHud(plan) {
     gb.appendChild(gf);
     const gi = mk('span', 'gi'), gtn = mk('span', 'gt');
     gi.textContent = '⚪'; gtn.textContent = '🏘️';
+    const gl = mk('small'); gl.textContent = 'KASABA'; gtn.appendChild(gl);
     g.append(gi, gb, gtn);
     hud.appendChild(g);
     lvHud = { root, gc, gs, gt, sz, ch, g, gb, gf, gIco: gi, gnotch: [], gk: '', s: '', t: '', z: '', c: '', r: -1, marks: [], gi: -1 };
@@ -758,6 +759,8 @@ function updateLevelHud(V) {
   if (t !== h.t) { h.t = t; h.gt.textContent = t; }
   const lv = ui.el.level;
   if (lv.textContent !== t) lv.textContent = t;   // the level label IS the ETAP chip now
+  const lvOff = G.t > 3 && h.g.style.display === 'flex' ? 'none' : '';   // the progress bar says the same: one goal readout after the first 3 s
+  if (lv.style.display !== lvOff) lv.style.display = lvOff;
   if (r !== h.r) { h.r = r; h.gc.className = 'cgl gc r' + r; lv.classList.remove('lr0', 'lr1', 'lr2'); lv.classList.add('lr' + r); }
   if (h.stars) updateStars(V);
   const gk = V.finalBroken ? 99 : V.gateI;
@@ -824,6 +827,7 @@ function updateStars(V) {
 function hideLevelHud() {
   hideIntroChip();
   if (lvHud) { lvHud.root.style.display = 'none'; lvHud.g.style.display = 'none'; }
+  if (ui.el.level) ui.el.level.style.display = '';
   document.getElementById('hud')?.classList.remove('has-gauge');
   try { if (ui.el.tons) { ui.el.tons.textContent = ''; ui.lastTonsText = ''; if (ui._cg) ui._cg.kg = -1; } } catch { /* optional */ }
   const hud = ui.el?.hud;
