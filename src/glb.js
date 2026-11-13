@@ -6,7 +6,8 @@ import * as THREE from 'three';
 export const GLB = {};
 const STATIC = ['critter_arcticfox', 'critter_bunny', 'critter_clownbot', 'critter_jelly', 'critter_lavabug', 'critter_miniyeti', 'critter_panda', 'critter_penguin',
   'critter_polarcub', 'critter_robot', 'critter_scorpion', 'critter_snowmini', 'critter_squirrel', 'prop_crate', 'prop_logpile', 'prop_pine', 'prop_rock_big',
-  'prop_rock_small', 'prop_sign', 'prop_sled', 'prop_snowman'];
+  'prop_rock_small', 'prop_sign', 'prop_sled', 'prop_snowman', 'prop_coin', 'prop_barrier', 'prop_cabin', 'train_loco', 'train_loco_ice', 'train_car_cyan',
+  'train_car_yellow', 'train_car_orange', 'train_car_ice', 'train_ride', 'train_ride_ice'];
 let _clone = null;
 
 export async function loadGlbs(base = './models/') {

@@ -127,7 +127,7 @@ export const words = {
   '❄ Buz dikeni büyükleri böler': '❄ Ice spikes split big balls',
   '⚠ ÇEMBERİN DIŞINDASIN! Kütle eriyor': '⚠ YOU ARE OUTSIDE THE RING! Mass is melting',
   'Küçükleri ye!': 'Eat the small ones!',
-  '4:00 içinde en büyük ol': 'Be the biggest in 4:00',
+  '4:00 içinde en büyük ol': 'Be the biggest in 4:00', 'EN BÜYÜK OL': 'BE THE BIGGEST',
 
   // --- toasts / feed
   'BÜYÜK LOKMA! 🍖': 'BIG BITE! 🍖',

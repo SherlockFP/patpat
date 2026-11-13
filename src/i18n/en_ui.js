@@ -37,7 +37,7 @@ export const words = {
   'SKOR': 'SCORE', 'sende': 'you have', 'Detaylar': 'Details',
   'YETENEK SEÇ': 'PICK A PERK', 'ÇIĞ SONSUZ': 'ENDLESS AVALANCHE', 'çığ boyutu': 'avalanche size',
   'ÇIĞ': 'AVALANCHE', 'YETİ RUSH': 'YETI RUSH', 'ARENA': 'ARENA', 'metre': 'meters',
-  'SONRAKİ DAĞ ▶': 'NEXT MOUNTAIN ▶', 'PAYLAŞ 📸': 'SHARE 📸', 'PAYLAŞ': 'SHARE',
+  'SONRAKİ DAĞ ▶': 'NEXT TOWN ▶', 'PAYLAŞ 📸': 'SHARE 📸', 'PAYLAŞ': 'SHARE',
   'Beni geçebilir misin? 🏔️': 'Can you beat me? 🏔️', 'Beni geçebilir misin?': 'Can you beat me?',
   'TEKRAR': 'RETRY', '↻ TEKRAR': '↻ RETRY', 'MENÜ': 'MENU', 'ANA MENÜ': 'MAIN MENU', 'DEVAM': 'CONTINUE',
   // ---- main.js ----
@@ -48,7 +48,7 @@ export const words = {
   'PATRON SEVİYESİ': 'BOSS LEVEL', 'BİTİŞ': 'FINISH', 'FİNAL': 'FINAL',
   'Panoya kopyalandı!': 'Copied to clipboard!',
   '✨ Ganimet: +40 ❄️ +1 💎': '✨ Loot: +40 ❄️ +1 💎',
-  'DAĞ TAMAM!': 'MOUNTAIN CLEARED!', 'PATRON YENİLDİ!': 'BOSS DEFEATED!', 'DAĞLAR': 'MOUNTAINS',
+  'DAĞ TAMAM!': 'MOUNTAIN CLEARED!', 'PATRON YENİLDİ!': 'BOSS DEFEATED!', 'DAĞLAR': 'TOWNS',
   '👑 PATRON ÖDÜLÜ': '👑 BOSS REWARD', '∞ ÇIĞ SONSUZ AÇILDI!': '∞ ENDLESS AVALANCHE UNLOCKED!',
   '🏆 TÜM DAĞLAR TAMAM!': '🏆 ALL MOUNTAINS CLEARED!',
   'PATRONA ÇARPTIN — daha büyük gel!': 'YOU HIT THE BOSS — come back bigger!',
@@ -87,7 +87,7 @@ export const words = {
   'Kaygan Yamaç': 'Slippery Slope', 'Kristal Vadi': 'Crystal Valley', 'Rüzgârlı Zirve': 'Windy Peak', 'Dev Kapılar': 'Giant Gates', 'Yeti Kralı': 'Yeti King',
   'Beyaz Orman': 'White Forest', 'Sisli Geçit': 'Foggy Pass', 'Şehir Eteği': 'City Outskirts', 'Çığ Yolu': 'Avalanche Road', 'Robot Ordusu': 'Robot Army',
   'İkiz Çığ': 'Twin Avalanche', 'Kayalık Duvar': 'Rocky Wall', 'Gökdelen Vadisi': 'Skyscraper Valley', 'Dağ Devi': 'Mountain Giant', 'Kış Kralı': 'Winter King',
-  'Dağı bitir': 'Finish the mountain', 'Kapıdan hiç geri sekme': 'Never bounce off a gate', 'Hiç kar kaybetme': 'Lose no snow',
+  'Dağı bitir': 'Reach the town', 'Kapıdan hiç geri sekme': 'Never bounce off a gate', 'Hiç kar kaybetme': 'Lose no snow',
   'KARDAN ADAM TAHTINI yık': 'Topple the SNOWMAN THRONE', 'GİZLİ YOLU bul': 'Find the SECRET PATH',
   // ---- campaign ----
   'Sağa ya da sola kaydır: şerit değiştir!': 'Swipe left or right to change lanes!',
@@ -228,6 +228,7 @@ export const patterns = [
   [/^🏘️ KASABAYI YIK · en az ([\d.,]+) m ol$/, '🏘️ DESTROY THE TOWN · be at least $1 m'],
   [/^Kasabayı ezmek için ([\d.,]+) m ol$/, 'Grow to $1 m to crush the town'],
   [/^🏘️ KASABA %(\d+)$/, '🏘️ TOWN $1%'],
+  [/^KASABA (\d+) m$/, 'TOWN $1 m'],
   [/^KASABA %(\d+) YIKILDI$/, 'TOWN $1% DESTROYED'],
   [/^Kasabanın %(\d+) kadarını yık$/, 'Destroy $1% of the town'],
   [/^⭐ KASABANIN %(\d+) YIKILDI!$/, '⭐ $1% OF THE TOWN DESTROYED!'],
@@ -317,6 +318,7 @@ export const patterns = [
   [/^(\d+) kar tanesi topla$/, 'Collect $1 snowflakes'],
   [/^✓ ETAP (\d+) · ⚪ ([\d.,]+) m$/, '✓ STAGE $1 · ⚪ $2 m'],
   [/^⚪ ([\d.,]+) m$/, '⚪ $1 m'],
+  [/^⚪ ([\d.,]+) m (→|✓) 🏘️ KASABA ([\d.,]+) m$/, '⚪ $1 m $2 🏘️ TOWN $3 m'],      // the size -> town pill: the target is named
   [/^(\d+) kez PERFECT yap$/, 'Get $1 PERFECTs'],
   [/^Yeti (\d+) m'den fazla yaklaşmasın$/, "Don't let the Yeti within $1 m"],
   [/^Bitişte ([\d.,]+) m boyuta ulaş$/, 'Reach $1 m size at the finish'],

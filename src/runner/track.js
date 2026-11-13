@@ -247,7 +247,12 @@ export class Track {
     return this.zone;
   }
   /** zone kind covering s, or null */
-  zoneAt(s) { const z = this.zone; return z && s >= z.from && s < z.until ? z.kind : null; }
+  zoneAt(s) {
+    const z = this.zone;
+    if (z && s >= z.from && s < z.until) return z.kind;
+    const c = !this.level && this.chapterAt ? this.chapterAt(s).def : null;      // a Rush chapter can carry a whole-chapter zone rule (goals.js CHAPTERS zone)
+    return c && c.zone || null;
+  }
 
   /** gravity (m/s^2) at s, from the optional gravityAt callback */
   gravity(s) { return this.gravityAt ? this.gravityAt(s) : T.G; }
@@ -588,7 +593,8 @@ Object.assign(Track.prototype, {
     if (cs && sEst >= (this._chapSetAt || 0) && this.allows(cs) && this['_spec_' + cs] && !this.zoneAt(sEst)) {
       kind = cs; this._chapSetAt = sEst + SET_LEN[cs] + 70 + this.rng.range(0, 50); this._lastSet = cs; this._nextSet = Math.max(this._nextSet, this._chapSetAt + 60);
     }
-    if (!kind) kind = sEst >= this._nextSet && !this.zoneAt(sEst) && !(cd && cd.plain) && this.rng.chance(0.8) ? this._pickSet(sEst, diff) : null;
+    const chapSoon = !L && this.chapterAt && this.chapterAt(sEst + 140) !== this.chapterAt(sEst);      // a chapter starts within ~140 m: no long set piece across the border (its first metres must show the chapter's rule)
+    if (!kind) kind = sEst >= this._nextSet && !this.zoneAt(sEst) && !(cd && cd.plain) && !chapSoon && this.rng.chance(0.8) ? this._pickSet(sEst, diff) : null;
     if (!kind) kind = this._pickKind(sEst, diff, this._qSince);
     // Full vertical loops are no longer generated: from the inside, a 5.5-11 m ring fills the screen with track whatever the
     // camera does. A gentle rolling-hills section (waves) takes their slot. (A loop pushed into _q by hand still builds — tests.)
@@ -1574,6 +1580,8 @@ Object.assign(Track.prototype, {
     if (s0 < 40 || !this.allows('junction') || this._bossStarted || this._finished) return false;
     const zk = this.zoneAt(s0);
     if (zk === 'narrow') return false;
+    const cj = !this.level && this.chapterAt ? this.chapterAt(s0).def : null;
+    if (cj && cj.nojunc) return false;      // EKSPRES: long straight runs for the trains, no corner windows
     const d = this._juncDims(s0), len = d.La + 9 + d.Le, sC = s0 + d.La;
     if (sC < this._nextCorner) return false;
     const L = this.level;

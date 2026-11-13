@@ -693,7 +693,7 @@ function ensureLevelHud(plan) {
     const gl = mk('small'); gl.textContent = 'KASABA'; gtn.appendChild(gl);
     g.append(gi, gb, gtn);
     hud.appendChild(g);
-    lvHud = { root, gc, gs, gt, sz, ch, g, gb, gf, gIco: gi, gnotch: [], gk: '', s: '', t: '', z: '', c: '', r: -1, marks: [], gi: -1 };
+    lvHud = { root, gc, gs, gt, sz, ch, g, gb, gf, gIco: gi, gl, gd: -1, gnotch: [], gk: '', s: '', t: '', z: '', c: '', r: -1, marks: [], gi: -1 };
   }
   lvHud.root.style.display = '';
   lvHud.g.style.display = 'none'; lvHud.gk = '';   // shown by the first payload that carries a gauge
@@ -749,7 +749,7 @@ function updateLevelHud(V) {
   const s = V.finalBroken ? 'BİTİŞ' : V.final ? 'FİNAL' : 'ETAP ' + (V.gateI + 1) + '/' + V.S;
   const t0 = V.finalBroken ? '🏁' : V.locked ? '👹 ' + fmtD(V.need) + ' m' : V.need > 0 ? '⛔ ' + fmtD(V.need) + ' m' : m5 + ' m';
   // KASABA mountains: ONE gauge "⚪ have → 🏘️ target" (the stage gates are ticks on the bar), the destroyed % once the town starts
-  const t = V.townNeed > 0 ? (V.finalBroken || V.have >= V.townNeed ? ((V.pct | 0) > 0 || V.finalBroken ? '🏘️ KASABA %' + (V.pct | 0) : '⚪ ' + fmtD(V.have) + ' m ✓ 🏘️ ' + fmtD(V.townNeed) + ' m') : '⚪ ' + fmtD(V.have) + ' m → 🏘️ ' + fmtD(V.townNeed) + ' m')
+  const t = V.townNeed > 0 ? (V.finalBroken || V.have >= V.townNeed ? ((V.pct | 0) > 0 || V.finalBroken ? '🏘️ KASABA %' + (V.pct | 0) : '⚪ ' + fmtD(V.have) + ' m ✓ 🏘️ KASABA ' + fmtD(V.townNeed) + ' m') : '⚪ ' + fmtD(V.have) + ' m → 🏘️ KASABA ' + fmtD(V.townNeed) + ' m')
     : V.final || V.finalBroken ? s + ' · ' + t0 : t0;   // plain target (⛔ 1.6 m); the stage count lives in the bar's gate pips
   const r = V.finalBroken ? 2 : V.ready;
   if (h.s !== '-') { h.s = '-'; h.gs.textContent = ''; h.gs.style.display = 'none'; }
@@ -777,6 +777,10 @@ function updateGauge(V) {
   const town = V.townNeed > 0 && (V.townPct > 0 || V.finalBroken);   // phase 2: the destroyed share of the town
   const f = town ? V.townPct / 100 : V.gauge, pct = Math.round(Math.max(0, Math.min(1, f)) * 100);
   const nf = town ? (V.townGoal > 0 ? [V.townGoal / 100] : []) : V.notchF;
+  if (G.lv && G.lv.length > 0) {   // the goal is a number: "KASABA 340 m" under a big town icon (DOM only when the 10 m step changes)
+    const dl = town ? 0 : Math.max(0, Math.ceil((G.lv.length - ball.d) / 10)) * 10;
+    if (dl !== h.gd) { h.gd = dl; h.gl.textContent = dl > 0 ? 'KASABA ' + dl + ' m' : 'KASABA'; }
+  }
   const k = (town ? 't' : 's') + pct + ':' + nf.length + ':' + (town ? 0 : Math.round(V.gauge * 50));
   if (k === h.gk) return;
   if (h.gk === '' || h.gk[0] !== k[0]) {     // first payload or phase flip: rebuild the notches
@@ -1278,7 +1282,7 @@ function updateCamera(dt, snap = false) {
   camR = snap || camR === 0 ? r : camR + (r - camR) * (1 - Math.exp(-dt * 2.5));
   const z = (1 + camZoom) * (1 + 0.4 * clamp((camR - 1) / 8, 0, 1) + 0.045 * clamp(camR - 9, 0, 14));
   // steep enough that <= ~20-25% of the portrait screen is sky and the path stays visible over a big ball
-  const near = G.lv && G.lv.n <= 5 ? 0.88 : 1;   // Dağ 1-5: the ball gets more screen presence
+  const near = G.lv && G.lv.n <= 5 ? 0.8 : 0.9;   // closer chase cam: the ball (not the HUD) is the biggest thing on screen (~20% of the width)
   const tight = 1 - 0.2 * clamp((2.2 - camR) / 1.4, 0, 1);   // a small ball (the opening seconds) gets a closer camera: it is not a speck in a white field
   let back = (6.8 + r * 2.5) * z * near * tight;
   let up = (8.5 + r * 4.2) * z * near * tight;
@@ -1302,9 +1306,10 @@ function updateCamera(dt, snap = false) {
   }
   camBack = Math.abs(back);
   world.camBack = camBack; world.camXlo = Math.min(camera.position.x, b.x); world.camXhi = Math.max(camera.position.x, b.x);
-  camPos.set(ox, b.y + up, -(b.d - back));
+  const lead = menu || ending ? 0 : Math.min(3.5, ball.speed * 0.1);   // the smoothed camera trails a fast ball by speed/6 m: lead it, or the ball shrinks into the distance
+  camPos.set(ox, b.y + up, -(b.d - back + lead));
   camPos.y = Math.max(camPos.y, world.groundY(camPos.x, -camPos.z) + 3 + r);
-  const k = snap ? 1 : 1 - Math.exp(-dt * 6);
+  const k = snap ? 1 : 1 - Math.exp(-dt * 7);
   camera.position.lerp(camPos, k);
   // look down the slope: the look-at point follows the slope's drop, so the pitch stays steep over the ball
   const ahead = 8 + r * 2.6;
@@ -1652,6 +1657,7 @@ if (DEBUG) {
       const n = Math.round(seconds / step);
       for (let i = 0; i < n && runner; i++) runner.update(step);
       post.render(scene, camera);
+      window.__gl?.flush?.();   // (smoke draw counter: a sim loop has no rAF between its renders; one render = one frame)
       const b = runner.b;
       return { state: runner.state, s: +b.s.toFixed(1), u: +b.u.toFixed(2), h: +b.h.toFixed(2), v: +b.vs.toFixed(1), r: +b.r.toFixed(2), gap: +runner.gap.toFixed(1), score: Math.round(runner.score), coins: runner.coins, cause: runner.cause };
     },

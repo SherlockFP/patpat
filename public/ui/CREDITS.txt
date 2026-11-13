@@ -1,0 +1,2 @@
+PATPAT logo, mode icons, power icons, snowflake and gift icons (public/ui/*.webp): AI image generation for PATPAT (glossy low-poly style).
+Source sheets: store/src/lp_logo.png, store/src/lp_modes.png, store/src/lp_powers_alpha.png. Cropped, cut out and converted to WebP.

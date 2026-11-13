@@ -149,6 +149,11 @@ export function missionsLeft(rows) {
   if (rows) for (let i = 0; i < rows.length; i++) if (rows[i] && !rows[i].done) n++;
   return n;
 }
+/** Result-card mission line: "3 yaratık ez (1/3) · 2 kaldı"; the "to go" comes from the SAME value/goal pair as the (x/3), never from the open-mission count. */
+export function missionResultText(r, tr = (s) => s) {
+  const v = Math.max(0, Math.floor(r.value || 0)), rem = Math.max(0, r.goal - v);
+  return tr(r.text) + ' (' + v + '/' + r.goal + ')' + (v > 0 && rem > 0 ? ' · ' + rem + ' ' + tr('kaldı') : '');
+}
 /** What finishing the set pays: the permanent multiplier +1 (30 is meta's ceiling). */
 export const nextMult = (m) => Math.min(30, Math.max(1, Math.round(m) || 1) + 1);
 /** Run-start line (shown ~2 s): "GÖREV: 3 yaratık ez (1/3) · ÇARPAN x4". `tr` translates the parts, so the line is built in the player's language. */
@@ -180,9 +185,22 @@ export const CHAPTERS = [
   { id: 'ruzgar', name: 'TERS RÜZGÂR', unlock: 4200, intro: 'Rüzgâr seni yana iter: şeridini tut.', plain: 1, wind: 0.9 },
   { id: 'yay', name: 'YAY TARLASI', unlock: 5000, intro: 'Yaylara bas, havadaki kar tanelerini topla.', plain: 1, pads: 0.9 },
   { id: 'kaydirak', name: 'BUZ KAYDIRAĞI', unlock: 6000, intro: 'Buzda hızlan: dönüşler genişler.', plain: 1, dens: 0.7, slide: 1 },
+  // Chapters 7+ (TOUR): each brings one NEW rule. word = the one-word label shown the first time per run; look = sky backdrop (public/sky) + radio tint (colour, strength).
+  // zone: the track.zoneAt rule of a whole chapter (lasers / missiles / movers); lowg: half gravity; rain: boulders fall with a landing disc; boost: chance of a speed strip per plain piece.
+  { id: 'ay', name: 'AY ZIPLAMASI', unlock: 0, intro: 'Yerçekimi yarıya indi: uzun uç, bol yay.', plain: 1, pads: 0.9, dens: 0.6, lowg: 1, word: 'AY!', look: { sky: 'night', tint: 0x8fb4ff, tk: 0.25 } },
+  { id: 'ekspres', name: 'EKSPRES', unlock: 0, intro: 'Karşıdan tren geliyor: boş şeride geç ya da çatısına zıpla.', plain: 1, nojunc: 1, pat: { oncoming: 8, train: 3, _: 0.4 }, own: ['oncoming'], sig: 'oncoming', word: 'TREN!', look: { sky: 'canyon', tint: 0xff9a6a, tk: 0.18 } },
+  { id: 'kopru', name: 'ÇÖKEN KÖPRÜ', unlock: 0, intro: 'Köprü çatlıyor: durma, boşlukta zıpla.', set: 'iceBridge', gap: 0.35, plain: 1, dens: 0.5, word: 'ÇÖKÜYOR!', look: { sky: 'dawn', tint: 0xbfe3ff, tk: 0.2 } },
+  { id: 'lazer', name: 'BUZ LAZERLERİ', unlock: 0, intro: 'Lazer kapıları: açık aralıktan geç.', plain: 1, zone: 'lasers', sig: 'laser', word: 'LAZER!', look: { sky: 'night', tint: 0xff2a6a, tk: 0.3 } },
+  { id: 'fuze', name: 'FÜZE YAĞMURU', unlock: 0, intro: 'Füzeler şeritlere iniyor: kırmızı işarete dikkat.', plain: 1, dens: 0.8, zone: 'missiles', sig: 'missile', word: 'FÜZE!', look: { sky: 'canyon', tint: 0xff5a3a, tk: 0.22 } },
+  { id: 'hareket', name: 'HAREKETLİ ENGELLER', unlock: 0, intro: 'Engeller yana kayıyor: boşluğu kolla.', plain: 1, zone: 'movers', sig: 'mover', word: 'KAY!', look: { sky: 'dawn', tint: 0xffd36a, tk: 0.2 } },
+  { id: 'heyelan', name: 'HEYELAN', unlock: 0, intro: 'Kayalar yağıyor: kırmızı daireden uzak dur.', plain: 1, dens: 0.5, rain: 1, word: 'KAYA!', look: { sky: 'canyon', tint: 0x8a6a50, tk: 0.3 } },
+  { id: 'turbo', name: 'HIZ ŞERİDİ', unlock: 0, intro: 'Hız şeritleri: hızlan, ama engellere dikkat.', plain: 1, spd: 1.12, pads: 0.5, dens: 0.8, boost: 0.8, word: 'HIZ!', look: { sky: 'night', tint: 0x00e5ff, tk: 0.25 } },
 ];
 export const CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
 export const CHAPTER_FIXED = ['yamac', 'orman', 'tunel', 'ray', 'cig', 'duello'];
+// The tour: chapters 1-6 are fixed (a duel at 6); then every new rule once. After it (n > TOUR.length) REMIX chapters join two rule sets (A x B) without repeating the previous id.
+export const TOUR = ['yamac', 'orman', 'tunel', 'ray', 'cig', 'duello', 'ekspres', 'ay', 'lazer', 'kopru', 'fuze', 'hareket', 'heyelan', 'turbo', 'rampa', 'sis', 'yay', 'ruzgar', 'kaydirak'];
+export const REMIX_POOL = ['ekspres', 'kopru', 'lazer', 'fuze', 'hareket', 'heyelan', 'turbo', 'ay', 'sis', 'ruzgar', 'rampa', 'yay', 'kaydirak', 'ray', 'tunel'];
 export const BONUS_EVERY = 4;       // an ALTIN DAMAR interlude after every 4th chapter (it is not numbered)
 export const BONUS_SECS = 10;
 const ch1 = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7 + 7.7) * 43758.5453; return x - Math.floor(x); };
@@ -195,10 +213,15 @@ const ch1 = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7 + 7.7) * 43758.
 export class ChapterPlan {
   constructor(seed = 1, best = 0, speedFn = () => 20) { this.seed = seed >>> 0; this.best = Math.max(0, +best || 0); this.speedFn = speedFn; this.segs = []; this._c = 0; this._n = 0; this._i = 0; }
 
-  _pick(n, s0, prevId) {
-    if (n <= CHAPTER_FIXED.length) return CHAPTER_FIXED[n - 1];
-    const lim = Math.max(this.best, s0), pool = CHAPTERS.filter((c) => !c.bonus && c.id !== 'yamac' && c.id !== prevId && c.unlock <= lim);
-    return pool[Math.floor(ch1(this.seed % 9973, n) * pool.length) % pool.length].id;
+  /** chapter def for number n: the tour, then seeded A x B remixes (merged once here, cached in the segment; one zone / set at most: B's wins). */
+  _def(n, prevId) {
+    if (n <= TOUR.length) return CHAPTER_BY_ID[TOUR[n - 1]];
+    const P = REMIX_POOL, i = Math.floor(ch1(this.seed % 9973, n) * P.length) % P.length;
+    let j = Math.floor(ch1(this.seed % 7907, n + 9) * (P.length - 1)) % (P.length - 1); if (j >= i) j++;
+    let A = CHAPTER_BY_ID[P[i]], B = CHAPTER_BY_ID[P[j]];
+    if (B.id === prevId) [A, B] = [B, A];      // never the same look / word as the chapter before
+    const k = n - TOUR.length;
+    return Object.assign({}, A, B, { id: A.id + '+' + B.id, name: A.name + ' × ' + B.name, parts: [A.name, B.name], spd: Math.min(1.25, (B.spd || 1) * (1 + 0.015 * k)), len: 0 });
   }
 
   _grow() {
@@ -208,8 +231,9 @@ export class ChapterPlan {
       seg = { n: last.n, id: 'damar', def: CHAPTER_BY_ID.damar, s0, s1: s0 + Math.round(BONUS_SECS * this.speedFn(s0 + 60)), bonus: true, i: this.segs.length };
     } else {
       const n = last ? last.n + 1 : 1, prev = last ? this.segs[this.segs.length - (last.bonus ? 2 : 1)] : null;
-      const id = this._pick(n, s0, prev ? prev.id : ''), def = CHAPTER_BY_ID[id];
-      const len = def.len || (n <= 2 ? 350 : 500 + Math.floor(ch1(this.seed % 7919, n + 50) * 200));
+      const def = this._def(n, prev ? prev.id : ''), id = def.id;
+      // 1-2: 350 m, 3-6: 500-700 m, 7+: about 16-22 s of play (450-750 m: something new at least every ~800 m, a bonus counts)
+      const len = def.len || (n <= 2 ? 350 : n <= 6 ? 500 + Math.floor(ch1(this.seed % 7919, n + 50) * 200) : Math.max(450, Math.min(750, Math.round((16 + ch1(this.seed % 7919, n + 50) * 6) * this.speedFn(s0 + 60)))));
       seg = { n, id, def, s0, s1: s0 + len, bonus: false, i: this.segs.length };
     }
     this.segs.push(seg);

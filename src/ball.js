@@ -30,11 +30,11 @@ export class Ball {
     this._ownMat = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { snow: true });
     this.snow = new THREE.Mesh(this._ownGeo, this._ownMat);
     this.spin.add(this.snow);
-    // lobby rim light: a fresnel shell (additive, view-space) so the hero ball does not melt into the lilac sky; main.js shows it in the menu only
+    // lobby rim light: a fresnel shell (dark-blue ink edge, view-space) so the hero ball does not melt into the lilac sky; main.js shows it in the menu only
     this.rim = new THREE.Mesh(new THREE.IcosahedronGeometry(1.012, 3), new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      transparent: true, depthWrite: false,
       vertexShader: 'varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
-      fragmentShader: 'varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0 - clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0), 3.0); gl_FragColor = vec4(vec3(1.0, 0.93, 1.0) * f * 1.1, 1.0); }',
+      fragmentShader: 'varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0 - clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0), 3.0); gl_FragColor = vec4(0.11, 0.24, 0.41, clamp(f * 1.25, 0.0, 0.85)); }',
     }));
     this.rim.visible = false; this.rim.renderOrder = 3; this.rim.frustumCulled = false;
     this.snow.add(this.rim);      // (a child of the snow mesh: it shares its scale and spin)

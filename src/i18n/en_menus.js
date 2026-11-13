@@ -5,7 +5,7 @@ export const words = {
   'DEVAM ET': 'CONTINUE', 'BİTİR': 'FINISH', 'kartopu · yeti · çığ': 'snowball · yeti · avalanche', 'YENİ': 'NEW',
   '∞ YETİ RUSH': '∞ YETI RUSH', 'YETİ RUSH': 'YETI RUSH', 'BAŞLA': 'START', 'GÜNÜN DAĞI': 'MOUNTAIN OF THE DAY',
   'DOLAP': 'WARDROBE', 'KASABA YERLE BİR!': 'TOWN FLATTENED!', 'YENİ REKOR!': 'NEW RECORD!',
-  'kasaba yıkıldı': 'town destroyed', 'SONRAKİ DAĞ ▶': 'NEXT MOUNTAIN ▶', '↻ TEKRAR': '↻ RETRY', '⌂ MENÜ': '⌂ MENU',
+  'kasaba yıkıldı': 'town destroyed', 'SONRAKİ DAĞ ▶': 'NEXT TOWN ▶', '↻ TEKRAR': '↻ RETRY', '⌂ MENÜ': '⌂ MENU',
   'PAYLAŞ': 'SHARE', 'DURDU': 'PAUSED', '▶ DEVAM': '▶ RESUME', 'AKIŞ': 'FLOW', 'Durdur': 'Pause', 'Ses': 'Sound',
   'Titreşim': 'Vibration', 'Müzik': 'Music', 'Görünüm': 'Look', 'Dolap': 'Wardrobe', 'Boyut': 'Size',
   // ---- general
@@ -45,7 +45,7 @@ export const words = {
   '🛂 Pasaport': '🛂 Passport', '⬆️ Geliştir': '⬆️ Upgrades', 'BUGÜNKÜ KART': "TODAY'S CARD", 'BUGÜNÜN KARTI': "TODAY'S CARD",
   'KUPONU AL': 'CLAIM COUPON', 'Yeti Postası kuponu': 'Yeti Mail coupon', 'Kupon alındı. Yarın yeni kart gelecek!': 'Coupon claimed. A new card arrives tomorrow!',
   'Bugünün dağı': "Today's mountain", 'Bugünün özel dağı': "Today's special mountain", 'Günün Dağı': 'Mountain of the Day',
-  "Günün Rush'ı": "Today's Rush", 'Fırtına x2': 'Storm x2', 'Pazar yarın': 'Market tomorrow', 'Yeti Pazarı': 'Yeti Market',
+  "Günün Rush'ı": "Today's Rush", 'Günlük': 'Daily', 'Fırtına x2': 'Storm x2', 'Pazar yarın': 'Market tomorrow', 'Yeti Pazarı': 'Yeti Market',
   'Sıradaki hedef': 'Next goal', 'Son oynanan': 'Last played', 'Oyna: Yeti Rush': 'Play: Yeti Rush', 'Bugün: ödüller ve görevler': 'Today: rewards and missions',
   'Görevler': 'Missions', 'AL: Günlük ödül': 'CLAIM: Daily reward', 'AL: Görev ödülü': 'CLAIM: Mission reward', 'AL: Sezon ödülü': 'CLAIM: Season reward',
   'AL: Başarım ödülü': 'CLAIM: Achievement reward', 'AL: Kar Küresi': 'CLAIM: Snow Globe', 'SIRADAKİ HEDEF': 'NEXT GOAL', 'HEDEF': 'GOAL',
@@ -98,7 +98,7 @@ export const words = {
   // ---- level end / main menu
   'Bölüm tamam': 'Level complete', 'YETİ YENİLDİ!': 'YETI DEFEATED!', 'BÖLÜM TAMAM!': 'LEVEL COMPLETE!', '💎 KUSURSUZ ACT! +💎 2 · 🎁 1': '💎 PERFECT ACT! +💎 2 · 🎁 1',
   '∞ YETİ RUSH AÇILDI!': '∞ YETI RUSH UNLOCKED!', 'SONRAKİ BÖLÜM ▶': 'NEXT LEVEL ▶', '🗺️ HARİTA': '🗺️ MAP', 'Bölüm başarısız': 'Level failed',
-  '↻ TEKRAR DENE': '↻ TRY AGAIN', 'BAŞLA!': 'GO!', 'PATRON!': 'BOSS!', 'SON DAĞ ▶': 'FINAL MOUNTAIN ▶', 'SONRAKİ KASABA ▶': 'NEXT TOWN ▶', 'SON KASABA ▶': 'FINAL TOWN ▶', 'KASABALAR': 'TOWNS',
+  '↻ TEKRAR DENE': '↻ TRY AGAIN', 'BAŞLA!': 'GO!', 'PATRON!': 'BOSS!', 'SON DAĞ ▶': 'FINAL TOWN ▶', 'SONRAKİ KASABA ▶': 'NEXT TOWN ▶', 'SON KASABA ▶': 'FINAL TOWN ▶', 'KASABALAR': 'TOWNS',
   'KARTOPU · YETİ · ÇIĞ': 'SNOWBALL · YETI · AVALANCHE', 'HAPŞUU!': 'ACHOO!', 'Yeti seni bekliyor!': 'The yeti is waiting for you!',
   'YETİ RUSH REKORU': 'YETI RUSH RECORD', '✖️ ×1 ÇARPAN': '✖️ ×1 MULTIPLIER', '📅 GÜNLÜK GÖREVLER': '📅 DAILY MISSIONS',
   'Kartopu Arena': 'Snowball Arena', 'KARTOPU ARENA': 'SNOWBALL ARENA', 'Dev harita · botlar · arkadaşlarınla oda kur': 'Giant map · bots · make a room with friends', 'Dev harita · botlar': 'Giant map · bots',
@@ -319,7 +319,7 @@ export const patterns = [
   P(/^Daha fazlası (\d+) koşu sonra açılıyor ✨$/, 'More unlocks in $1 runs ✨'), P(/^↻ Tekrar oyna: (.*)$/, '↻ Play again: $1'),
   // mission / achievement goal texts
   P(/^Bir koşuda (\S+) kar tanesi topla$/, 'Collect $1 snowflakes in one run'), P(/^Bir koşuda (\S+) m koş$/, 'Run $1 m in one run'),
-  P(/^Bir koşuda (\d+) yaratık ez$/, 'Squash $1 critters in one run'), P(/^(\d+) kavşakta dön$/, 'Turn at $1 junctions'), P(/^(\d+) buff kartı topla$/, 'Collect $1 buff cards'),
+  P(/^Bir koşuda (\d+) yaratık ez$/, 'Squash $1 critters'), P(/^(\d+) kavşakta dön$/, 'Turn at $1 junctions'), P(/^(\d+) buff kartı topla$/, 'Collect $1 buff cards'),
   P(/^(\d+) kez zıpla$/, 'Jump $1 times'), P(/^Yeti'den (\d+) kez kıl payı kaç$/, 'Narrowly dodge the Yeti $1 times'), P(/^(\d+) engel kır$/, 'Smash $1 obstacles'),
   P(/^(\d+) güçlendirme topla$/, 'Collect $1 power-ups'), P(/^Maksimum boyuta (\d+) kez ulaş$/, 'Reach max size $1 times'), P(/^(\d+) koşu tamamla$/, 'Complete $1 runs'),
   P(/^ÇIĞ'da (.*) bölgesine ulaş$/, 'Reach the $1 zone in AVALANCHE'), P(/^ÇIĞ'da bir koşuda (\S+) ton topla$/, 'Collect $1 tons in one AVALANCHE run'),

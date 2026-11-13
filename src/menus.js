@@ -19,6 +19,7 @@ import { nextGoal, vitrinInfo, shopNewCount } from './shop.js';
 import { hideBoot, runnerDeathText } from './ui.js';
 import { PUBLIC_URL } from './sharecard.js';
 import { platform } from './platform.js';
+import { setIcon, uiImg } from './uiicons.js';
 import { getLang, setLang, t as tr } from './i18n.js';
 import { hasArenaInvite } from './agar/invite.js';
 
@@ -36,6 +37,7 @@ const LICENSES = [
   ['Capacitor (@capacitor/core, app, haptics, local-notifications)', 'MIT License, Copyright (c) Drifty Co. / Ionic'],
   ['Kenney asset packs (kenney.nl)', 'CC0 1.0: 3D models and sound effects'],
   ['rubberduck (OpenGameArt)', 'CC0 1.0: sound effects'],
+  ['PATPAT logo and UI icons (public/ui)', 'AI image generation for PATPAT; source sheets in store/src (lp_logo, lp_modes, lp_powers_alpha)'],
   ['Lilita One (Juan Montoreano)', 'SIL Open Font License 1.1, loaded from Google Fonts when online'],
 ];
 const MIT_TEXT = 'Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.';
@@ -125,6 +127,13 @@ const CSS = `
   position: relative; display: flex; justify-content: center; align-items: baseline; gap: 1px; padding: 4px 14px 8px; cursor: pointer; min-height: 56px;
   font-size: clamp(44px, 14.6vw, 66px); line-height: 1; transform: rotate(-2deg); touch-action: none;
 }
+.fm-wm { display: block; width: min(50vw, 192px); height: auto; margin: 0 -4px 10px 0; filter: drop-shadow(0 3px 4px rgba(10, 30, 60, 0.35)); animation: fmBob 2.6s ease-in-out infinite; pointer-events: none; }
+.fm-logo .fm-ball { align-self: center; margin-left: 0; font-size: 34px; }
+.fm-cur .ico .uim { width: 22px; height: 22px; vertical-align: middle; }
+.fm-mode .mic .uim { width: 36px; height: 36px; vertical-align: middle; }
+.fm-main .fm-arena .ico .uim { width: 24px; height: 24px; vertical-align: middle; }
+.fm-gift .uim { width: 1em; height: 1em; }
+.fm-aico .uim { width: 34px; height: 34px; vertical-align: middle; }
 .fm-ch {
   position: relative; display: inline-block; color: var(--ink);
   text-shadow: 0 .09em 0 var(--ink), .055em .055em 0 var(--ink), -.055em .055em 0 var(--ink), .055em -.055em 0 var(--ink), -.055em -.055em 0 var(--ink),
@@ -906,6 +915,7 @@ const CSS = `
 .fm-rchip.hero { grid-column: 1 / -1; font-size: 20px; padding: 3px 14px; text-align: center; }
 .fm-up.fm-hl { box-shadow: 0 0 0 3px #ffd23a, 0 0 18px rgba(255, 210, 58, 0.8); }
 .fm-rspecial { width: 100%; max-width: 340px; padding: 10px 12px; text-align: center; border-radius: 16px; border: 3px solid var(--ink); background: linear-gradient(180deg, #c79bff, #7a3cf0); font-size: 17px; line-height: 1.2; box-shadow: 0 5px 0 #4b1fa8; animation: fmPopIn 0.5s cubic-bezier(.2, 1.4, .4, 1) both; }
+.fm-rspecial.multi div + div { margin-top: 3px; padding-top: 3px; font-size: 0.82em; border-top: 1px solid rgba(255, 255, 255, 0.28); }
 .fm-rbtns { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px; margin-top: 4px; }
 .fm-rbtns .row { display: flex; gap: 10px; }
 .fm-rbtns .row .fm-btn { flex: 1 1 0; min-width: 0; padding-left: 6px; padding-right: 6px; font-size: clamp(14px, 4.2vw, 18px); white-space: nowrap; }
@@ -1356,7 +1366,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
   // numeric pill (❄️ / 💎) with count-up
   function makePill(icon, cls, onPlus, base) {
     const box = el('div', `${base || 'fm-pill'} ${cls || ''}`.trim());
-    const ico = el('span', 'ico', icon);
+    const ico = setIcon(el('span', 'ico'), icon);
     const num = el('span', 'num', '0');
     add(box, ico, num);
     if (onPlus) box.appendChild(button('fm-plus', '+', onPlus, 'Ekle'));
@@ -2231,7 +2241,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       const pips = el('div', 'fm-pips');
       for (let i = 0; i < 5; i++) pips.appendChild(el('i', i < lv ? 'on' : ''));
       mid.appendChild(pips);
-      add(r, el('div', 'fm-aico', u.icon), mid);
+      add(r, setIcon(el('div', 'fm-aico'), u.icon), mid);
       if (cost === null) r.appendChild(button('fm-btn sm on', 'MAKS ✓'));
       else {
         const pc = shopPrice(cost);
@@ -2460,7 +2470,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       clear(ov);
       busy = false;
       add(ov, el('div', 'fm-boxt fm-ol', 'SÜRPRİZ KUTU'), el('div', 'fm-boxs', total > 1 ? `${idx + 1} / ${total}` : ''));
-      const gift = button('fm-gift', '🎁', () => openOne(gift), 'Kutuyu aç');
+      const gift = button('fm-gift', '', () => openOne(gift), 'Kutuyu aç'); setIcon(gift, '🎁');
       ov.appendChild(gift);
       ov.appendChild(el('div', 'fm-boxs', 'DOKUN VE AÇ!'));
       if (total - idx > 1) {
@@ -3113,12 +3123,11 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       });
       ov.appendChild(rc);
     }
-    if (rw.chest) {
-      const line = rewardLine(rw.chest);
-      ov.appendChild(el('div', 'fm-rspecial', `${lv ? ACTS[lv.act - 1].icon : '🎁'} ACT TAMAM! SANDIK${line ? `: ${line}` : ''}`));
-    }
-    if (rw.perfect) ov.appendChild(el('div', 'fm-rspecial', '💎 KUSURSUZ ACT! +💎 2 · 🎁 1'));
-    if (rw.justUnlockedEndless) ov.appendChild(el('div', 'fm-rspecial', '∞ YETİ RUSH AÇILDI!'));
+    const sp = [];      // ONE banner for the chest / perfect / unlock lines (one box instead of three stacked bars)
+    if (rw.chest) { const line = rewardLine(rw.chest); sp.push(`${lv ? ACTS[lv.act - 1].icon : '🎁'} ACT TAMAM! SANDIK${line ? `: ${line}` : ''}`); }
+    if (rw.perfect) sp.push('💎 KUSURSUZ ACT! +💎 2 · 🎁 1');
+    if (rw.justUnlockedEndless) sp.push('∞ YETİ RUSH AÇILDI!');
+    if (sp.length) { const sb = el('div', 'fm-rspecial multi'); sp.forEach((x) => sb.appendChild(el('div', '', x))); ov.appendChild(sb); }
     if (d.special) ov.appendChild(el('div', 'fm-rspecial', d.special));
 
     { const gb = goalBlockEl(rw.coins || d.coins, true); if (gb) ov.appendChild(gb); }
@@ -3224,7 +3233,12 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
 
   // new content: mountains 31-40 carry a one-time "new" tag (and a pulse on the ÇIĞ button) until their card was opened
   const seenMtn = () => (lsGet('patpat.seenMtn') || '').split(',');
-  const newMtns = () => { const o = []; try { const u = save.cigUnlocked(), sn = seenMtn(); for (let n = 31; n <= DAG_COUNT; n++) if (n <= u && !sn.includes(String(n))) o.push(n); } catch { /* ignore */ } return o; };
+  const isNewMtn = (n) => {
+    if (n <= 30 || seenMtn().includes(String(n))) return false;
+    if (save.cigLvStars(n)) { lsSet('patpat.seenMtn', [...seenMtn(), String(n)].filter(Boolean).join(',')); return false; }      // played / cleared by any route: seen for good
+    return true;
+  };
+  const newMtns = () => { const o = []; try { const u = save.cigUnlocked(); for (let n = 31; n <= DAG_COUNT; n++) if (n <= u && isNewMtn(n)) o.push(n); } catch { /* ignore */ } return o; };
   function openCigCard(p, n) {
     if (n > 30) lsSet('patpat.seenMtn', [...new Set([...seenMtn(), String(n)])].filter(Boolean).join(','));
     closeCard();
@@ -3278,7 +3292,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       b.setAttribute('type', 'button');
       b.setAttribute('aria-label', 'Dağ ' + n + ': ' + dagPlan(n).name + (st ? ', ' + st + ' yıldız' : locked ? ', kilitli' : ''));
       add(b, el('span', 'n', locked ? '🔒' : boss ? '👹' : String(n)));
-      if (n > 30 && !locked && !seenMtn().includes(String(n))) { b.classList.add('fm-new'); b.setAttribute('data-new', tr('YENİ!')); }
+      if (!locked && isNewMtn(n)) { b.classList.add('fm-new'); b.setAttribute('data-new', tr('YENİ!')); }
       if (boss && !locked) b.appendChild(el('span', 'bn', String(n)));
       if (!locked) {
         const stars = el('span', 'stars');
@@ -3396,15 +3410,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const logo = el('div', 'fm-logo');
     logo.setAttribute('role', 'img');
     logo.setAttribute('aria-label', 'PATPAT');
-    const COL = [['#ff7a8a', '#ff2d55'], ['#ffc457', '#ff8a00'], ['#ffec6a', '#ffc400'], ['#7cf0a2', '#22b86c'], ['#6fd0ff', '#2f7dff'], ['#c79bff', '#7a3cf0']];
-    WORD.split('').forEach((ch, i) => {
-      const c = el('span', 'fm-ch', ch);
-      c.setAttribute('data-t', ch);
-      setCss(c, '--i', String(i));
-      setCss(c, '--c1', COL[i][0]);
-      setCss(c, '--c2', COL[i][1]);
-      logo.appendChild(c);
-    });
+    logo.appendChild(uiImg('logo', 'fm-wm', 'PATPAT'));   // the wordmark image (plain text if it fails to load)
     const ball = el('span', 'fm-ball');
     setCss(ball, '--i', String(WORD.length));
     add(ball, el('i', 'e l'), el('i', 'e r'), el('i', 'n'));
@@ -3478,11 +3484,11 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const modeBtn = (cls, ic, name, fn, aria) => {
       const b = button('fm-sb fm-mode ' + cls, '', () => { sfx('click'); fn(); }, aria);
       const sub = el('small', '', ''), bdg = el('span', 'fm-bdg dot off', '');
-      add(b, el('span', 'mic', ic), add(el('span', 'mtx'), el('b', '', name), sub), bdg);
+      add(b, setIcon(el('span', 'mic'), ic), add(el('span', 'mtx'), el('b', '', name), sub), bdg);
       return { b, sub, bdg };
     };
-    const mMap = modeBtn('camp c-map', '🗺️', 'MACERA', () => goMacera(), 'Macera');
-    const mCig = modeBtn('cig c-cig', '⛰️', 'ÇIĞ', () => startCig(), 'Çığ');
+    const mMap = modeBtn('camp c-map', 'macera', 'MACERA', () => goMacera(), 'Macera');
+    const mCig = modeBtn('cig c-cig', 'cig', 'ÇIĞ', () => startCig(), 'Çığ');
     r.modes = add(el('div', 'fm-modes'), mMap.b, mCig.b);
     r.mapSub = mMap.sub; r.cigSub = mCig.sub; r.sMap = mMap.b; r.sCig = mCig.b; r.bCig = mCig.bdg;
     bot.appendChild(r.modes);
@@ -3494,7 +3500,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     add(r.today, el('span', 'tic', '📅'), el('span', 'ttx', 'BUGÜN'), r.tstat, r.todayBdg, add(el('span', 'tbar'), r.tbarFill));
     infoCard.appendChild(add(el('div', 'fm-todaywrap'), r.today)); // hidden state holder (badge, streak, season bar): the daily bar is the one BUGÜN entry
     r.arena = button('fm-arena', '', () => { sfx('confirm'); if (cb.onAgar) cb.onAgar(); }, 'Kartopu Arena');
-    add(r.arena, el('span', 'ico', '⚔️'), add(el('span', 'tx'), el('b', '', 'KARTOPU ARENA'), el('small', '', 'Dev harita · botlar')));
+    add(r.arena, setIcon(el('span', 'ico'), 'arena'), add(el('span', 'tx'), el('b', '', 'KARTOPU ARENA'), el('small', '', 'Dev harita · botlar')));
     bot.appendChild(r.arena);
     const sPow = secBtn('c-pow', '💪', 'GÜÇ', () => openPower());
     r.sPow = sPow.b; r.bPow = sPow.bdg;
@@ -3687,7 +3693,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       } catch { /* ignore */ }
       try { let dr = null; try { dr = JSON.parse(localStorage.getItem("patpat.dailyRush") || "null"); } catch { /* ignore */ }
         const bst = dr && dr.dist > 0 && dr.key === dayKey() ? dr.dist : 0;
-        chips.push({ ic: "🏃", lb: bst ? `${Math.round(bst)} m` : "Günün Rush'ı", hot: !bst, rank: 2, fn: () => { if (cb.onDailyRush) cb.onDailyRush(); }, aria: "Günün Rush'ı" });
+        chips.push({ ic: "🏃", lb: bst ? `${Math.round(bst)} m` : "Günlük", hot: !bst, rank: 2, fn: () => { if (cb.onDailyRush) cb.onDailyRush(); }, aria: "Günün Rush'ı" });
       } catch { /* ignore */ }
       // (the Storm lives in the ONE next-goal row now, nearGoal(): one tap target instead of a daily bar plus a round pill)
       let wl = 0; try { const w = new Date(); wl = Math.max(0, new Date(w.getFullYear(), w.getMonth(), w.getDate() - ((w.getDay() + 6) % 7) + 7) - w); } catch { /* ignore */ }

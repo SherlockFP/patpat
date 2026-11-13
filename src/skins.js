@@ -733,7 +733,7 @@ function classicSoftGeometry() {
   geo.deleteAttribute('uv');
   const pos = geo.attributes.position, nrm = geo.attributes.normal;
   const col = new Float32Array(pos.count * 3);
-  const snow = new THREE.Color(0xffffff), ice = new THREE.Color(0xa9c9f5), lilac = new THREE.Color(0xd9d2f7), stone = new THREE.Color(0x93a6c8), stone2 = new THREE.Color(0xb4c2da), c = new THREE.Color();
+  const snow = new THREE.Color(0xffffff), ice = new THREE.Color(0xdbe8fb), lilac = new THREE.Color(0xe9e5fa), stone = new THREE.Color(0xc2cfe6), stone2 = new THREE.Color(0xd6dfef), c = new THREE.Color();
   const pd = PEBBLE_DIRS.map((d) => { const l = Math.hypot(d[0], d[1], d[2]); return [d[0] / l, d[1] / l, d[2] / l]; });
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {

@@ -138,13 +138,13 @@ export const BIOMES = [
   },
   {
     id: 'forest', name: 'Çam Ormanı', music: 'forest', depth: 54, flank: { U: 100, e: 1.7, top: 0x7cc95a, mid: 0x3f8a3a, rock: 0x8a7658, rockAmt: 0.6 },
-    sky: { top: 0x2c84e2, mid: 0x82c6ee, horizon: 0xe0eebc },
-    fog: { color: 0xcce4b4, near: 62, far: 320 },
+    sky: { top: 0x2c84e2, mid: 0x82c6ee, horizon: 0xd4eaf6 },
+    fog: { color: 0xcfe6f0, near: 62, far: 320 },
     hemi: { sky: 0xdfeeff, ground: 0x8fae78, intensity: 1.51 },
     sun: { color: 0xffe0a8, intensity: 2.15, az: 2.4, el: 0.73 },
     disc: { color: 0xfff0c0, size: 0.06, az: 0.28, el: 0.5, kind: 'sun' },
     ground: [0x4d9a3a, 0x5fae45, 0x3e7f33],
-    track: { tileA: 0xbc9e5c, tileB: 0x5e9a38, edge: 0x2e6a20, rail: 0x7a5a38, glow: 0xbfff8a, under: 0x3d5a2c },
+    track: { tileA: 0x86b250, tileB: 0x6ea43e, edge: 0x2e6a20, rail: 0x7a5a38, glow: 0xbfff8a, under: 0x3d5a2c },
     clouds: 0xfffbea, stars: 0, grid: 0,
     pulse: { sky: 0.035, glow: 0, grid: 0, spark: 0.2, lava: 0 }, glowBase: 1,
     particles: {
@@ -2209,6 +2209,7 @@ export class Environment {
           if (this._disposed) { tx.dispose(); return; }
           tx.colorSpace = THREE.SRGBColorSpace; tx.wrapS = THREE.RepeatWrapping; tx.wrapT = THREE.ClampToEdgeWrapping; tx.anisotropy = 1;
           rec.tex = tx;
+          try { const cv = document.createElement('canvas'), x = cv.getContext('2d', { willReadFrequently: true }), im = tx.image, h = Math.max(1, im.height * 0.08 | 0); cv.width = cv.height = 8; x.drawImage(im, 0, im.height - h, im.width, h, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data; let r = 0, g = 0, bl = 0; for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; bl += d[i + 2]; } rec.tint = new THREE.Color().setRGB(r / 64 / 255, g / 64 / 255, bl / 64 / 255, THREE.SRGBColorSpace); } catch (e) { /* keep the fixed tint */ }      // fog + horizon take the sky texture's bottom colour
         }, undefined, () => { rec.tex = null; rec.failed = true; });
       } catch (e) { rec.failed = true; }
     }
@@ -2218,7 +2219,7 @@ export class Environment {
     const w = this._bdWant, rec = w ? this._bdTex[w] : null;
     if (this._bdCur !== w && (this._bdK <= 0 || !this._bdCur)) {         // faded out: swap (only to a ready texture; a failed load stays procedural)
       if (!w) this._bdCur = null;
-      else if (rec && rec.tex) { this._bdCur = w; this.bdMat.map = rec.tex; this.bdMat.needsUpdate = true; this._bdTint.setHex(BACKDROPS[w]); }
+      else if (rec && rec.tex) { this._bdCur = w; this.bdMat.map = rec.tex; this.bdMat.needsUpdate = true; if (rec.tint) this._bdTint.copy(rec.tint); else this._bdTint.setHex(BACKDROPS[w]); }
     }
     const goal = this._bdCur && this._bdCur === w ? 1 : 0, k0 = this._bdK;
     this._bdK = clamp(k0 + (goal ? dt : -dt) * 2.2, 0, 1);
@@ -2766,7 +2767,7 @@ export class Environment {
           const du = p === 0 ? -0.3 : p === 1 ? 1.4 : U * FLANK_TAU[p - 2];
           const u = hw + du;
           const x = px + rx * sg * u, z = pz + rz * sg * u;
-          const y = p === 0 ? edgeY - 0.55 : this._field(x, z, i);
+          const y = p === 0 ? Math.min(edgeY - 0.55, this._sov[sk] < py - 5 ? this._sov[sk] - 1.05 : Infinity) : this._field(x, z, i);   // (a pass of the path lies far below (helix, loop): no curtain hangs from this edge across it, it used to wall off the lower pass = a flat green screen)
           const v = (((slot * 2 + side) * NSEC + k) * NP + p) * 3;
           pos[v] = x; pos[v + 1] = y; pos[v + 2] = z;
           this._flankColor(bi, x, z, p === 0 ? -0.5 : y - edgeY, D, du < 0 ? 0 : du, cl, C);
@@ -3363,7 +3364,7 @@ export class Environment {
     SU.uSh.value.copy(c[9]); SU.uHi.value.copy(c[10]); SU.uRim.value.copy(c[11]);
     SU.uGrade.value.set(nn[18], nn[19], nn[20], nn[21]);
     // sky gradient
-    if (this._bdK > 0.004) { this.fog.color.lerp(this._bdTint, 0.75 * this._bdK); this.bg.lerp(this._bdTint, 0.75 * this._bdK); }
+    if (this._bdK > 0.004) { this.fog.color.lerp(this._bdTint, 0.9 * this._bdK); this.bg.lerp(this._bdTint, 0.9 * this._bdK); }
     const col = this.sky.geometry.attributes.color, a = col.array, w = this._skyW;
     let t = c[0], m = c[1], h = c[2];
     if (rk > 0.002) {
@@ -3850,6 +3851,7 @@ export class Environment {
 function makeLook(b) {
   const g = b.grade;
   const c = [b.sky.top, b.sky.mid, b.sky.horizon, b.fog.color, b.hemi.sky, b.hemi.ground, b.sun.color, b.disc.color, b.clouds].map((h) => new THREE.Color(h));
+  c[3].lerp(c[2], 0.7);   // fog = (mostly) the sky's bottom colour: the horizon blends into the ground instead of ending in a straight seam
   c.push(new THREE.Color().setRGB(g.sh[0], g.sh[1], g.sh[2]), new THREE.Color().setRGB(g.hi[0], g.hi[1], g.hi[2]), new THREE.Color(g.rimC)); // (tints are raw multipliers, not sRGB colours)
   const n = new Float32Array(NN);
   n[0] = b.fog.near; n[1] = b.fog.far;

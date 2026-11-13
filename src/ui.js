@@ -11,6 +11,7 @@ import { save } from './save.js';
 import { nextGoal } from './shop.js';
 import { isScoreRecord } from './runner/goals.js';
 import { shareCard } from './sharecard.js';
+import { setIcon, uiImg } from './uiicons.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -163,20 +164,20 @@ export class UI {
         '.perk-pick .perk-card .bc-n{color:#10264a}.perk-pick .perk-card .bc-s{color:#2c4a78;font-weight:800}',
         // Rush result: score hero, signed gap + goal, TEKRAR first and biggest, revive smaller below it, one compact chip row
         '#result.rr #btn-retry{order:-3;font-size:34px;padding:18px 0}',
-        '#result.rr #btn-next.revive{order:-2;font-size:14px;padding:5px 18px;width:auto;align-self:center;border-width:2px;border-radius:14px}',
+        '#result.rr #btn-next.revive{order:-2;font-size:21px;padding:9px 0;width:100%}',
         '#result.rr #btn-card{order:1;align-self:center;width:auto;font-size:14px;padding:5px 18px;border-width:2px;border-radius:14px;box-shadow:0 3px 0 var(--ink)}',
-        '.res-extra .rx-up{display:block;width:100%;box-sizing:border-box;font-family:inherit;margin:0 auto 6px;padding:6px 12px;border-radius:12px;background:rgba(23,52,92,.85);border:2px solid #ffcf3a;color:#fff;font-weight:900;font-size:15px;text-align:center;cursor:pointer}',
+        '.res-extra .rx-up{display:block;width:100%;box-sizing:border-box;font-family:inherit;margin:0 auto 6px;padding:8px 12px;border-radius:12px;background:rgba(23,52,92,.85);border:2px solid #ffcf3a;color:#fff;font-weight:900;font-size:17px;text-align:center;cursor:pointer}',
         '.res-extra .rx-up.ok{background:linear-gradient(180deg,#ffd45a,#ff9a1a);color:#3a1c00;border-color:var(--ink)}',
-        '.res-extra .rx-up .ru-b{height:7px;margin-top:5px;border-radius:4px;background:rgba(255,255,255,.25);overflow:hidden}.res-extra .rx-up .ru-b i{display:block;height:100%;background:linear-gradient(90deg,#ffe066,#ff9a3a)}',
+        '.res-extra .rx-up .ru-b{height:9px;margin-top:6px;border-radius:4px;background:rgba(255,255,255,.25);overflow:hidden}.res-extra .rx-up .ru-b i{display:block;height:100%;background:linear-gradient(90deg,#ffe066,#ff9a3a)}',
         '.res-extra .rx-up.ok{animation:pwPulse 1s ease-in-out infinite}.res-extra .rx-up.ok .ru-b{background:rgba(58,28,0,.4)}.res-extra .rx-up.ok .ru-b i{background:#fff6c0}',
-        '#result.rr .res-tons.dl,#result.rr .res-tons{font-size:20px}',
+        '#result.rr .res-tons.dl,#result.rr .res-tons{font-size:22px}',
         '#result.runner.rr .res-top{margin-top:auto}#result.runner.rr .res-mid{margin:4px 0 auto}',      // score block + card are centred together (no hole between them)
         '#result.rr .res-sub{font-size:15px;color:#cfe6ff}',
         '#result.rr.rec .res-title{color:#ffe066}',
         '.res-extra .rx-row{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}',
         '.res-extra .rx-c{background:rgba(23,52,92,.7);border:2px solid var(--ink);border-radius:12px;padding:3px 9px;font-weight:900;font-size:15px;color:#fff;white-space:nowrap}',
         '.res-extra .rx-c.gold{color:var(--gold)}',
-        '@media (max-height:640px){#result.rr #btn-retry{font-size:28px;padding:12px 0}#result.rr #btn-next.revive{font-size:15px;padding:5px 0}}',
+        '@media (max-height:640px){#result.rr #btn-retry{font-size:28px;padding:12px 0}#result.rr #btn-next.revive{font-size:17px;padding:6px 0}}',
       ].join('');
       document.head.appendChild(st);
     }
@@ -233,6 +234,7 @@ export class UI {
     this._annReset();
     this.el.toastSoft.innerHTML = '';
     this.el.toastSoft.classList.remove('res');
+    clearTimeout(this._mutT); this._mutChip?.classList.add('hidden');      // (the weekly chip ends its fade at .35: never let it outlive the run)
     this.runnerTutor(null);
     this.hideRunnerRevive();
     this.el.banner.innerHTML = '';
@@ -294,12 +296,13 @@ export class UI {
     if (!h || h.p !== el) {
       const mk = (c) => { const s = document.createElement('span'); s.className = c; return s; };
       el.textContent = '';
-      h = this._hc = { p: el, c: mk('hc-c'), d: mk('hc-d'), g: mk('rec-gap'), co: null, di: null, rg: -1, pt: 0 };
+      h = this._hc = { p: el, c: mk('hc-c'), cn: document.createTextNode(''), d: mk('hc-d'), g: mk('rec-gap'), co: null, di: null, rg: -1, pt: 0 };
+      h.c.append(uiImg('❄️') || '❄️', h.cn);
       el.append(h.c, '\n', h.d, h.g);
     }
     if (h.co !== this._co) {
       const up = h.co !== null && this._co > h.co;
-      h.co = this._co; h.c.textContent = `❄️ ${this._co}`; this._chipsTouch();
+      h.co = this._co; h.cn.nodeValue = ` ${this._co}`; this._chipsTouch();
       if (up) { const t = performance.now(); if (t - h.pt > 90) { h.pt = t; pop(h.c, 1.22, 170); } }   // a flake stream pops ~10x a second at most
     }
     if (h.di !== this._di) { h.di = this._di; h.d.textContent = `${this._di} m`; }
@@ -516,7 +519,7 @@ export class UI {
     if (det) html += `<div class="rx-qtoggle">▸ Detaylar</div><div class="rx-qlist hidden">${det}</div>`;
     // the mission line lives IN the stats card (one box, one progress fill) instead of a separate chip under the score
     const mChip = !!nq && !!rl.goal && rl.goal === p.nextGoalText && p.nextGoalKind === 'mission';
-    if (mChip) html = `<div class="rx-ms" style="--f:${Math.round(clamp01(nf) * 100)}%">${tr(rl.goal)}</div>` + html;
+    if (mChip && !this._nupAfford) html = `<div class="rx-ms" style="--f:${Math.round(clamp01(nf) * 100)}%">${tr(rl.goal)}</div>` + html;
     ex.innerHTML = html;
     const qt = ex.querySelector('.rx-qtoggle');
     const upEl = ex.querySelector('.rx-up');
@@ -577,7 +580,6 @@ export class UI {
     let b = document.getElementById('btn-power');
     let runs = 0; try { runs = save.runsTotal(); } catch { runs = 0; }
     let aff0 = false; try { aff0 = !!h?.affordPower?.(); } catch { aff0 = false; }
-    const lvOk = !!(h && h.power) && (runs >= 2 || aff0);   // (the player-level reward below still follows this gate)
     const on = !!(h && h.power) && (aff0 || !!this._nupAfford || !!this._coinsEarned) && !this._nupOn;   // GÜÇ is a button when something is affordable or any ❄️ was earned this run; the Sıradaki bar in the card opens it too
     if (!on) {
       if (b) b.style.display = 'none';
@@ -589,9 +591,7 @@ export class UI {
       b.classList.toggle('pulse', aff);
       b.onclick = () => h.power();
     }
-    // a pending player level: its reward screen opens over the result once the score has counted up
-    clearTimeout(this._lvT);
-    try { if (lvOk && h.levelUp) this._lvT = setTimeout(() => { if (!this.el.result.classList.contains('hidden')) h.levelUp(); }, 1500); } catch { /* optional */ }
+    // (a pending player level no longer opens over the result: its full-screen reward covered RETRY / MENU until CLAIM; the menu schedules it when it shows)
   }
 
   // TEKRAR: big label + an optional small target line (no sub line = plain label, also used to reset it for other result screens)
@@ -855,8 +855,7 @@ export class UI {
     const el = this.dangerEl || (this.dangerEl = document.getElementById('danger'));
     const parts = [];
     if (risk) parts.push(tr(`RİSK +${risk}`));   // each part is translated BEFORE joining: the anchored patterns cannot match the joined string
-    if (danger > 0) parts.push(tr(`TEHLİKE +${danger}`));
-    if (chain > 0) parts.push(tr(`ZİNCİR +${chain}`));
+    // (danger and chain are already in the x multiplier: its green ▲ tab shows them; the centre chip carries RISK alone, one line)
     const t = parts.join(' · ');
     if (t !== this.lastDanger) {
       this.lastDanger = t;
@@ -1062,7 +1061,7 @@ export class UI {
       this._mSh = m;
       if (!pm && m > 1) { this._mFirst = true; clearTimeout(this._mFT); this._mFT = setTimeout(() => { this._mFirst = false; this._cmRender(); }, 4000); }   // the first multiplier of a run is named for 4 s (x2 SCORE)
       if (pm && m !== pm) { /* (a slow decay tick of 0.1 stays a bare arrow) */ this._mLbV = Math.abs(m - pm) >= 0.3 ? (m > pm ? '+' : '') + (Math.round((m - pm) * 10) / 10) : ''; this._mLb = m > pm ? 1 : 2; clearTimeout(this._mLbT); this._mLbT = setTimeout(() => { this._mLb = 0; this._cmRender(); }, 1600); }   // a green up / red down arrow tab for 1.6 s: one chip, no label
-      this._cmKs.textContent = this._mLb === 1 ? '▲ ' + this._mLbV : this._mLb === 2 ? '▼ ' + this._mLbV : ''; this._cmKs.style.color = this._mLb === 1 ? '#6dff8f' : '#ff7a7a'; this._cmKe.textContent = `x${m}`; this._cmKe.dataset.t = `x${m}`; this._cmKu.textContent = this._mFirst ? tr('SKOR') : '';
+      this._cmKs.textContent = this._mLb === 1 ? '▲ ' + this._mLbV : this._mLb === 2 ? '▼ ' + this._mLbV : ''; this._cmKs.style.color = this._mLb === 1 ? '#6dff8f' : '#ff7a7a'; this._cmKe.textContent = `x${m}`; this._cmKe.dataset.t = `x${m}`; this._cmKu.textContent = this._mLb && this._mLbV ? tr(this._mLb === 1 ? 'BONUS ARTTI' : 'BONUS DÜŞTÜ') : this._mFirst ? tr('SKOR') : '';
       this._cmK.style.display = ''; this._cmM.style.display = 'none';
       const ts = `t${Math.min(4, Math.max(1, Math.floor(m) - 1))}`;   // tinted by whole step: x2 yellow, x3 orange, x4 pink, x5+ purple
       if (!c.classList.contains('on') || !c.classList.contains(ts)) { c.classList.remove('t0', 't1', 't2', 't3', 't4'); c.classList.add('on', 'nobar', ts); }
@@ -1266,7 +1265,7 @@ export class UI {
       el.style.setProperty('--bc', buffColor(id));
       el.style.setProperty('--p', '1');
       el.innerHTML = '<span class="bi"></span>';
-      el.firstChild.textContent = icon || '✨';
+      setIcon(el.firstChild, icon || '✨');
       el.setAttribute('aria-label', name || id);
       this.el.buffs.appendChild(el);
       b = { el, q: 72, total: secs, low: false };
@@ -1350,7 +1349,7 @@ export class UI {
       const c = document.createElement('button');
       c.className = 'buff-card perk-card';
       c.innerHTML = '<div class="bc-i"></div><div><div class="bc-n"></div><div class="bc-s"></div></div>';
-      c.children[0].textContent = p.icon;
+      setIcon(c.children[0], p.icon);
       c.querySelector('.bc-n').textContent = p.name;
       c.querySelector('.bc-s').textContent = p.desc;
       c.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); pick(p.id); });
@@ -1400,7 +1399,7 @@ export class UI {
       el.className = 'perk-ico';
       this.el.hud.appendChild(el);
     }
-    el.textContent = icon;
+    setIcon(el, icon);
     const pn = document.createElement('span'); pn.className = 'pn'; pn.textContent = name || ''; el.appendChild(pn);
     el.classList.add('say'); clearTimeout(this._perkSayT); this._perkSayT = setTimeout(() => el.classList.remove('say'), 3500);   // the name shows for 3.5 s, then only the icon stays
     this._chipsTouch();

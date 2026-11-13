@@ -277,13 +277,15 @@ function makeGeometries() {
     [new THREE.CylinderGeometry(0.15, 0.15, 0.4, 6), 0x3f9a4a, -0.38, 1.6, 0, 0, 0, PI / 2], [new THREE.CylinderGeometry(0.15, 0.15, 0.6, 6), 0x4fae56, -0.55, 1.88, 0], [new THREE.SphereGeometry(0.16, 6, 5), 0x5fbd62, -0.55, 2.18, 0],
   ], true);
   G.gem = gemGeometry();
+  if (GLB.prop_coin) G.flake = GLB.prop_coin.clone().scale(1.8, 1.8, 1.8);   // Blender coin (0.5 m) at the size of the old one (0.9 m)
   for (const k in GLB_PROPS) if (GLB[GLB_PROPS[k]]) G[k] = GLB[GLB_PROPS[k]];   // our Blender props (baked colours); a pool exists only for the ones that loaded
   return G;
 }
 
 // pool: key -> [geometry key, material key, capacity]
-const GLB_PROPS = { glbSnowman: 'prop_snowman', glbSign: 'prop_sign', glbCrate: 'prop_crate', glbSled: 'prop_sled', glbLog: 'prop_logpile', glbPine: 'prop_pine', glbRockBig: 'prop_rock_big', glbRockSmall: 'prop_rock_small' };
-const GLB_CAP = { glbSnowman: 30, glbSign: 30, glbCrate: 80, glbSled: 40, glbLog: 30, glbPine: 70, glbRockBig: 40, glbRockSmall: 70 };
+const GLB_PROPS = { glbSnowman: 'prop_snowman', glbSign: 'prop_sign', glbCrate: 'prop_crate', glbSled: 'prop_sled', glbLog: 'prop_logpile', glbPine: 'prop_pine', glbRockBig: 'prop_rock_big', glbRockSmall: 'prop_rock_small', glbCabin: 'prop_cabin', glbBarrier: 'prop_barrier', glbLoco: 'train_loco', glbLocoIce: 'train_loco_ice', glbCarCyan: 'train_car_cyan',
+  glbCarYellow: 'train_car_yellow', glbCarOrange: 'train_car_orange', glbCarIce: 'train_car_ice', glbRide: 'train_ride', glbRideIce: 'train_ride_ice' };
+const GLB_CAP = { glbSnowman: 30, glbSign: 30, glbCrate: 80, glbSled: 40, glbLog: 30, glbPine: 70, glbRockBig: 40, glbRockSmall: 70, glbCabin: 20, glbBarrier: 60, glbLoco: 16, glbLocoIce: 16, glbCarCyan: 40, glbCarYellow: 40, glbCarOrange: 40, glbCarIce: 40, glbRide: 40, glbRideIce: 40 };
 const POOLS = {
   box: ['box', 'lit', 1500], cyl: ['cyl', 'lit', 320], ball: ['ball', 'lit', 520], pine: ['pine', 'lit', 70], plow: ['plow', 'lit', 24],
   rockS: ['rockS', 'lit', 70], rockS2: ['rockS2', 'lit', 70], rockB: ['rockB', 'lit', 40], rockB2: ['rockB2', 'lit', 40], cone: ['cone', 'lit', 140], dome: ['dome', 'lit', 60], cactus: ['cactus', 'lit', 50],
@@ -316,11 +318,12 @@ export class Obstacles {
     this.group.name = 'obstacles';
     if (scene && scene.add) scene.add(this.group);
     this.G = makeGeometries();
+    const FG = { r: 0.07, w: 0.1, a: 0.4 };   // a log / rock crossing the bottom third in front of the ball is see-through
     this.mats = {
-      lit: nearFade(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })),
-      ice: nearFade(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.82, depthWrite: false })),
-      pulse: nearFade(new THREE.MeshBasicMaterial({ vertexColors: true })),
-      glow: nearFade(new THREE.MeshBasicMaterial({ vertexColors: true })),
+      lit: nearFade(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 2.5, 4.5, FG),
+      ice: nearFade(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.82, depthWrite: false }), 2.5, 4.5, FG),
+      pulse: nearFade(new THREE.MeshBasicMaterial({ vertexColors: true }), 2.5, 4.5, FG),
+      glow: nearFade(new THREE.MeshBasicMaterial({ vertexColors: true }), 2.5, 4.5, FG),
       shadow: new THREE.MeshBasicMaterial({ color: 0x1d3a66, transparent: true, opacity: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     };
     this.pool = {};
@@ -569,7 +572,7 @@ export class Obstacles {
       if (!k.alive) continue;
       if (k.kind === 'snow') { const q = 1 + 0.1 * pulse; this._set('ball', k.idx, k.f, k.u, 0.55 + 0.08 * Math.sin(t * 2.4 + k.ph), t * 0.8 + k.ph, 0, 1.05 * q, 1.0 * q, 1.05 * q); continue; }
       const bob = k.h + 0.1 * Math.sin(t * 2.4 + k.ph);
-      if (k.kind === 'flake') this._set('flake', k.idx, k.f, k.u, bob, t * 2.2 + k.ph, 0, 0.95, 0.95, 0.95);
+      if (k.kind === 'flake') this._set('flake', k.idx, k.f, k.u, bob, t * 5.24 + k.ph, 0, 0.95, 0.95, 0.95);
       else this._set(k.pool, k.idx, k.f, k.u, bob + 0.1, t * 2.4 + k.ph, k.kind === 'rocket' ? 0.5 : 0, k.sc, k.sc, k.sc);
     }
     this._updateDyn(dt, ball);
@@ -792,6 +795,52 @@ export class Obstacles {
 // ---------------------------------------------------------------------------------------------------------------------------
 const TRAIN_FRONT = 1, TRAIN_COLS = [0x1fb8c9, 0xffc02e, 0xff7a3a], TRAIN_ICE = [0x8fd3ff, 0xb9e6ff, 0x7bbcf0];
 const SEG = 4.2;   // train segment length (each segment has its own frame so trains follow curves)
+// one non-rideable train segment (loco on k=0, else passenger car) + its wheels: shared by the parked snowcat and the oncoming train
+function trainCar(ob, k, ns, sl, u, f, body, trim) {
+  const FZ = TRAIN_FRONT;
+  const len = sl - 0.5;                                   // visible coupler gap: clean joins on curves
+  this._part(ob, 'box', trim, u, 0.42, 0, 0, 1.7, 0.4, len + 0.2, 0, 0, 0, f);                   // chassis
+  this._part(ob, 'box', body, u, 1.15, 0, 0, 2.0, 1.3, len, 0, 0, 0, f);                          // body
+  this._part(ob, 'box', 0xfff3d0, u, 0.78, 0, 0, 2.04, 0.14, len, 0, 0, 0, f);                   // cream stripe
+  if (k === 0) {                                          // front loco: cab, face, lights
+    this._part(ob, 'box', trim, u, 2.0, 0, 0, 1.9, 0.18, len * 0.9, 0, 0, -FZ * 0.15, f);        // cab roof
+    this._part(ob, 'box', 0xffffff, u, 2.14, 0, 0, 1.7, 0.1, len * 0.8, 0, 0, -FZ * 0.15, f);    // snow cap
+    this._part(ob, 'box', 0xd8f1ff, u, 1.78, 0, 0, 1.8, 0.62, len * 0.72, 0, 0, -FZ * 0.15, f);  // cab windows
+    this._part(ob, 'box', 0xe5392f, u, 1.78, 0, 0, 1.86, 0.1, len * 0.72, 0, 0, -FZ * 0.15, f);  // cab mid bar
+    this._part(ob, 'cyl', 0xffb21a, u + 0.55, 2.55, 0, 0, 0.34, 0.5, 0.34, 0, 0, FZ * 0.7, f);    // chimney
+    this._part(ob, 'cyl', 0x2a2f3d, u + 0.55, 2.84, 0, 0, 0.48, 0.1, 0.48, 0, 0, FZ * 0.7, f);
+    const zf = FZ * (len / 2 + 0.03);
+    for (const sg of [-1, 1]) {
+      this._part(ob, 'box', 0xffffff, u + sg * 0.5, 1.5, 0, 0, 0.46, 0.46, 0.08, 0, 0, zf, f);   // eyes
+      this._part(ob, 'box', 0x1a1d27, u + sg * 0.5, 1.46, 0, 0, 0.22, 0.26, 0.1, 0, 0, zf, f);
+      this._part(ob, 'box', 0xfff27a, u + sg * 0.74, 0.8, 0, 0, 0.3, 0.3, 0.1, 0, 0, zf, f);      // headlights
+      this._part(ob, 'box', 0xffb21a, u + sg * 0.74, 1.15, 0, 0, 0.1, 0.1, 0.1, 0, 0, zf, f);
+    }
+    this._part(ob, 'box', 0x1a1d27, u, 0.98, 0, 0, 0.6, 0.12, 0.1, 0, 0, zf, f);                   // smile
+    this._part(ob, 'box', 0xffb21a, u, 0.45, 0, 0, 2.1, 0.26, 0.22, 0, 0, FZ * (len / 2 + 0.1), f);// bumper
+  } else {                                                // passenger car: windows + peaked roof
+    for (const sg of [-1, 1]) for (const q of [-0.28, 0.28]) this._part(ob, 'box', 0xd8f1ff, u + sg * 1.01, 1.45, 0, 0, 0.06, 0.5, len * 0.32, 0, 0, q * len, f);
+    this._part(ob, 'box', trim, u, 1.9, 0, 0, 2.2, 0.2, len + 0.1, 0, 0, 0, f);
+    this._part(ob, 'box', 0xffffff, u, 2.05, 0, 0, 1.9, 0.12, len * 0.92, 0, 0, 0, f);            // snow on the roof
+    this._part(ob, 'box', 0xff5a8a, u, 2.2, 0, 0, 0.5, 0.2, 0.5, 0, 0, 0, f);                     // roof lantern
+  }
+  // coupler to the next car
+  if (k < ns - 1) this._part(ob, 'box', 0x2a2f3d, u, 0.55, 0, 0, 0.3, 0.2, 0.9, 0, 0, -FZ * sl / 2, f);
+}
+// Blender train piece (loco / car / ride car, baked colours, 4 m long, front +z); false when the GLB did not load (procedural boxes stay)
+function trainGlb(ob, k, sl, u, f, ice, ride) {
+  const key = ride ? (ice ? 'glbRideIce' : 'glbRide') : k === 0 ? (ice ? 'glbLocoIce' : 'glbLoco') : ice ? 'glbCarIce' : ['glbCarCyan', 'glbCarYellow', 'glbCarOrange'][(k - 1) % 3];
+  if (!this.pool[key]) return false;
+  this._part(ob, key, 0xffffff, u, 0, 0, 0, 1, 1, Math.min(1, (sl - 0.1) / 4.03), 0, 0, 0, f);
+  return true;
+}
+function trainWheels(ob, u, sl, f) {
+  const P = PI / 2;
+  for (const sg of [-1, 1]) for (const q of [-0.3, 0.3]) {                                          // wheels
+  this._part(ob, 'cyl', 0x232733, u + sg * 1.0, 0.4, 0, P, 0.8, 0.3, 0.8, 0, 0, q * sl, f);
+  this._part(ob, 'cyl', 0xffc22e, u + sg * 1.0 + sg * 0.03, 0.4, 0, P, 0.38, 0.34, 0.38, 0, 0, q * sl, f);
+    }
+}
 const FAMILY = { aurora: 'aurora', bamboo: 'bamboo', glacier: 'glacier', carnival: 'carnival', snow: 'snow', forest: 'forest', greenhill: 'forest', sakura: 'forest', kapadokya: 'desert', desert: 'desert', pirate: 'desert', town: 'town', istanbul: 'town', icecave: 'ice', candy: 'candy', neon: 'neon', moon: 'moon', volcano: 'volcano' };
 const ROCK_TINT = { snow: 0x5d6572, forest: 0x626d58, desert: 0x8b4b2e, ice: 0x5f8dbd, aurora: 0x4a6a9a, bamboo: 0x6a7a5a, glacier: 0x4a86c8, carnival: 0xb03070, candy: 0xc23c86, moon: 0x70707b, volcano: 0x3b2c28, town: 0x6a6f78, neon: 0x4d3f85 };
 const STONE_TINT = { snow: 0x6a7280, forest: 0x6f7a63, desert: 0x7d4a2f, ice: 0x7aa6d4, aurora: 0x6a8ac0, bamboo: 0x8a9a7a, glacier: 0x6aa6e4, carnival: 0xff7ab0, candy: 0xff8ccf, moon: 0x85858f, volcano: 0x4a3a34, town: 0x7a7f88, neon: 0x5b4d9a };
@@ -862,6 +911,7 @@ const DEFS = {
   stone: { shape: 'cyl', tough: 2, color: 0x6a7280, rad: 0.7, ht: 0.64, ext: 1.2, build: smallRock },
   cabin: { shape: 'box', tough: 5, color: COL.cabin, hs: 1.5, hu: 1.05, ht: 2.6, ext: 2.2, lethal: true, build(ob) {
     const u = ob.u, R = 0.55;
+    if (this.pool.glbCabin) { this._part(ob, 'glbCabin', 0xffffff, u, 0, 0, 0, 0.85, 0.85, 0.85); return; }
     this._part(ob, 'box', COL.cabin, u, 0.9, 0, 0, 2.0, 1.8, 2.8);
     this._part(ob, 'box', COL.wood2, u - 0.58, 2.1, 0, -R, 1.35, 0.18, 3.1); this._part(ob, 'box', COL.wood2, u + 0.58, 2.1, 0, R, 1.35, 0.18, 3.1);
     this._part(ob, 'box', COL.snow, u - 0.62, 2.2, 0, -R, 1.3, 0.12, 3.15); this._part(ob, 'box', COL.snow, u + 0.62, 2.2, 0, R, 1.3, 0.12, 3.15);
@@ -884,6 +934,7 @@ const DEFS = {
       const f = this._frameOf(ob.s - L / 2 + (k + 0.5) * sl);
       const body = ice ? TRAIN_ICE[k % 3] : k === 0 && !ride ? 0xe5392f : TRAIN_COLS[(k - 1 + 3) % 3];
       const trim = ice ? 0x2f6fb0 : 0x2a2f3d;
+      if (trainGlb.call(this, ob, k, sl, u, f, ice, ride)) continue;
       if (ride) {
         const H = ob.H;
         this._part(ob, 'box', body, u, H / 2, 0, 0, 2.0, H, sl + 0.04, 0, 0, 0, f);
@@ -892,39 +943,9 @@ const DEFS = {
         this._part(ob, 'box', ob.glow || 0xffd23a, u, H + 0.03, 0, 0, 1.9, 0.06, sl, 0, 0, 0, f);     // roof glow
         this._part(ob, 'box', trim, u, 0.22, 0, 0, 2.1, 0.3, sl + 0.04, 0, 0, 0, f);                  // chassis
       } else {
-        const len = sl - 0.5;                                   // visible coupler gap: clean joins on curves
-        this._part(ob, 'box', trim, u, 0.42, 0, 0, 1.7, 0.4, len + 0.2, 0, 0, 0, f);                   // chassis
-        this._part(ob, 'box', body, u, 1.15, 0, 0, 2.0, 1.3, len, 0, 0, 0, f);                          // body
-        this._part(ob, 'box', 0xfff3d0, u, 0.78, 0, 0, 2.04, 0.14, len, 0, 0, 0, f);                   // cream stripe
-        if (k === 0) {                                          // front loco: cab, face, lights
-          this._part(ob, 'box', trim, u, 2.0, 0, 0, 1.9, 0.18, len * 0.9, 0, 0, -FZ * 0.15, f);        // cab roof
-          this._part(ob, 'box', 0xffffff, u, 2.14, 0, 0, 1.7, 0.1, len * 0.8, 0, 0, -FZ * 0.15, f);    // snow cap
-          this._part(ob, 'box', 0xd8f1ff, u, 1.78, 0, 0, 1.8, 0.62, len * 0.72, 0, 0, -FZ * 0.15, f);  // cab windows
-          this._part(ob, 'box', 0xe5392f, u, 1.78, 0, 0, 1.86, 0.1, len * 0.72, 0, 0, -FZ * 0.15, f);  // cab mid bar
-          this._part(ob, 'cyl', 0xffb21a, u + 0.55, 2.55, 0, 0, 0.34, 0.5, 0.34, 0, 0, FZ * 0.7, f);    // chimney
-          this._part(ob, 'cyl', 0x2a2f3d, u + 0.55, 2.84, 0, 0, 0.48, 0.1, 0.48, 0, 0, FZ * 0.7, f);
-          const zf = FZ * (len / 2 + 0.03);
-          for (const sg of [-1, 1]) {
-            this._part(ob, 'box', 0xffffff, u + sg * 0.5, 1.5, 0, 0, 0.46, 0.46, 0.08, 0, 0, zf, f);   // eyes
-            this._part(ob, 'box', 0x1a1d27, u + sg * 0.5, 1.46, 0, 0, 0.22, 0.26, 0.1, 0, 0, zf, f);
-            this._part(ob, 'box', 0xfff27a, u + sg * 0.74, 0.8, 0, 0, 0.3, 0.3, 0.1, 0, 0, zf, f);      // headlights
-            this._part(ob, 'box', 0xffb21a, u + sg * 0.74, 1.15, 0, 0, 0.1, 0.1, 0.1, 0, 0, zf, f);
-          }
-          this._part(ob, 'box', 0x1a1d27, u, 0.98, 0, 0, 0.6, 0.12, 0.1, 0, 0, zf, f);                   // smile
-          this._part(ob, 'box', 0xffb21a, u, 0.45, 0, 0, 2.1, 0.26, 0.22, 0, 0, FZ * (len / 2 + 0.1), f);// bumper
-        } else {                                                // passenger car: windows + peaked roof
-          for (const sg of [-1, 1]) for (const q of [-0.28, 0.28]) this._part(ob, 'box', 0xd8f1ff, u + sg * 1.01, 1.45, 0, 0, 0.06, 0.5, len * 0.32, 0, 0, q * len, f);
-          this._part(ob, 'box', trim, u, 1.9, 0, 0, 2.2, 0.2, len + 0.1, 0, 0, 0, f);
-          this._part(ob, 'box', 0xffffff, u, 2.05, 0, 0, 1.9, 0.12, len * 0.92, 0, 0, 0, f);            // snow on the roof
-          this._part(ob, 'box', 0xff5a8a, u, 2.2, 0, 0, 0.5, 0.2, 0.5, 0, 0, 0, f);                     // roof lantern
-        }
-        // coupler to the next car
-        if (k < ns - 1) this._part(ob, 'box', 0x2a2f3d, u, 0.55, 0, 0, 0.3, 0.2, 0.9, 0, 0, -FZ * sl / 2, f);
+        trainCar.call(this, ob, k, ns, sl, u, f, body, trim);
       }
-      for (const sg of [-1, 1]) for (const q of [-0.3, 0.3]) {                                          // wheels
-        this._part(ob, 'cyl', 0x232733, u + sg * 1.0, 0.4, 0, P, 0.8, 0.3, 0.8, 0, 0, q * sl, f);
-        this._part(ob, 'cyl', 0xffc22e, u + sg * 1.0 + sg * 0.03, 0.4, 0, P, 0.38, 0.34, 0.38, 0, 0, q * sl, f);
-      }
+      trainWheels.call(this, ob, u, sl, f);
     }
   } },
   longLogs: { shape: 'box', tough: 3, color: COL.wood2, ht: 1.9, hu: 1.05, ext: 12, train: true, build(ob) {
@@ -1521,7 +1542,7 @@ const HARD_PAT = { double: 1, train: 1, mover: 1, rolling: 1, beat: 1, swing: 1,
 const LETHAL_KIND = { oncoming: 1, slidewall: 1, missile: 1 };
 const SINGLE_VERB = { single: 1, low: 1, duck: 1, rest: 1 };            // round sections (loop, corkscrew, helix, half-pipe, tube): one verb per row
 // first 20 s: something every ~2.5 s (was every ~3.5 s from the 5 s mark): a block at 3.5 s, a critter, a hurdle, a pad jump over a flake arc (~11 s), a parade to stomp, a BOOST strip (the first speed-rush, ~16 s), a duck bar
-const TEACH = [{ s: 56, pat: 'single' }, { s: 96, pat: 'critter' }, { s: 132, pat: 'low' }, { s: 172, pat: 'pad' }, { s: 220, pat: 'parade' }, { s: 262, pat: 'boost' }, { s: 306, pat: 'duck' }];
+const TEACH = [{ s: 34, pat: 'single' }, { s: 96, pat: 'critter' }, { s: 132, pat: 'low' }, { s: 172, pat: 'pad' }, { s: 220, pat: 'parade' }, { s: 262, pat: 'boost' }, { s: 306, pat: 'duck' }];
 const TEACH_END = 320;
 // patterns that can never leave a free lane out of reach when the previous row is < 0.5 s behind (see _rows: tightRow)
 const TIGHT_OK = ['single', 'low', 'duck', 'slide', 'swing', 'ice', 'conveyor', 'rail', 'rest', 'laser', 'critter', 'icegate'];
@@ -1707,10 +1728,11 @@ Object.assign(Obstacles.prototype, {
         if (j) { ph = null; continue; }
       }
       if (okAt && !okAt(s)) { s += 2.5; ph = null; continue; }
+      const sgC = T.level || !T.chapterAt ? null : T.chapterAt(s), sgP = sgC && sgC.def.sig, sigDue = !!sgP && s - sgC.s0 < 36 && this._sigS !== sgC.s0;      // a new chapter's signature hazard lands in its first 36 m (the banner and the hazard arrive together; no breather, no phrase first)
       let tn = 1;
       if (cyc) {
         const phs = (((T.timeAt(s) - cycT0) % CYCLE_T) + CYCLE_T) % CYCLE_T;     // the first cycle starts where the teaching rows end: calm -> build -> breather
-        if (phs >= BUILD_T) {
+        if (phs >= BUILD_T && !sigDue) {
           // breather: no rows for ~4 s (snow trail + flakes are laid into it by _trails)
           const bEnd = s + (CYCLE_T - phs) * vs, b = this._breath;
           this._breath = b && b.b > s - 1 ? { a: b.a, b: bEnd } : { a: s, b: bEnd };
@@ -1754,7 +1776,8 @@ Object.assign(Obstacles.prototype, {
       const rockNear = !!(lastR && (lastR.rock || RK_BAN[lastR.pat]) && (s - lastR.s) / vs < 2.0);
       plan.rockOk = s >= 800 && !!plan.piece && plan.piece.kind === 'straight' && s - plan.piece.s0 > Math.max(30, vs * 2) && !hardEnd && !forcedNext && !o.firstOnly && !o.noLethal && !plan.zone && free0.length >= 2 && !tightRow && !rockNear && !(lastR && lastR.hard && (s - lastR.s) / vs < 2.0)
         && (s - (this._lastRockS === undefined ? -1e9 : this._lastRockS)) / vs >= 8 && !this._forcedStretch(s - vs * 2, s + vs * 2);
-      const zone = plan.zone, cdf = plan.chap ? plan.chap.def : null, zmap = zone ? ZONE_M[zone] : cdf && cdf.pat || null, zown = zone ? ZONE_OWN[zone] : cdf && cdf.own || null;
+      const zone = T.level || !T.zoneAt || plan.zone === 'coinRain' ? plan.zone : T.zoneAt(s), cdf = sgC ? sgC.def : plan.chap ? plan.chap.def : null, zmap = zone ? ZONE_M[zone] : cdf && cdf.pat || null, zown = zone ? ZONE_OWN[zone] : cdf && cdf.own || null;
+      const onR = zown && zown.indexOf('oncoming') >= 0 ? 4 : 22;      // EKSPRES: a train may start closer to the piece end and run on into the next piece (never into a junction approach / forced piece: hardEnd, lim)
       const split2 = (tm & bit(NL >> 1)) !== 0;            // a persistent blocker in the middle lane splits the track: only jump / duck / floor patterns then
       const wantCrit = s >= this._nextCrit && !only && F.critters !== false && T.allows('critters') && this.critters && room > 30 && free0.length >= 2 && !tightRow && !zone;
       const onlyNow = !rows.length && o.firstOnly ? o.firstOnly : only;      // (the first row after a junction corner: single verb)
@@ -1782,7 +1805,7 @@ Object.assign(Obstacles.prototype, {
           case 'melt': return plan.biomeId === 'desert' || plan.biomeId === 'volcano' ? 1.6 : (dz >= 0.3 ? 0.12 : 0);
           case 'conveyor': return F.conveyor !== false && dz >= 0.15 ? 0.6 : 0;
           case 'rail': return T.allows('rail') && dz >= 0.2 && room > 30 ? 0.5 : 0;
-          case 'oncoming': return plan.lethalOk && T.allows('oncoming') && dz >= 0.2 && room > 22 && !forcedNext && s + 52 <= lim && persist.length === 0 && free0.length >= 2 ? 1.0 + 0.8 * dz : 0;
+          case 'oncoming': return plan.lethalOk && T.allows('oncoming') && dz >= 0.2 && room > onR && !hardEnd && !forcedNext && s + 52 <= lim && persist.length === 0 && free0.length >= 2 ? 1.0 + 0.8 * dz : 0;
           case 'duck': return T.allows('duck') && dz >= 0.04 && room > 8 ? 1.5 + 0.8 * dz : 0;
           case 'slide': return plan.lethalOk && slideOk && T.allows('slideWall') && dz >= 0.3 && s >= 1200 && room > 12 && adj ? 0.45 + 0.4 * dz : 0;
           case 'combo': return plan.lethalOk && slideOk && late && T.allows('oncoming') && T.allows('slideWall') && room > 40 && !forcedNext && s + 66 <= lim && persist.length === 0 && open3 ? 1.6 : 0;
@@ -1790,7 +1813,7 @@ Object.assign(Obstacles.prototype, {
           case 'laser': return T.allows('lasers') && dz >= 0.08 && room > 8 ? 1.4 + 1.2 * dz : 0;
           // a volley is launched 2 s before contact (reticle + warning), anywhere in a piece as long as its contact is clear of a lane-forcing
           // run-in and no other blocker persists (a missile that already hit does not count); rare in normal play (late), the missiles zone's main course
-          case 'missile': return !!T.level && plan.lethalOk && T.allows('missiles') && dz >= (zone === 'missiles' ? 0.18 : 0.55) && room > 4 && tmHard === 0 && s + vs * 2.9 + 12 <= limM ? (zone === 'missiles' ? 1.0 + 1.2 * dz : 0.4 + 0.5 * dz) : 0;
+          case 'missile': return (!!T.level || zone === 'missiles') && plan.lethalOk && T.allows('missiles') && dz >= (zone === 'missiles' ? 0.18 : 0.55) && room > 4 && tmHard === 0 && s + vs * 2.9 + 12 <= limM ? (zone === 'missiles' ? 1.0 + 1.2 * dz : 0.4 + 0.5 * dz) : 0;
           case 'phrase': return phOn && tm === 0 && hardN <= 1 && room > 8 && dz >= 0.05 ? (2.5 + 9.0 * dz) * (tn < 1 ? 1.7 : tn > 1 ? 0.6 : 1) : 0;
           case 'critter': return wantCrit ? 90 : 0;
           // variety (from ~1.2 km, modest weights)
@@ -1803,7 +1826,10 @@ Object.assign(Obstacles.prototype, {
         }
       };
       c.s = s; c.vs = vs; c.free0 = free0; c.rm = rm; c.room = room; c.lim = lim; c.prevRoute = prevRoute; c.open3 = open3; c.plain = !hardEnd && (nk0 === 'straight' || nk0 === 'curve'); c.vq = vq;
-      const pat = ph ? 'phrase' : wpick(rng, pats, (p) => wfn(p) * (rockNear && RK_BAN[p] ? 0 : 1) * (zmap ? (zmap[p] !== undefined ? zmap[p] : zmap._) : 1));
+      const pushOnc = onR < 22 && !ph && s - (this._lastOnc === undefined ? -1e9 : this._lastOnc) > 110 && wfn('oncoming') > 0;      // EKSPRES: a train whenever the rules allow one and the last is > 110 m behind (the rows are too sparse to leave it to the dice)
+      const sigNow = sigDue && !ph && wfn(sgP) > 0;
+      if (sigNow) this._sigS = sgC.s0;
+      const pat = ph ? 'phrase' : sigNow ? sgP : pushOnc ? 'oncoming' : wpick(rng, pats, (p) => wfn(p) * (rockNear && RK_BAN[p] ? 0 : 1) * (zmap ? (zmap[p] !== undefined ? zmap[p] : zmap._) : 1));
       let free = FULL, ext = 1.5, jump = false, advanceExtra = 0, made = true, phK = 0, phI = 0, rowPat = pat, rext = -1;     // rext: extent the route / snow trails / gems see (a critter group never blocks the route lane: it keeps only the full `ext` in rowsLog)
       switch (pat) {
         case 'single': {
@@ -1950,10 +1976,10 @@ Object.assign(Obstacles.prototype, {
         }
         case 'oncoming': {
           const l = free0[rng.int(0, free0.length - 1)], sP = s + 42;
-          if (sP > sB + 20 || !(prevFree & ~bit(l) & amask)) { made = false; break; }
+          if (sP > sB + (onR < 22 ? 44 : 20) || !(prevFree & ~bit(l) & amask)) { made = false; break; }
           const vt = Math.min(12, rng.range(6, 10) * Math.sqrt(hk)), ride = diff >= 0.3 && rng.chance(0.45);
           this._mk(plan, { kind: 'oncoming', s: sP, sP, u: LANES[l], lane: l, vt, ride, L: 12, ext: 74, glow: this._pal(sP).glow });
-          persist.push({ lane: l, s0: s, s1: sP + 8 });
+          persist.push({ lane: l, s0: s, s1: sP + 8 }); this._lastOnc = s;
           free = FULL & ~bit(l); ext = 70;
           break;
         }
@@ -2109,6 +2135,7 @@ Object.assign(Obstacles.prototype, {
         const type = tut ? 'crate' : this._pickStatic(plan, (x) => x === 'crate' || x === 'snowman' || x === 'stone' || x === 'sign');
         this._scaled(plan, type, s, lane);
         free = FULL & ~bit(lane); ext = DEFS[type].ext; route = lane === (NL >> 1) ? (rng.chance(0.5) ? 0 : NL - 1) : NL >> 1;
+        for (let x = s - 28; x < s - 2; x += 2) this._pickup('flake', x, LANES[route], 1.35);   // the reward line leads into the free lane (inside the first 25 m)
       } else if (pat === 'low') {
         this._static(plan, rng.chance(0.65) ? 'fallenLog' : 'fence', s, 0, { uMin: LANES[0] - 1.2, uMax: LANES[NL - 1] + 1.2 });
         free = 0; jump = true; ext = 1.2; route = NL >> 1;
@@ -2417,7 +2444,7 @@ Object.assign(Obstacles.prototype, {
           route = plan.gates ? this._gateRoute(plan, 1) : this._routeFn(plan, 1);
           arcs = this._rowArcs(plan);
           let av = [];
-          if (kind === 'straight' && !early && F.boost !== false && !padFlight && s0 >= TEACH_END && rng.chance(0.22)) this._placeStrip(plan, route, s0 + 6, s1 - 6);
+          if (kind === 'straight' && !early && F.boost !== false && !padFlight && s0 >= TEACH_END && rng.chance(cd && cd.boost ? cd.boost : 0.22)) this._placeStrip(plan, route, s0 + 6, s1 - 6);
           if (plan.zone === 'coinRain') this._coinRain(plan, route, s0 + 3, s1 - 2);
           else {
             const tA = padFlight ? s0 + 7 + padFlight + 5 : s0 + 3;
@@ -3253,7 +3280,7 @@ Object.assign(Obstacles.prototype, {
     this.picks.length = 0;
     for (const b of this.dyn.slice()) this._freeDyn(b);
     for (const d of this.deb) if (d.on) { d.on = false; this._release('box', d.idx); d.idx = -1; }
-    this.pending.length = 0; this.platforms.length = 0; this.rowsLog.length = 0; this._lastRockS = undefined; this._vt = null; this.warnQ.length = 0; this.byId.clear();
+    this.pending.length = 0; this.platforms.length = 0; this.rowsLog.length = 0; this._lastRockS = undefined; this._lastOnc = undefined; this._sigS = undefined; this._vt = null; this.warnQ.length = 0; this.byId.clear();
     this.maxExt = 4.6; this.gateChain = 0; this.nextBoulder = 1e9; this._bArmed = false; this._gateS = -1;
     this.next = { power: 260, gem: 520, box: 340, letter: 300, chain: 420, yeti: 330, plow: 1000, tunnel: 900, slide: 380 };
     this._carry = null; this._clock = 0; this._nextCrit = this.track.level ? 130 : 160; this._teach = 0; this._breath = null; this._snowOwed = 0; this.tierBias = 0;
@@ -3464,16 +3491,21 @@ KIND.oncoming = {
     if (ride) { ob.H = ONC.H; ob.rl = ONC.RL; this.platforms.push(ob); this._part(ob, 'wedge', COL.wood2, ob.u, ONC.H / 2, 0, 0, 2.0, ONC.H, ONC.RL, 0, 0, 0, ob.segF[ns]); }
     for (let k = 0; k < ns; k++) {
       const f = ob.segF[k];
-      this._part(ob, 'box', ride ? 0x3a7de8 : COL.orange, ob.u, 1.15, 0, 0, 2.0, ride ? 2.3 : 1.5, sl + 0.04, 0, 0, 0, f);
-      this._part(ob, 'box', COL.dark, ob.u - 0.95, 0.4, 0, 0, 0.6, 0.8, sl + 0.04, 0, 0, 0, f); this._part(ob, 'box', COL.dark, ob.u + 0.95, 0.4, 0, 0, 0.6, 0.8, sl + 0.04, 0, 0, 0, f);
-      if (ride) this._part(ob, 'box', 0xbfe3ff, ob.u, 1.6, 0, 0, 2.06, 0.5, sl * 0.8, 0, 0, 0, f);
-      else if (k === 0) { this._part(ob, 'box', 0xbfe3ff, ob.u, 2.2, 0, 0, 1.7, 1.0, sl, 0, 0, 0, f); this._part(ob, 'box', 0xffd23a, ob.u, 2.85, 0, 0, 0.9, 0.18, 0.4, 0, 0, 0, f); }
-      else this._part(ob, 'box', COL.rock, ob.u, 2.05, 0, 0, 1.6, 0.6, sl * 0.9, 0, 0, 0, f);
+      if (trainGlb.call(this, ob, k, sl, ob.u, f, !!ob.ice, ride)) continue;
+      if (ride) {      // rideable tram car: flat roof you can hop on (platformAt)
+        this._part(ob, 'box', 0x3a7de8, ob.u, 1.15, 0, 0, 2.0, 2.3, sl + 0.04, 0, 0, 0, f);
+        this._part(ob, 'box', 0xfff3d0, ob.u, 0.95, 0, 0, 2.06, 0.18, sl + 0.04, 0, 0, 0, f);
+        this._part(ob, 'box', 0xbfe3ff, ob.u, 1.6, 0, 0, 2.06, 0.5, sl * 0.8, 0, 0, 0, f);
+        this._part(ob, 'box', ob.glow || 0xffd23a, ob.u, 2.33, 0, 0, 1.9, 0.06, sl, 0, 0, 0, f);
+        this._part(ob, 'box', 0x2a2f3d, ob.u, 0.22, 0, 0, 2.1, 0.3, sl + 0.04, 0, 0, 0, f);
+      } else trainCar.call(this, ob, k, ns, sl, ob.u, f, k === 0 ? 0xe5392f : TRAIN_COLS[(k - 1 + 3) % 3], 0x2a2f3d);
+      trainWheels.call(this, ob, ob.u, sl, f);
     }
     // headlights (unlit, visible from far away) + translucent light cone ahead of the front (front = lower s = local +z)
     const f0 = ob.segF[0];
-    for (const sg of [-1, 1]) this._part(ob, 'lamp', 0xfff2b0, ob.u + sg * 0.7, 0.95, 0, 0, 0.55, 0.55, 0.55, 0, 0, sl / 2 + 0.1, f0);
-    this._part(ob, 'ice', 0xfff0a0, ob.u, 0.8, 0, 0, 1.9, 0.9, 7, 0, 0, sl / 2 + 3.7, f0);
+    const gl = !ride && this.pool.glbLoco;       // the model has its own twin lamps: only a small glow ball in front of each, for the far view
+    for (const sg of [-1, 1]) this._part(ob, 'lamp', 0xfff2b0, ob.u + sg * (gl ? 0.5 : 0.74), gl ? 0.9 : 0.8, 0, 0, gl ? 0.4 : 0.8, gl ? 0.4 : 0.8, gl ? 0.4 : 0.8, 0, 0, sl / 2 + (gl ? 0.1 : 0.25), f0);
+    this._part(ob, 'ice', 0xfff0a0, ob.u, 0.1, 0, 0, 2.3, 0.05, 9, 0, 0, sl / 2 + 4.8, f0);      // light pool on the track (was a floating 7 m box)
   },
   anim(ob) {
     if (ob.state === 0 && this.lastS >= ob.sP - (this.ballVs + ob.vt) * 3.6) { ob.state = 1; ob.tStart = this.time; }
@@ -3506,6 +3538,7 @@ KIND.overhead = {
     ob.tough = 5; ob.color = 0xffc21a; ob.hc = ob.hb + 0.2;
     const u0 = LANES[ob.lo] - 1.25, u1 = LANES[ob.hi] + 1.25, uc = (u0 + u1) / 2;
     ob.uMin = u0; ob.uMax = u1;
+    if (this.pool.glbBarrier) { for (let l = ob.lo; l <= ob.hi; l++) this._part(ob, 'glbBarrier', 0xffffff, LANES[l], 0, 0, 0, 1, (ob.hb + 0.05) / 0.7, 1); return; }   // the rail (y 0.7..1.0 in the model) starts at the beam height
     this._part(ob, 'box', COL.dark, u0 + 0.12, (ob.hb + 0.4) / 2, 0, 0, 0.24, ob.hb + 0.4, 0.3);
     this._part(ob, 'box', COL.dark, u1 - 0.12, (ob.hb + 0.4) / 2, 0, 0, 0.24, ob.hb + 0.4, 0.3);
     this._part(ob, 'plow', 0xffffff, uc, ob.hb + 0.2, 0, 0, u1 - u0, 0.4, 0.5);

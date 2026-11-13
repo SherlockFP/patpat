@@ -2,7 +2,7 @@
 // swipe-on-release fallback in src/input.js (a short quick flick must still fire; nothing may fire twice; taps stay taps).
 // Usage: node scripts/check-feel.mjs
 import { ChapterPlan, CHAPTERS, chapterLine, chapterReward, capUpgradeMult, UP_SCORE_CAP, upStartSize, upMeltMul, upMagnet, charStep, BONUS_EVERY } from '../src/runner/goals.js';
-import { turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, TURN_BUF, TURN_PERFECT_F0, TURN_LATE_F0, chainBonus, checkpointReward, nextGoal, SCORE_STEPS, yetiFit, yetiSide, recordEqDist, pickMission, missionFrac, missionsLeft, nextMult, missionLine, postcardLine, deathGoalKind } from '../src/runner/goals.js';
+import { turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, TURN_BUF, TURN_PERFECT_F0, TURN_LATE_F0, chainBonus, checkpointReward, nextGoal, SCORE_STEPS, yetiFit, yetiSide, recordEqDist, pickMission, missionFrac, missionsLeft, nextMult, missionLine, missionResultText, postcardLine, deathGoalKind } from '../src/runner/goals.js';
 
 let fails = 0, n = 0;
 const eq = (name, got, want) => { n++; if (got !== want) { fails++; console.log(`FAIL ${name}: got ${got}, want ${want}`); } };
@@ -115,6 +115,8 @@ for (const [tr, en] of [
   ['TOPLA', 'COLLECT'], ['DOKUNULMAZ', 'UNTOUCHABLE'], ['KAÇIŞ', 'ESCAPE'], ['PATRON', 'BOSS'], ['Bitişe ulaş!', 'Reach the finish!'],
 ]) if (en) eq(`EN ${tr}`, t(tr), en);
 // the composed lines are built from translated parts: no Turkish word may survive in the English line
+eq('result line: 0/3 has no to-go', missionResultText({ text: 'X', value: 0, goal: 3 }), 'X (0/3)');
+eq('result line: 1/3 -> 2 to go', missionResultText({ text: 'X', value: 1, goal: 3 }), 'X (1/3) · 2 kaldı');
 eq('EN mission line', missionLine({ text: 'Mission text', value: 1, goal: 3 }, 4, t), 'MISSION: Mission text (1/3) · MULTIPLIER x4');
 eq('EN postcard line', postcardLine('Volkan', 5, 14, t), 'POSTCARD: Volcano 5/14');
 {
@@ -235,7 +237,7 @@ ok('character level 1..5 = passive step 0..4', charStep(1) === 0 && charStep(5) 
   ok('i18n runs in English here (no navigator)', getLang() === 'en');
   const TR = /[ğüşıöçİĞÜŞÖÇ]/;
   const strings = [];
-  for (const c of CHAPTERS) { strings.push(c.name, c.intro); }
+  for (const c of CHAPTERS) { strings.push(c.name, c.intro); if (c.word) strings.push(c.word); }
   strings.push('TEMİZ BÖLÜM! x2', 'BÖLÜM TAMAM', 'HAVA BONUSU', 'YETİ SERSEMLEDİ!', 'KIL PAYI 1/3', 'KIL PAYI 2/3', "REKOR'A 1.250 PUAN", 'GÖREV:', 'ÇARPAN');
   for (const c of CHAPTERS) { strings.push(chapterLine(3, c.name, t, true)); strings.push(chapterReward(3, true).coins + ' ❄️'); }
   for (const str of strings) { const r = t(str); ok('English for: ' + str + ' -> ' + r, r !== str ? !TR.test(r) : /^[^\p{L}]*(CHAPTER \d+ · .+)?$/u.test(r) || /^[\d.,]+ ❄️$/.test(r)); }

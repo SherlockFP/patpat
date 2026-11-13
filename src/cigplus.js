@@ -20,6 +20,7 @@ import { patchMaterial } from './shaders.js';
 let lastInputAt = performance.now();
 if (typeof window !== 'undefined') for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'keydown']) window.addEventListener(ev, () => { lastInputAt = performance.now(); }, { passive: true, capture: true });
 import { MOVE_ARMY, MOVE_NONE, clamp } from './world.js';
+import { setIcon } from './uiicons.js';
 import { RAMP_AIR_K, ROLL_EVERY, fmtD } from './cigplan.js';
 
 const TAU = Math.PI * 2;
@@ -615,7 +616,7 @@ export class CigPlus {
       const P = POWERS[k], hex = '#' + P.color.toString(16).padStart(6, '0');
       const el = document.createElement('div');
       el.style.cssText = `position:relative;width:44px;height:44px;border-radius:13px;background:rgba(10,20,40,.6);border:2px solid ${hex};display:none;align-items:center;justify-content:center;font-size:23px;line-height:1;`;
-      el.textContent = P.icon;
+      setIcon(el, P.icon);
       const bar = document.createElement('i');
       bar.style.cssText = `position:absolute;left:5px;right:5px;bottom:3px;height:4px;border-radius:2px;background:${hex};transform-origin:left center;`;
       el.appendChild(bar);

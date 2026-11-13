@@ -4,7 +4,7 @@
 // 390x844 @ dpr 1, nothing online (every non-localhost request is blocked), only our own PIDs are killed, never the owner's Chrome.
 // Machine lock: os.tmpdir()/patpat-smoke.lock holds the PID of the running smoke test; a second run waits up to 8 min, a lock whose PID is dead is taken over.
 // Timeouts: every scenario has a hard timeout (30 s default, 90 s Rush playtest; a few say otherwise below). On expiry it FAILs and the run moves on;
-// the stuck scenario can no longer touch the browser (its next CDP call is rejected). Whole run is capped at ~4 min (later scenarios are skipped with WARN).
+// the stuck scenario can no longer touch the browser (its next CDP call is rejected). Whole run is capped at ~6 min (later scenarios are skipped with WARN).
 // Frames for humans/critics are shot without the ?debug overlay: s1-s4, s13, s14, s15 load without ?debug. Scenarios that need the cig.* hooks (s5-s9, s11) load with
 // ?debug but an injected style (#debug{display:none}) keeps the overlay out of every frame; only s16 shows it. Draw calls / triangles come from a WebGL draw hook
 // injected into every document (all passes of a frame summed), so they work without ?debug.
@@ -17,11 +17,11 @@
 //   8  english leak scan                                      9  fullscreen                    11  soak (heap after GC)
 //   12 frame pacing (Rush, rAF deltas)                        13 first-run frames first_00..03.png at 0.5/2/5/10 s (fresh save)
 //   14 cig mountain 1 start/mid/town/end (cig_1_*.png)             15 cig mountain 12 start/mid/end (cig_12_*.png)
-//   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   10 is the final blank-frame check (always printed)
+//   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   21 rush camera sweep (flat frames)   22 new chapters ekspres/ay/lazer/kopru/fuze/hareket/heyelan/turbo: rush_ch_<id>.png (name strip + one-word label) and mech_<id>.png (the mechanic in view, needs ?debug hooks)   24 menu text: after every bottom-nav panel and after a Rush death -> MENU no toast / hint / float / banner / HUD text is left on screen   25 AI UI icons: icons_rush_buff.png, icons_perk.png, icons_cig.png (images decoded, not emoji)   10 is the final blank-frame check (always printed)
 import { spawn, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { tmpdir, setPriority, constants as osc } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateSync } from 'node:zlib';
@@ -29,7 +29,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = process.env.CHROME_PATH || 'C:/Users/Admin/AppData/Local/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-win64/chrome-headless-shell.exe';
-const BUDGET_MS = 232_000;                     // whole run (browser time) must stay under 4 min; later scenarios are skipped past this
+const BUDGET_MS = 380_000;                     // whole run (browser time) must stay under ~6 min; later scenarios are skipped past this
 let T0 = Date.now();                           // reset after the lock is taken, so waiting for another run does not count
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => Date.now() - T0;
@@ -134,9 +134,12 @@ function pngStats(buf) {
       px[d + i] = v & 255;
     }
   }
-  let n = 0, s = 0, s2 = 0; const set = new Set();
-  for (let y = 0; y < h; y += 3) for (let x = 0; x < w; x += 3) { const i = y * st + x * bpp, l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; n++; s += l; s2 += l * l; set.add((px[i] >> 4) << 8 | (px[i + 1] >> 4) << 4 | px[i + 2] >> 4); }
-  return { std: Math.sqrt(Math.max(0, s2 / n - (s / n) ** 2)), uniq: set.size };
+  let n = 0, s = 0, s2 = 0; const set = new Set(), bins = new Map(); let mid = 0;
+  for (let y = 0; y < h; y += 3) for (let x = 0; x < w; x += 3) {
+    const i = y * st + x * bpp, l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; n++; s += l; s2 += l * l; set.add((px[i] >> 4) << 8 | (px[i + 1] >> 4) << 4 | px[i + 2] >> 4);
+    if (y > h * 0.15 && y < h * 0.85) { mid++; const q = (px[i] >> 5) << 6 | (px[i + 1] >> 5) << 3 | px[i + 2] >> 5; bins.set(q, (bins.get(q) || 0) + 1); }   // dom: the biggest coarse-colour share of the middle band
+  }
+  return { std: Math.sqrt(Math.max(0, s2 / n - (s / n) ** 2)), uniq: set.size, dom: Math.max(0, ...bins.values()) / (mid || 1) };
 }
 // opts.noBlank: intro frames that may legitimately be near-empty (boot veil, first paint) are kept but not blank-checked
 async function shot(name, ctx, opts = {}) {
@@ -146,7 +149,8 @@ async function shot(name, ctx, opts = {}) {
   if (!opts.noBlank) { shotStats.push(s); if (ctx) (ctx.shots ||= []).push(s); }
   return s;
 }
-const blank = (s) => s.std < 6 || s.uniq < 24;
+const FLAT_RE = /^(rush_(?!result)|mech_|first_0[1-3]|cig_)/;   // gameplay frames: one flat colour over the middle band (camera inside terrain, e.g. a full green frame) = blank
+const blank = (s) => s.std < 6 || s.uniq < 24 || (FLAT_RE.test(s.name || '') && s.dom > 0.72);
 
 // ---------------------------------------------------------------- memory / heap
 // sum of working sets of our browser's process tree (root pid + descendants), never other headless shells on the machine
@@ -170,7 +174,7 @@ const tri=(m,c)=>m===4?c/3:(m===5||m===6)?Math.max(0,c-2):0;
 const w=(name,f)=>{const o=P[name];if(!o)return;P[name]=function(...a){G.calls++;G.tris+=f(a);return o.apply(this,a)}};
 w('drawArrays',a=>tri(a[0],a[2]));w('drawElements',a=>tri(a[0],a[1]));
 w('drawArraysInstanced',a=>tri(a[0],a[2])*a[3]);w('drawElementsInstanced',a=>tri(a[0],a[1])*a[4]);w('drawRangeElements',a=>tri(a[0],a[4]));
-const tick=()=>{if(G.calls){G.n++;G.sc+=G.calls;G.st+=G.tris;if(G.calls>G.mc)G.mc=G.calls;if(G.tris>G.mt)G.mt=G.tris}G.calls=0;G.tris=0;requestAnimationFrame(tick)};requestAnimationFrame(tick);
+const flush=()=>{if(G.calls){G.n++;G.sc+=G.calls;G.st+=G.tris;if(G.calls>G.mc)G.mc=G.calls;if(G.tris>G.mt)G.mt=G.tris}G.calls=0;G.tris=0};G.flush=flush;const tick=()=>{flush();requestAnimationFrame(tick)};requestAnimationFrame(tick);
 }
 if(!/[?&]showdbg\\b/.test(location.search)){const add=()=>{if(!document.documentElement)return false;const s=document.createElement('style');s.textContent='#debug{display:none!important}';(document.head||document.documentElement).appendChild(s);return true};if(!add())document.addEventListener('DOMContentLoaded',add)}
 })()`;
@@ -240,7 +244,7 @@ async function scenario(id, name, budget, fn) {
   if (ONLY && !ONLY.includes(String(id))) return;
   const t = Date.now(); const out = []; const ctx = { pass: (m) => out.push(['PASS', m]), warn: (m) => out.push(['WARN', m]), fail: (m) => out.push(['FAIL', m]), shots: [] };
   const left = BUDGET_MS - now();
-  if (left < 6000) { out.push(['WARN', 'skipped: 4 min run budget used']); }
+  if (left < 6000) { out.push(['WARN', 'skipped: 6 min run budget used']); }
   else {
     const hard = Math.min(budget, left), store = { dead: false }; glReset();
     try {
@@ -252,9 +256,10 @@ async function scenario(id, name, budget, fn) {
     if (E.exc.length) ctx.fail('exceptions: ' + E.exc.slice(0, 3).join(' | ').slice(0, 300));
     if (E.cons.length) ctx.fail('console.error: ' + E.cons.slice(0, 3).join(' | ').slice(0, 300));
     if (E.net.length) ctx.fail('requests: ' + E.net.slice(0, 4).join(' | ').slice(0, 300));
-    const bl = ctx.shots.filter(blank); if (bl.length) ctx.fail('blank frame: ' + bl.map((s) => `${s.name}(std ${s.std.toFixed(1)},uniq ${s.uniq})`).join(','));
+    const bl = ctx.shots.filter(blank); if (bl.length) ctx.fail('blank frame: ' + bl.map((s) => `${s.name}(std ${s.std.toFixed(1)},uniq ${s.uniq},dom ${(s.dom || 0).toFixed(2)})`).join(','));
     else if (ctx.shots.length) ctx.pass(`non-blank x${ctx.shots.length} (min std ${Math.min(...ctx.shots.map((s) => s.std)).toFixed(1)}, min colours ${Math.min(...ctx.shots.map((s) => s.uniq))})`);
     const gl = glLine(GLACC); if (gl) out.push(['INFO', gl]);
+    if (GLACC && GLACC.mc >= 400) ctx.fail(`draw calls in one frame reached ${GLACC.mc} (limit 400)`);
   }
   const worst = out.some((o) => o[0] === 'FAIL') ? 'FAIL' : out.some((o) => o[0] === 'WARN') ? 'WARN' : 'PASS';
   results.push({ id, worst });
@@ -358,6 +363,8 @@ async function gallery(ctx) {
   await crit([['penguin', 'bunny', 'squirrel'], ['miniyeti', 'snowmini', 'scorpion'], ['jelly', 'robot', 'arcticfox']]); await go('gal_critters_a');
   await put('o.critters.reset?.()'); await crit([['panda', 'polarcub', 'clownbot'], ['lavabug', 'penguin', 'bunny']]); await go('gal_critters_b');
   await prop([['snowman', 'sign', 'crate'], ['sled', 'logpile', 'pine'], ['rock', 'stone', 'snowman']]); await go('gal_props_a');
+  await put('o._static({batch:[]},"cabin",b.s+10,-2.4);o._mk({batch:[]},{kind:"overhead",s:b.s+20,lo:0,hi:2,hb:1.2,u:0,ext:2.4,glow:0xffd23a});o._static({batch:[]},"snowcat",b.s+36,2.4,{L:12,ext:7.5})'); await go('gal_props_c');   // Blender cabin, barrier row, loco + cars
+  await put('o._static({batch:[]},"snowcat",b.s+22,-2.4,{L:12,ext:7.5,ice:true});o._static({batch:[]},"snowcat",b.s+22,2.4,{L:12,ext:16,ride:true,rl:0,H:2.3})'); await go('gal_props_d');   // ice train + ride car
   ctx.pass('gallery frames shot');
 }
 
@@ -368,6 +375,8 @@ async function skies(ctx) {
   await ev('(()=>{const r=cig.runner;r.invulnT=999;r.yetiHoldT=99})()');
   for (const [id, sky] of [['orman', 'dawn'], ['ray', 'canyon'], ['duello', 'night']]) {
     await ev(`(()=>{const r=cig.runner,seg=r.chapters.segs.find((g)=>g.id==='${id}')||(()=>{let g;for(let i=0;i<9&&!(g=r.chapters.segs.find((x)=>x.id==='${id}'));i++)r.chapters.at(r.chapters.segs[r.chapters.segs.length-1].s1+1);return g})();r.b.s=seg.s0+60})()`);
+    await waitFor(`cig.runner.chap&&cig.runner.chap.id==='${id}'`, 4000, 'chapter ' + id).catch(() => {});
+    await ev('(()=>{const r=cig.runner;if(r._lookP)r._lookP.bi=-1})()');      // (the chapter sky waits for the next track biome; here the biome change is faked)
     await waitFor(`cig.runner.chap&&cig.runner.chap.id==='${id}'&&cig.runner.env._bdCur==='${sky}'&&cig.runner.env._bdK>0.95`,6000,'sky '+id).catch(()=>{});
     const st = await ev(`(()=>{const r=cig.runner,e=r.env;return {cur:e._bdCur,k:e._bdK,vis:e.bd.visible,chap:r.chap&&r.chap.id,s:r.b.s,segs:r.chapters.segs.map((g)=>g.id+':'+g.s0).join(',')}})()`);
     await shot('sky_' + id, ctx);
@@ -390,9 +399,9 @@ async function rushPlaytest(ctx) {
   let secShot = false;
   const sections = new Set();   // set-piece name strips seen (.sec-strip)
   const chaps = new Set(); let ch2At = 0, ch2Shot = false;   // chapter name pills seen; rush_ch2.png is shot 1.1 s after 'CHAPTER 2' appears (the new biome palette has blended in)
-  let played = 0, frame = 0, deaths = 0, tick = 0, lastT = Date.now(), resultShot = false, powerShot = false, retryMs = [], paceDone = false;
+  let played = 0, frame = 0, deaths = 0, tick = 0, lastT = Date.now(), resultShot = false, powerShot = false, retryMs = [], paceDone = false, clipDone = false;
   const rows = [];
-  const cap = Date.now() + 74000;
+  const cap = Date.now() + 100000;   // wall cap: every death costs ~5 s of result+retry that is not "played"
   const afterResult = async (td) => {   // result screen is up: shoot once, retry, back to playing
     await sleep(600);
     if (!resultShot) { resultShot = true; await ev(`document.querySelector('.rx-ms')?.style.setProperty('--f','45%')`); await shot('rush_result', ctx);   // (--f 45%: the mission fill is on screen, so the frame shows it next to the text)
@@ -426,6 +435,8 @@ async function rushPlaytest(ctx) {
     if (frame < 12 && played >= frame * 5000) {
       const r = await ev(`({d:${hudDist},sc:(document.getElementById('hud-tons')||{}).textContent})`);
       await ev('window.__raf.skip=true'); await shot('rush_' + String(frame).padStart(2, '0'), ctx); await ev('window.__raf.skip=false;window.__raf.ign=3');
+      const clip = await ev(`(()=>{const e=document.querySelector('#hud.rush .hud-goal:not(.hidden) .goal-lbl');return e&&e.scrollWidth>e.clientWidth+1?e.textContent.trim():''})()`);   // mission pill text cut off (390 px wide)
+      if (clip && !clipDone) { clipDone = true; ctx.fail('mission pill text is truncated: ' + clip); }
       rows.push(`#${String(frame).padStart(2, '0')} t=${frame * 5}s dist=${r.d}m score=${r.sc}`);
       if (frame === 2 && !paceDone) { paceDone = true; await ev(`window.__raf.mark=window.__raf.d.length`); }
       if (frame === 4) rushStats = await ev(RAF_READ);
@@ -435,7 +446,7 @@ async function rushPlaytest(ctx) {
     await sleep(120);
   }
   await glTake(); rushGl = glLine(GLACC);
-  if (frame < 12 || played < 60000) ctx.fail(`only ${frame}/12 frames, played ${(played / 1000).toFixed(0)} s in ${(74000 / 1000)} s wall cap`);
+  if (frame < 12 || played < 60000) ctx.fail(`only ${frame}/12 frames, played ${(played / 1000).toFixed(0)} s in ${(100000 / 1000)} s wall cap`);
   console.log('  ' + rows.join('\n  '));
   if (sections.size) ctx.pass(`set-piece strips seen: ${[...sections].join(' | ')}`); else ctx.warn('no set-piece strip seen in 60 s (set pieces are random)');
   if (ch2Shot) ctx.pass(`chapters seen: ${[...chaps].join(' | ')}; rush_ch2.png shot after the chapter change`); else ctx.warn(`CHAPTER 2 never reached in one life (chapters seen: ${[...chaps].join(' | ') || 'none'}); no rush_ch2.png`);
@@ -628,6 +639,97 @@ async function debugStats(ctx) {
   if (m) ctx.pass(`debug overlay (last render pass only): calls ${m[1]}, tris ${m[2]}k${f ? ', game fps ' + f[1] : ''}`); else ctx.fail('no calls/tris in #debug text: ' + JSON.stringify(dbg.slice(0, 120)));
 }
 
+// Rush camera sweep (needs ?debug hooks): sims whole runs with random lane changes and renders after every step; any frame where one colour fills the middle of the screen
+// (camera inside terrain / a tunnel) is a FAIL. Same flat-colour test as the shot() check below, but on every 20th sim frame, so a 1-in-a-run frame cannot slip through.
+const SWEEP = `window.__sweep=(sec)=>{const cv=document.getElementById('c'),r=cig.runner,t=document.createElement('canvas');t.width=39;t.height=84;const x=t.getContext('2d',{willReadFrequently:true});const bad=[];let n=0,fMax=0;
+for(let i=0;i<sec*60;i++){if(r.pickT>0)r.pickPerk("kalin");if(i%23===0)r.laneChange(Math.random()<.5?-1:1);if(i%90===5)r.dive?.();cig.simEndless(1/60);if(r.state==='over')break;
+if(i%10)continue;x.drawImage(cv,0,0,39,84);const d=x.getImageData(0,18,39,56).data,h=new Map();let m=0;for(let k=0;k<d.length;k+=4){const q=(d[k]>>4)<<8|(d[k+1]>>4)<<4|(d[k+2]>>4),c=(h.get(q)||0)+1;h.set(q,c);if(c>m)m=c}
+n++;const f=m/(d.length/4);if(f>fMax)fMax=f;if(f>0.7){const img=bad.length<2?cv.toDataURL('image/jpeg',0.6):0,cul=[];if(!bad.length){const fr=()=>{x.drawImage(cv,0,0,39,84);const d=x.getImageData(0,18,39,56).data,h=new Map();let m=0;for(let k=0;k<d.length;k+=4){const q=(d[k]>>4)<<8|(d[k+1]>>4)<<4|(d[k+2]>>4),c=(h.get(q)||0)+1;h.set(q,c);if(c>m)m=c}return m/(d.length/4)};const walk=(o,pa)=>{for(const ch of o.children){const v=ch.visible;ch.visible=false;cig.simEndless(0);const f2=fr();ch.visible=v;if(f2<f-0.25){cul.push(pa+'/'+(ch.name||ch.type)+(ch.geometry?':'+ch.geometry.type:''));if(pa.split('/').length<4)walk(ch,pa+'/'+(ch.name||ch.type))}}};walk(r.ctx.scene,'')}bad.push({cul,cam:cig.camera.position.toArray().map(v=>+v.toFixed(1)),bp:r.ctx.ball.group.position.toArray().map(v=>+v.toFixed(1)),gr:r.grounded,img,i,f:+f.toFixed(2),st:r.state,s:Math.round(r.b.s),kind:r.track.pieceAt(r.b.s)?.kind,cause:r.cause,seed:r.seed})}}
+return{n,bad:bad.slice(0,6),end:r.state,s:Math.round(r.b.s),fMax:+fMax.toFixed(2)}}`;
+async function camSweep(ctx) {
+  await load('?debug&endless&notut', seed3());
+  await waitFor(`${dbgRush}`, 25000, 'rush playing');
+  await ev(SWEEP);
+  let frames = 0; const bad = [];
+  for (let run = 0; run < +(process.env.SWEEP_RUNS || 3); run++) {
+    const r = await ev(`window.__sweep(70)`);
+    frames += r.n; for (const b of r.bad) { if (b.img) writeFileSync(join(SHOTS, `sweep_bad_${bad.length}.jpg`), Buffer.from(b.img.split(',')[1], 'base64')); delete b.img; bad.push(b); } if (process.env.VERBOSE) console.log('  sweep run', run, JSON.stringify(r));
+    await ev(`cig.endless()`); await waitFor(`${dbgRush}`, 15000, 'rush playing again');
+  }
+  if (bad.length) ctx.fail(`flat-colour Rush frames (one colour > 70% of the middle): ${JSON.stringify(bad.slice(0, 4))}`);
+  else ctx.pass(`Rush camera sweep: ${frames} rendered frames, none flat`);
+}
+
+// scenario 22: the new chapters. A hand-made one-chapter plan (the tour's own def of each id) is started, simmed to ~400 m, then the chapter is entered again so the name strip and the one-word label show.
+// mech_<id>.png is shot when the mechanic is in view (train / laser / missile / mover / bridge / boulder; ay + turbo: the state is asserted).
+const CH_NEW = [['ekspres', 'oncoming', /TRAIN/], ['ay', null, /MOON/], ['lazer', 'laser', /LASER/], ['kopru', 'icebridge', /COLLAPS/], ['fuze', 'missile', /MISSILE/], ['hareket', 'moving', /SLIDE/], ['heyelan', 'boulder', /ROCK/], ['turbo', null, /SPEED/]];
+async function newChapters(ctx) {
+  await load('?endless&notut&debug', seed3());
+  await waitFor(dbgRush, 25000, 'rush playing');
+  await ev(`(()=>{const r=cig.runner,D=window.__defs={};for(const [id] of ${JSON.stringify(CH_NEW)}){let g;for(let i=0;i<40&&!(g=r.chapters.segs.find((x)=>x.id===id));i++)r.chapters.at(r.chapters.segs[r.chapters.segs.length-1].s1+1);D[id]=g}})()`);
+  for (const [id, kind, re] of CH_NEW) {
+    await ev(`(()=>{const r=cig.runner,g=window.__defs['${id}'];
+      const seg=Object.assign({},g,{n:7,s0:450,s1:1e9,i:0}),pl=Object.assign({},r.chapters.segs[0],{s0:0,s1:450});r.start(5,null,{chapterPlan:{segs:[pl,seg],at:(s)=>s>=450?seg:pl}});r.invulnT=1e9;r.yetiHoldT=99;r.track.features.junction=false;r.track.setHardness(3)})()`);      // (the chapter starts at 450 m like in a real run: plain slope before it; hardness 3: the 3.5 km difficulty from the first metres; no corners, the sim does not steer)
+    await waitFor(dbgRush, 8000, 'rush restarted ' + id);
+    await ev(`(()=>{const r=cig.runner;for(let i=0;i<60*90&&r.b.s<452&&r.state!=='over';i++){if(r.pickT>0){r.pickPerk('kalin');document.querySelectorAll('.perk-pick').forEach((e)=>e.remove())}r.invulnT=1e9;cig.simEndless(1/60)}})()`);
+    await waitFor(`${re.toString()}.test(document.querySelector('.chap-pill.on')?.textContent||'')`, 4000, 'name pill ' + id).catch(() => {});      // (the name pill is a real-time message, queued behind the last one: wall time, not sim time)
+    await sleep(450);   // (the name pill fades in)
+    await ev('window.__raf&&(window.__raf.skip=true)'); await shot('rush_ch_' + id, ctx); await ev('window.__raf&&(window.__raf.skip=false)');
+    const w = await ev(`(document.querySelector('.chap-pill')?.textContent||'').replace(/\s+/g,' ')`);
+    if (process.env.VERBOSE) console.log('  s22 ' + id + ' pieces ' + await ev(`cig.runner.track.pieces.filter(p=>p.s1>400&&p.s0<560).map(p=>p.kind+':'+Math.round(p.s0)+'-'+Math.round(p.s1)).join(' ')`) + ' | obs ' + await ev(`cig.runner.obstacles.obs.filter(o=>(o.cs??o.s)>440&&(o.cs??o.s)<560).map(o=>o.kind+'@'+Math.round(o.cs??o.s)).join(' ')`));
+    if (kind && kind !== 'boulder') {   // the chapter's signature hazard must land within 40 m of the chapter start (450 m), the banner and the hazard arrive together
+      const f = await ev(`(()=>{let m=1e9;for(const ob of cig.runner.obstacles.obs){const x=ob.s;if(ob.kind===${JSON.stringify(kind)}&&x>=438&&x<m)m=x}return m<1e9?Math.round(m-450):-1})()`);
+      if (f > -13 && f <= 45) ctx.pass(`chapter ${id}: first ${kind} ${f} m after the chapter start`); else ctx.fail(`chapter ${id}: first ${kind} ${f < 0 ? 'not spawned' : f + ' m'} after the chapter start (limit 45 m)`);
+    }
+    const hunt = await ev(`(()=>{const r=cig.runner,o=r.obstacles,K=${JSON.stringify(kind)};r.invulnT=1e9;r.yetiHoldT=99;let ds=null;
+      for(let i=0;i<60*70&&r.state!=='over';i++){if(r.pickT>0){const c=document.getElementById('perk-cards').firstElementChild;if(c)c.click();else r.pickPerk('kalin');document.getElementById('perks').classList.add('hidden')}r.invulnT=1e9;cig.simEndless(1/60);if(r.b.s<420)continue;
+        if(K==='boulder'){if(o.dyn.length){ds=1;break}}else if(K){for(const ob of o.obs){const s=ob.cs!==undefined?ob.cs:ob.s;if(ob.kind===K&&ob.alive!==false&&s-r.b.s>14&&s-r.b.s<46){ds=Math.round(s-r.b.s);break}}if(ds!==null)break}else if(i>60*14)break}
+      const h={};for(const ob of o.obs)h[ob.kind]=(h[ob.kind]||0)+1;return{ds,cause:r.cause,s:Math.round(r.b.s),chap:r.chap&&r.chap.id,lowG:r.lowG,spd:r.chapSpd,t:+r.time.toFixed(1),st:r.state,h:JSON.stringify(h)}})()`);
+    await ev("document.getElementById('perks').style.display='none'"); await ev('window.__raf&&(window.__raf.skip=true)'); await shot('mech_' + id, ctx); await ev('window.__raf&&(window.__raf.skip=false)');
+    if (id === 'ekspres' && hunt.ds !== null) {      // close-up: the train judged in motion, 3-9 m in front of the ball (train_close.png)
+      const near = await ev(`(()=>{const r=cig.runner,o=r.obstacles;r.invulnT=1e9;r.yetiHoldT=99;for(let i=0;i<60*8&&r.state!=='over';i++){r.invulnT=1e9;cig.simEndless(1/60);for(const ob of o.obs){const s=ob.cs!==undefined?ob.cs:ob.s;if(ob.kind==='oncoming'&&ob.alive!==false&&s-r.b.s>3&&s-r.b.s<9)return Math.round(s-r.b.s)}}return null})()`);
+      await ev('window.__raf&&(window.__raf.skip=true)'); await shot('train_close', ctx); await ev('window.__raf&&(window.__raf.skip=false)');
+      if (near !== null) ctx.pass(`train close-up shot (train ${near} m ahead): train_close.png`); else ctx.fail('train close-up: no train came within 9 m');
+    }
+    const okMech = hunt.chap === id && (kind ? hunt.ds !== null : id === 'ay' ? hunt.lowG === true : hunt.spd > 1);
+    if (okMech) ctx.pass(`chapter ${id}: mechanic in view ${JSON.stringify(hunt)}`); else ctx.fail(`chapter ${id}: mechanic never seen ${JSON.stringify(hunt)}`);
+    if (re.test(w)) ctx.pass(`chapter ${id}: one-word label on the chapter pill ("${w.slice(0, 60)}")`); else ctx.fail(`chapter ${id}: label ${re} missing in "${w.slice(0, 80)}"`);
+  }
+}
+
+// scenario 24: no stray text on the menu. Visible text outside the menu card / panels (toast, hint, float, banner, HUD, level-up overlay) is scanned after every bottom-nav panel and after a Rush death -> MENU.
+const STRAY = `(()=>{const out=[];const vis=(e)=>{const b=e.getBoundingClientRect();if(b.width<2||b.height<2)return false;const cs=getComputedStyle(e);return cs.visibility!=='hidden'&&cs.display!=='none'&&+cs.opacity>0.05};
+  for(const sel of ['#toast-soft','#hint','#floats','#banner','#subtitle','#tutor','#stomp','#cig-banner','#buff-fly','#hud','#result']){for(const e of document.querySelectorAll(sel)){if(!vis(e))continue;const own=[...e.querySelectorAll('*')].filter((c)=>c.children.length===0&&(c.textContent||'').trim()&&vis(c)&&c.getBoundingClientRect().bottom>0).map((c)=>c.textContent.trim());if(own.length||sel.startsWith('.fm'))out.push(sel+':'+own.join('|').slice(0,60))}}
+  return out})()`;
+async function menuClean(ctx) {
+  const d = new Date(), day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  await load('?debug', seedOf(save({ wheel: { seen: 1, day } })), { waitBoot: false });
+  for (let i = 0; !(await ev(MENU_UP)); i++) { if (i > 800) throw new Error('timeout menu first appears'); await sleep(25); }
+  const settle = async () => { for (let i = 0; i < 4; i++) { if (await ev(`!!${FIND('.fm-play')}`)) return; await key('Escape'); await sleep(350); } };
+  await waitFor(MENU_SETTLED, 12000, 'menu settled').catch(() => {}); await settle(); await sleep(3500);      // (the first-steps toast removes itself after ~2.7 s)
+  const say = (m) => { if (process.env.VERBOSE) console.log('  s24 ' + m + ' @' + (now() / 1000).toFixed(1)); };
+  const claim = async () => { for (let i = 0; i < 4 && (await ev(`!!document.querySelector('.fm-lvup .fm-btn')`)); i++) { await tapSel('.fm-lvup .fm-btn', null, 2000).catch(() => {}); await sleep(400); } };      // (the level-up reward is a modal on the menu: it must close with its CLAIM button)
+  const bad = [], scan = async (what) => { say(what); await sleep(250); const s = await ev(STRAY); if (s.length) bad.push(what + ' -> ' + s.join(' ; ')); };
+  await scan('menu'); await claim();
+  const labels = await ev(`[...document.querySelectorAll('.fm-secrow .fm-sb')].map(b=>b.getAttribute('aria-label')||b.textContent.trim())`);
+  for (const lb of labels) {
+    try {
+      await tapSel('.fm-secrow .fm-sb', new RegExp(reEsc(lb)), 3000); await sleep(350); await key('Escape');
+      await waitFor(`!!${FIND('.fm-secrow .fm-sb')} && !document.querySelector('.fm-ov')`, 6000, 'closes'); await scan('after panel "' + lb + '"');
+    } catch (e) { await key('Escape'); await sleep(300); }
+  }
+  for (let round = 0; round < 2; round++) {      // Rush -> forced death -> result -> MENU: the result must stay tappable (no level-up overlay on top) and nothing may be left on the menu
+    await claim(); say('round ' + round + ' start'); await ev('cig.endless()'); await waitFor(dbgRush, 20000, 'rush playing'); await sleep(2500); say('playing');
+    await ev("cig.runner.die('wall')"); await waitFor(RESULT_UP, 8000, 'result'); await sleep(2200); say('result');
+    const cover = await ev(`(()=>{const b=document.querySelector('#btn-menu');if(!b)return 'no #btn-menu';const r=b.getBoundingClientRect(),h=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return h&&(h===b||b.contains(h))?'':'covered by '+(h&&h.className)})()`);
+    if (cover) bad.push('round ' + round + ': result MENU button ' + cover);
+    await tapSel('#btn-menu', null, 4000).catch(() => {}); await waitFor(MENU_UP, 8000, 'menu back').catch(() => {}); await sleep(3500);
+    await claim(); await scan('after run ' + round);
+    for (let i = 0; i < 3 && (await ev(`!!document.querySelector('.fm-ov,.fm-boxov')`)); i++) { await key('Escape'); await sleep(350); }
+  }
+  if (bad.length) ctx.fail('stray text on the menu: ' + bad.join(' | ').slice(0, 400)); else ctx.pass(`no stray toast / hint / float / banner / HUD text on the menu after ${labels.length} panels and 2 Rush deaths`);
+}
+
 // Vite's dev server reloads the page once when a lazily imported dependency (trystero/peerjs/three chunks) is first discovered.
 // Touch every lazy path once up front so no scenario is hit by that reload. A second run is instant (cache in node_modules/.vite).
 async function warmup() {
@@ -644,6 +746,25 @@ async function warmup() {
 }
 
 // ---------------------------------------------------------------- main
+// scenario 25: AI UI icons (public/ui/*.webp). Menu logo + mode / currency icons are already in s3_menu.png; here: Rush HUD with buffs + coin chip (icons_rush_buff.png), the perk pick cards (icons_perk.png),
+// the cig HUD with a power chip (icons_cig.png). Asserts that the images are really decoded (naturalWidth > 0), i.e. emoji is not what is on screen.
+async function uiIcons(ctx) {
+  await load('?endless&notut&debug', seed3());
+  await waitFor(`${rushPlay}&&(${hudDist})>=0`, 30000, 'rush playing');
+  await ev(`(()=>{const r=cig.runner,u=r.ctx.ui;r.invulnT=999;r.yetiHoldT=99;u.buffAdd('magnet','🧲','MIKNATIS',20);u.buffAdd('shield','🛡️','KALKAN',25);u.runnerPerkIcon('🧊','Donma');})()`);
+  await sleep(1500); await shot('icons_rush_buff', ctx);
+  await ev(`cig.runner.ctx.ui.runnerPerkPick([{id:'miknatis',icon:'🧲',name:'Mıknatıs',desc:'Kar taneleri sana akar'},{id:'kabuk',icon:'🛡️',name:'Kabuk',desc:'Bir çarpışmayı affeder'},{id:'donma',icon:'🧊',name:'Donma',desc:'Erime durur'}],()=>{},30)`);
+  await sleep(700); await shot('icons_perk', ctx);
+  const r = await ev(`(()=>{const q=[...document.querySelectorAll('.buff .uim,.perk-card .uim,.perk-ico .uim,.hud-coins .uim')],n=q.length;const ok=q.filter(i=>i.complete&&i.naturalWidth>0).length;return{n,ok}})()`);
+  if (r.n >= 6 && r.ok === r.n) ctx.pass(`rush icons decoded: ${r.ok}/${r.n} images (buffs, perk cards, coin chip)`); else ctx.fail(`rush icons: ${JSON.stringify(r)}`);
+  await load('?debug&auto&cig=1', seedOf(save()));
+  await waitFor(`window.cig&&cig.G.mode==='cig'&&cig.G.state==='play'`, 25000, 'mountain playing');
+  await ev(`cig.plus&&cig.plus._buffOn&&cig.plus._buffOn('magnet')`);
+  await sleep(1200); await shot('icons_cig', ctx);
+  const c = await ev(`[...document.querySelectorAll('.uim')].filter(i=>i.complete&&i.naturalWidth>0&&i.getBoundingClientRect().width>0).length`);
+  if (c >= 1) ctx.pass(`cig HUD icon decoded (${c} image(s) on screen)`); else ctx.fail('cig HUD: no decoded icon image on screen');
+}
+
 async function main() {
   if (!existsSync(CHROME)) { console.error('Chrome headless shell not found: ' + CHROME + ' (set CHROME_PATH)'); process.exit(2); }
   await takeLock(); T0 = Date.now();
@@ -659,11 +780,13 @@ async function main() {
   console.log(`vite pid ${vite.pid} on ${ORIGIN}; shots in ${SHOTS}`);
   for (let i = 0; ; i++) { try { if ((await fetch(ORIGIN + '/')).ok) break; } catch { /* not yet */ } if (i > 150) throw new Error('vite did not start: ' + vlog.slice(-300)); await sleep(200); }
 
-  const args = [`--remote-debugging-port=${cport}`, `--user-data-dir=${PROFILE}`, '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio',
+  const args = [`--remote-debugging-port=${cport}`, `--user-data-dir=${PROFILE}`, '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--enable-zero-copy', '--disable-software-rasterizer', '--num-raster-threads=2', '--mute-audio',
     '--disable-extensions', '--disable-background-networking', '--disable-sync', '--disable-features=Translate,MediaRouter', '--renderer-process-limit=1',
     '--js-flags=--max-old-space-size=512', '--no-first-run', '--no-default-browser-check', '--disable-component-update', '--disable-default-apps', '--hide-scrollbars', '--window-size=390,844', 'about:blank'];
   const ch = spawn(CHROME, args, { stdio: 'ignore' });
   procs.push({ name: 'chrome', pid: ch.pid });
+  // keep the desktop responsive: test processes yield CPU to the user (children inherit the class)
+  for (const p of [process.pid, vite.pid, ch.pid]) { try { setPriority(p, osc.priority.PRIORITY_BELOW_NORMAL); } catch { /* not permitted */ } }
   console.log(`browser pid ${ch.pid} (headless shell, d3d11 GPU)`);
   let targets;
   for (let i = 0; ; i++) { try { targets = await (await fetch(`http://127.0.0.1:${cport}/json/list`)).json(); if (targets.some((t) => t.type === 'page')) break; } catch { /* not yet */ } if (i > 100) throw new Error('browser did not start'); await sleep(200); }
@@ -702,7 +825,9 @@ async function main() {
   await scenario(1, 'first-run EN', 30000, (c) => firstRun(c, null));
   await scenario(2, 'first-run TR', 30000, (c) => firstRun(c, 'tr'));
   await scenario(3, 'returning player + bottom nav', 30000, returning);
-  await scenario(4, 'rush 1-minute playtest', 90000, rushPlaytest);
+  await scenario(4, 'rush 1-minute playtest', 115000, rushPlaytest);
+  await scenario(24, 'menu: no stray text after panels / a run', 90000, menuClean);
+  await scenario(22, 'new Rush chapters + mechanics (rush_ch_*, mech_*)', 120000, newChapters);
   await scenario(19, 'model gallery (Blender critters + props)', 30000, gallery);
   await scenario(20, 'chapter sky backdrops', 45000, skies);
   await scenario(18, 'rush HUD states (cannon bar, flag, toast)', 30000, hudStates);
@@ -718,6 +843,8 @@ async function main() {
   await scenario(9, 'fullscreen', 30000, fullscreen);
   await scenario(11, 'soak', 40000, soak);
   await scenario(16, 'debug overlay stats', 30000, debugStats);
+  await scenario(21, 'rush camera sweep (flat frames)', 90000, camSweep);
+  await scenario(25, 'AI UI icons (buffs, perk cards, cig HUD)', 45000, uiIcons);
 }
 
 async function run() {

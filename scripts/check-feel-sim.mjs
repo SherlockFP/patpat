@@ -207,11 +207,12 @@ function junction(f, { secBefore = 0 } = {}) {
   ok('the 500 m landmark gate is armed again on a new run', r.lmNext === 500);
   ok('near-miss / ring / slalom memory is cleared', r._nmAt === -9 && r.ringChain === 0 && r.slalom === null);
   let picks = 0; const ui = h.ctx.ui; ui.runnerPerkPick = (offer, cb) => { if (!offer) return; picks++; cb(offer[1].id); };
-  r.start(5, null, {}); const first = r.perk;
+  const dueLoop = () => { let q = 0; while (r.pickDue && q++ < 4000) step(h); };      // the card comes after the first obstacle (perkTick), not at the start
+  r.start(5, null, {}); ok('a normal start holds the card back (no card in the first seconds)', picks === 0 && r.pickDue); dueLoop(); const first = r.perk;
   ok('a normal start offers the pick', picks === 1 && first && r.pickT === 0);
   r.start(6, null, { retry: true });
   ok('a quick retry keeps the perk and skips the 6 s pick', picks === 1 && r.perk === first && r.pickT === 0);
-  r.start(7, null, {});
+  r.start(7, null, {}); dueLoop();
   ok('a start from the menu offers the pick again', picks === 2);
   ui.runnerPerkPick = null;
 }
@@ -285,7 +286,7 @@ function junction(f, { secBefore = 0 } = {}) {
   r.start(42, null, {}); ok('run 2 is depth 1: still no pick, no mutator', r.depth === 1 && r.mut === null && picks === 0 && r.pickT === 0);
   k = 0; while (r.time < 65 && k++ < 5000) step(h);
   ok('run 2: no gate either', evs.length === 0);
-  r.start(43, null, {}); ok('run 3 is depth 2: the perk pick and every system are back', r.depth === 2 && picks === 1 && r.pickT > 0);
+  r.start(43, null, {}); ok('run 3 is depth 2: the perk pick and every system are back', r.depth === 2 && picks === 0 && r.pickDue);
   ui.runnerPerkPick = null;
   r.start(44, null, { retry: true }); ok('a retry counts in 0.4 s, silent', Math.abs(r.countT - 0.4) < 1e-9 && r.countQuiet);
   const v = make({ seed: 45, runs: 0 }); v.ctx.save.runnerBestDist = () => 800; v.runner.start(46, null, {});
@@ -390,7 +391,7 @@ function junction(f, { secBefore = 0 } = {}) {
   Object.assign(h.ctx.meta, { missions: rows, multiplier: () => 3, track: (e, d) => { if (e === 'biome_seen') { tracked.push(d.id); seenCards.add(d.id); } }, cardSeen: (id) => seenCards.has(id), cards: () => ({ n: seenCards.size, total: 14 }) });
   r.start(61, null, {});
   const hint = h.log.ui.filter((x) => x[0] === 'hint' && x[1] === true).pop();
-  ok('run start: one mission line, the closest mission (33% beats 20%) and the next multiplier', !!hint && /(GÖREV|MISSION)/.test(hint[2]) && /(yaratık|creature)/.test(hint[2]) && /\(1\/3\)/.test(hint[2]) && /x4/.test(hint[2]) && r.hintOn === true);
+  ok('run start: the bottom line is the weekly twist when there is one (the mission is the top pill), else the closest mission (33% beats 20%) and the next multiplier', !!hint && (r._mutLine ? /(HAFTA|WEEK)/.test(hint[2]) : /(GÖREV|MISSION)/.test(hint[2]) && /(yaratık|creature)/.test(hint[2]) && /\(1\/3\)/.test(hint[2]) && /x4/.test(hint[2])) && r.hintOn === true);
   goLive(h); step(h, 150);
   ok('the start line goes away after 2 s', r.hintOn === false && h.log.ui.filter((x) => x[0] === 'hint').pop()[1] === false);
   const g = lastGoal(h);
@@ -463,7 +464,7 @@ function junction(f, { secBefore = 0 } = {}) {
 // ---------- RUSH CHAPTERS (PLAN_V3 §9) + permanent upgrade hooks (§8.2 / 8.3) ----------
 {
   const G = await import('../src/runner/goals.js');
-  const { ChapterPlan, CHAPTERS, CHAPTER_BY_ID, CHAPTER_FIXED, chapterReward, chapterLine, BONUS_EVERY } = G;
+  const { ChapterPlan, CHAPTERS, CHAPTER_BY_ID, CHAPTER_FIXED, TOUR, chapterReward, chapterLine, BONUS_EVERY } = G;
   const forced = (ids, len = 600) => {
     const p = new ChapterPlan(1, 0, () => 20); let s0 = 0;
     p.segs = ids.map((id, i) => { const def = CHAPTER_BY_ID[id], seg = { n: i + 1, id, def, s0, s1: s0 + len, bonus: !!def.bonus, i }; s0 += len; return seg; });
@@ -474,7 +475,7 @@ function junction(f, { secBefore = 0 } = {}) {
   {
     const p = new ChapterPlan(7, 0, () => 20), got = plan(p), reg = got.filter((c) => !c.bonus);
     ok('the first 6 chapters are fixed: Yamaç, Orman, Buz Tüneli, Ray, Çığ, Düello', CHAPTER_FIXED.every((id, i) => reg[i].id === id && reg[i].n === i + 1));
-    ok('chapters 1-2 run 350 m, the rest 500-700 m, the plan is contiguous', reg.every((c, i) => (i < 2 ? c.s1 - c.s0 === 350 : c.s1 - c.s0 >= 500 && c.s1 - c.s0 <= 700)) && got.every((c, i) => !i || c.s0 === got[i - 1].s1));
+    ok('chapters 1-2 run 350 m, 3-6 500-700 m, 7+ 450-750 m, the plan is contiguous', reg.every((c, i) => (i < 2 ? c.s1 - c.s0 === 350 : i < 6 ? c.s1 - c.s0 >= 500 && c.s1 - c.s0 <= 700 : c.s1 - c.s0 >= 450 && c.s1 - c.s0 <= 750)) && got.every((c, i) => !i || c.s0 === got[i - 1].s1));
     ok('ALTIN DAMAR (10 s) follows every 4th chapter and is not numbered', got.every((c, i) => (i > 0 && !got[i - 1].bonus && got[i - 1].n % BONUS_EVERY === 0) === c.bonus) && got.filter((c) => c.bonus).every((c) => c.s1 - c.s0 === 200));
     ok('same seed = same plan; at() reuses its segments', JSON.stringify(got.map((c) => [c.id, c.s0])) === JSON.stringify(plan(new ChapterPlan(7, 0, () => 20)).map((c) => [c.id, c.s0])) && p.at(100) === p.at(100));
     const seen = new Set(), early = [];
@@ -483,8 +484,18 @@ function junction(f, { secBefore = 0 } = {}) {
       for (let s = 0; s < 14000;) { const c = q.at(s); s = c.s1 + 0.5; if (c.n > 6 && !c.bonus) { seen.add(c.id); if (c.def.unlock > Math.max(best, c.s0)) early.push(c.id); if (c.n <= 8 && best === 9000) seen.add('vet:' + c.id); } }
     }
     ok('no type before its unlock distance (best distance, or the distance reached)', early.length === 0);
-    ok('every seeded type appears across seeds after its unlock', CHAPTERS.filter((c) => !c.bonus && c.id !== 'yamac').every((c) => seen.has(c.id)));
-    ok('a veteran (best 9000 m) meets late types right after the fixed six', [...seen].some((x) => /^vet:(ruzgar|yay|kaydirak|rampa|sis)$/.test(x)));
+    ok('the tour holds every type once (no repeat before the cycle ends)', new Set(TOUR).size === TOUR.length && CHAPTERS.filter((c) => !c.bonus).every((c) => TOUR.includes(c.id)));
+    ok('after the tour: remixes of two rule sets, never the same id twice in a row', plan(new ChapterPlan(7, 0, () => 30)).filter((c) => !c.bonus).every((c, i, a) => (c.n <= TOUR.length ? c.id === TOUR[c.n - 1] : c.def.parts && c.def.parts.length === 2 && c.id !== a[i - 1].id)));
+    // walk the real speed curve: order, every new mechanic shows up, something new at least every ~900 m
+    {
+      const { speedAt } = await import('../src/runner/runner.js'), NEW = ['ekspres', 'ay', 'lazer', 'kopru', 'fuze', 'hareket', 'heyelan', 'turbo'];
+      const all = plan(new ChapterPlan(11, 0, speedAt)), w = all.filter((c) => !c.bonus), before = new Set(), gaps = []; let last = 0;
+      for (const c of all) { if (c.s1 > 10000) break; if (c.bonus || !before.has(c.id)) { gaps.push(c.s0 - last); last = c.s0; before.add(c.id); } }      // (a coin-rain bonus is something new too)
+      ok('the walk 0..10000 m follows the tour order', w.filter((c) => c.n <= TOUR.length && c.s0 < 10000).every((c) => c.id === TOUR[c.n - 1]));
+      ok('every new mechanic shows up within 0..10000 m (ekspres, ay, lazer, kopru, fuze, hareket, heyelan, turbo)', NEW.every((id) => w.some((c) => c.id === id && c.s0 < 10000)));
+      ok('a chapter with something new at least every 800 m, no repeat of an id before the tour ends (max gap ' + Math.round(Math.max(...gaps)) + ' m)', Math.max(...gaps) <= 800 && w.filter((c) => c.n <= TOUR.length).length === new Set(w.filter((c) => c.n <= TOUR.length).map((c) => c.id)).size);
+      ok('chapters name a look (sky) and a one-word label', NEW.every((id) => CHAPTER_BY_ID[id].look && CHAPTER_BY_ID[id].word));
+    }
     ok('a clean chapter pays 2x', chapterReward(3, true).coins === 2 * chapterReward(3, false).coins && chapterReward(3, true).xp === 2 * chapterReward(3, false).xp);
     ok('chapter pay grows, then stops at chapter 8', chapterReward(2, false).coins < chapterReward(5, false).coins && chapterReward(8, false).coins === chapterReward(30, false).coins);
     ok('the strip is not swallowed by the BÖLÜM catch-all', chapterLine(3, 'BUZ TÜNELİ', (s) => s, false) === 'BÖLÜM 3 · BUZ TÜNELİ' && /^CHAPTER 3 · /.test(chapterLine(3, 'BUZ TÜNELİ', (s) => s, true)));
@@ -505,6 +516,18 @@ function junction(f, { secBefore = 0 } = {}) {
       ok(c.id + ': no new instanced pool (no new draw call)', samePool);
       if (c.set) ok(c.id + ': builds its set piece (' + c.set + ')', kinds.has(c.set));
       if (c.bonus) ok('damar: a coin rain (' + flakes + ' flakes)', flakes > 150);
+    }
+  }
+  // -- the new chapters' signature obstacle really shows up where they live (3.5-5.2 km): at least one per 350 m --
+  {
+    const SIG = { ekspres: 'oncoming', lazer: 'laser', fuze: 'missile', hareket: 'mover' };
+    for (const id in SIG) {
+      let cnt = 0;
+      for (const seed of [1, 2]) {
+        const h = make({ seed }), r = h.runner; r.start(seed, null, { chapterPlan: forced([id], 6000) }); for (let q = 0; q < 12 && r.track.genEnd < 5300; q++) r.track.ensure(5300);
+        for (const row of r.obstacles.rowsLog) if (row.s > 3500 && row.s < 5200 && row.pat === SIG[id]) cnt++;
+      }
+      ok(id + ': the signature row (' + SIG[id] + ') shows up, ' + cnt + " in 2 x 1700 m", cnt >= (id === 'ekspres' ? 6 : 3));
     }
   }
   // -- a run through chapters: name strip, first-entry sentence, pay, clean x2, best chapter, HUD fields --

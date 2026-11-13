@@ -101,7 +101,7 @@ export const words = {
   'ÇOK KÜÇÜLDÜN!': 'YOU SHRANK A LOT!', 'EN KÜÇÜK BOY! Bir daha = PATLAR': 'SMALLEST SIZE! One more = BOOM', 'TÖKEZLEDİN!': 'YOU STUMBLED!', 'KARTOPU!': 'SNOWBALL!',
   'BUZ KAYDIRAĞI!': 'ICE SLIDE!', 'TÜNEL!': 'TUNNEL!', 'ZAMAN RAMPASI!': 'TIME RAMP!', 'HALAT!': 'ROPE!', 'TAKLA!': 'FLIP!', 'RAY!': 'RAIL!',
   'RAY BİTTİ! +HIZ': 'RAIL OVER! +SPEED', 'SÜPER DALIŞ!': 'SUPER DIVE!', 'MÜKEMMEL SLALOM!': 'PERFECT SLALOM!',
-  'ÇARPAN +3!': 'MULTIPLIER +3!', 'SÜPER ZIPLAMA!': 'SUPER JUMP!', 'KAR SAVAŞI! +500': 'SNOWBALL FIGHT! +500',
+  'ÇARPAN +3!': 'MULTIPLIER +3!', 'SÜPER ZIPLAMA!': 'SUPER JUMP!', 'ZIPLA!': 'JUMP!', 'BONUS ARTTI': 'BONUS UP', 'BONUS DÜŞTÜ': 'BONUS DOWN', 'KAR SAVAŞI! +500': 'SNOWBALL FIGHT! +500',
   'YETİ TAMAM!': 'YETI COMPLETE!', 'ZAMAN BÜKÜCÜ!': 'TIME BENDER!', 'HAYALET!': 'GHOST!', 'RİSK MODU!': 'RISK MODE!',
   'KASK!': 'HELMET!', 'MIKNATIS!': 'MAGNET!', 'KAR KANONU!': 'SNOW CANNON!', 'ROKET!': 'ROCKET!', 'BİTİŞ!': 'FINISH!',
   // skill callouts (near miss, turns, gaps, smashes, FLOW STATE). 'KIL PAYI' alone is the menus' "CLOSE CALLS" stat, hence the "!".
@@ -145,6 +145,12 @@ export const words = {
   'Engel yok: kar tanesi yağıyor!': 'No obstacles: it is raining snowflakes!', 'Görüş kısa: kenardaki ışıkları izle.': 'Short sight: follow the lights on the edge.',
   'Art arda rampalar: havada kal, bonus kap.': 'Ramp after ramp: stay airborne for a bonus.', 'Rüzgâr seni yana iter: şeridini tut.': 'The wind pushes you sideways: hold your lane.',
   'Yaylara bas, havadaki kar tanelerini topla.': 'Hit the springs and grab the flakes in the air.', 'Buzda hızlan: dönüşler genişler.': 'Speed up on the ice: turns get wide.',
+  'AY ZIPLAMASI': 'MOON HOPS', 'EKSPRES': 'EXPRESS', 'ÇÖKEN KÖPRÜ': 'FALLING BRIDGE', 'FÜZE YAĞMURU': 'MISSILE RAIN', 'HEYELAN': 'ROCKFALL', 'HIZ ŞERİDİ': 'SPEED LANE',
+  'Yerçekimi yarıya indi: uzun uç, bol yay.': 'Half gravity: long flights, lots of springs.', 'Karşıdan tren geliyor: boş şeride geç ya da çatısına zıpla.': 'A train is coming: take the free lane or hop on its roof.',
+  'Köprü çatlıyor: durma, boşlukta zıpla.': 'The bridge is cracking: keep moving, jump the gaps.', 'Lazer kapıları: açık aralıktan geç.': 'Laser gates: go through the open gap.',
+  'Füzeler şeritlere iniyor: kırmızı işarete dikkat.': 'Missiles hit the lanes: watch the red marks.', 'Engeller yana kayıyor: boşluğu kolla.': 'Obstacles slide sideways: watch for the gap.',
+  'Kayalar yağıyor: kırmızı daireden uzak dur.': 'Rocks are falling: stay off the red circle.', 'Hız şeritleri: hızlan, ama engellere dikkat.': 'Speed strips: go fast, but mind the obstacles.',
+  'AY!': 'MOON!', 'TREN!': 'TRAIN!', 'ÇÖKÜYOR!': 'COLLAPSING!', 'LAZER!': 'LASER!', 'FÜZE!': 'MISSILE!', 'KAY!': 'SLIDE!', 'KAYA!': 'ROCK!', 'HIZ!': 'SPEED!',
   'TEMİZ BÖLÜM! x2': 'CLEAN CHAPTER! x2', 'BÖLÜM TAMAM': 'CHAPTER DONE', 'HAVA BONUSU': 'AIR BONUS', 'YETİ SERSEMLEDİ!': 'YETI STUNNED!',
   'Bitişe ulaş!': 'Reach the finish!', "Yeti Patronu'nu atlat: bitişe ulaş!": 'Dodge the Yeti Boss: reach the finish!',
 };

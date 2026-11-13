@@ -3114,6 +3114,7 @@ export class AgarMode {
     root.innerHTML =
       '<div class="ag-tl"><div class="ag-mass"><div class="r1"><b class="m">0</b><span class="ag-rank"><b>-</b></span></div><small class="tt"></small><div class="rg"><i></i></div><div class="ag-lvl"><span class="lv">Sv 1</span><div class="bar"><i></i></div></div></div>' +
       '<div class="ag-room"></div><div class="ag-feed"></div><div class="ag-chips"></div></div>' +
+      '<div class="ag-goal">EN BÜYÜK OL</div>' +
       '<div class="ag-tr"><div class="ag-lb"><div class="t"><span>LİDERLER</span><span class="ag-online">🟢<span class="on">0</span></span><span class="tg">▾</span></div><div class="rows"></div></div><canvas class="ag-map" width="84" height="84"></canvas></div><div class="ag-zn"></div>' +
       '<div class="ag-stick"><i></i></div><div class="ag-toast" style="top:58%;left:8px;right:148px;padding:3px 10px;width:fit-content;max-width:calc(100% - 156px);border-radius:10px;background:rgba(8,22,48,.9);font-size:14px;line-height:1.15;text-shadow:0 2px 0 #0a2a4a;pointer-events:none;z-index:8"></div><div class="ag-avw" style="position:absolute;left:0;right:0;top:12%;text-align:center;font-size:34px;font-weight:900;color:#ff5a4d;text-shadow:0 3px 0 #3a0a0a,2px 2px 0 #3a0a0a,-2px 2px 0 #3a0a0a;pointer-events:none;opacity:0;transition:opacity .2s"></div><div class="ag-tip" style="position:absolute;left:14px;right:14px;top:calc(var(--sat,0px) + 196px);text-align:center;font-size:15px;font-weight:900;text-shadow:0 2px 0 #0a2a4a;color:#fff;background:rgba(10,42,74,.9);border-radius:14px;padding:5px 12px;pointer-events:none;z-index:8;opacity:0;transition:opacity .4s"></div><div class="ag-arrow" style="position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;opacity:0;transition:opacity .4s"><div style="position:absolute;left:-14px;top:-150px;font-size:34px;color:#ffe066;opacity:.7">▲</div></div>' +
       '<div class="ag-btns"><button type="button" class="ag-act split"><span>✂️</span><small>BÖL</small></button>' +
@@ -3206,6 +3207,9 @@ export class AgarMode {
     const h = this.hud, me = this.owners[this.me];
     this.duelHud();
     this.hudT -= dt; this.lbT -= dt; this.mapT -= dt;
+    this._ageT = this.state === 'play' ? (this._ageT || 0) + dt : 0;
+    const early = this.state === 'play' && this._ageT < 10;      // the first 10 s: only the mass, the goal and the buttons (no LEADERS / minimap)
+    if (early !== this._early) { this._early = early; h.root.classList.toggle('early', early); }
     if (this.state === 'play' && !this.tipDone) {
       if (this.tipT === 0 && (parseInt(lsGet(TIP_KEY, '0'), 10) || 0) >= 2) this.tipDone = true;
       else {

@@ -13,7 +13,7 @@ import { RhythmLane } from './rhythm.js';
 import { patchMaterial } from '../shaders.js';
 import { nfBall, nearFade } from './nearfade.js';
 import { cloneYeti } from '../glb.js';
-import { isScoreRecord, gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionLine, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
+import { isScoreRecord, gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionLine, missionResultText, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
 import { starProgress } from '../campaign.js';
 
 // YETİ RUSH — endless Temple-Run-style downhill run (RUNNER.md).
@@ -157,7 +157,7 @@ const ROUND_KINDS = new Set(['helix', 'halfpipe', 'tube', 'loop', 'corkscrew']);
 // set pieces that get a name strip when the ball enters them ("BUZ TÜNELİ", no number: CHAPTER n is the only counted noun): variety you can read, not only see
 const SECTION_NAME = { helix: 'GİRDAP', waves: 'DALGALAR', skiJump: 'ATLAYIŞ RAMPASI', chasm: 'UÇURUM', zipline: 'HALAT', iceBridge: 'BUZ KÖPRÜ', halfpipe: 'YARIM BORU', tube: 'BUZ TÜNELİ', loop: 'DÖNGÜ', corkscrew: 'BURGU', junction: 'KAVŞAK', stairs: 'BASAMAKLAR', portal: 'PORTAL' };
 const DEG = Math.PI / 180;
-const MAX_ROLL = 12 * DEG;                                             // chase camera roll limit (banked / twisted track)
+const MAX_ROLL = 7 * DEG;                                             // chase camera roll limit (banked / twisted track)
 const COS_LOOK = Math.cos(25 * DEG), SIN_LOOK = Math.sin(25 * DEG);   // look direction limit off the track's forward
 const LETHAL_BASE = new Set(['rock', 'cabin']);                  // campaign: from level 16
 const LETHAL_CAR = new Set(['snowcat', 'oncoming', 'missile']);  // campaign: from level 30
@@ -182,7 +182,7 @@ function storeDaily(dl, dist, score) {
  * HYPER-CASUAL FIRST MINUTE: how many Rush runs this player started BEFORE this one (own counter; a save with a record counts as a veteran).
  * Runs 1-2 (depth < DEPTH_FULL) start instantly: no perk pick, no weekly mutator, no card gates. From the 3rd run every system is on.
  */
-const RUNS_KEY = 'patpat.rushRuns', DEPTH_FULL = 2;
+const RUNS_KEY = 'patpat.rushRuns', DEPTH_FULL = 2, PERK_AT = 110;
 export function rushDepth(save, bump) {
   let n;
   try { n = +localStorage.getItem(RUNS_KEY) || 0; if (bump) localStorage.setItem(RUNS_KEY, String(n + 1)); } catch (e) { n = DEPTH_FULL; }   // no storage: never hide the systems
@@ -260,6 +260,7 @@ export class Runner {
     this.track = new Track(scene, {
       seed,
       chapterAt: chp ? (s) => chp.at(s) : null,
+      gravityAt: chp ? (s) => (chp.at(s).def.lowg ? RCFG.gravity * 0.5 : RCFG.gravity) : null,      // AY ZIPLAMASI: pad / spring arcs and flake arcs match the floaty jump
       palette: trackPalette,
       speedAt,
       bpmAt,
@@ -569,6 +570,7 @@ export class Runner {
     this.chapterInit();
     this.starPips = this.starPips || [1, 1, 1];
     if (!level && !this.hintOn) this.goalIntro();
+    else if (!level) this._mrow = this._missionNow();      // (first runs show a hint instead of the intro line: the mission pill is still there from frame one)
     this.updateHud();
     this.placeBall(true);
   }
@@ -664,7 +666,7 @@ export class Runner {
     // The first moments of a death run in slow motion so the read-out lands.
     if (this.state === 'dying') { if (this.deadT < 0.12) dt *= 0.02; else if (this.deadT < 0.7) dt *= 0.4; }
     // Countdown before the chase starts (2 s the first time, 1 s on retries): the world is frozen.
-    if (this.countT > 0 && this.pickT > 0) dt = 0;       // RUN-START PERK PICK: the world waits (the UI calls pickPerk)
+    if (this.pickT > 0 && (this.countT > 0 || play)) dt = 0;       // PERK PICK: the world waits (the UI calls pickPerk)
     else if (this.countT > 0) {
       const before = Math.ceil(this.countT);
       this.countT -= rdt;
@@ -851,7 +853,7 @@ export class Runner {
     this.yetiTick(dt, top);
 
     this.bossTick(dt);
-    this.progression(dt);
+    this.progression(dt); this.perkTick();
     this.zoneTick();
     this.fogK += (this.fogTarget - this.fogK) * Math.min(1, dt * 2.5);
     this.fogTarget = 0;
@@ -1019,7 +1021,7 @@ export class Runner {
     let v = RCFG.jumpV;
     if (this.superT > 0) v *= RCFG.superJumpK;
     if (this.buffs.has('yay')) v *= 1.35;
-    const fl = flightDist(b.vs, v, 0, RCFG.gravity * (this.inZone === 'lowgrav' ? 0.5 : 1));
+    const fl = flightDist(b.vs, v, 0, RCFG.gravity * (this.lowG ? 0.5 : 1));
     if (b.s + fl >= g.far + 0.3) return false;      // jumping right now already clears it
     this.edgeS = g.edge;
     return true;
@@ -1394,14 +1396,20 @@ export class Runner {
 
   // ---------- RUN-START PERK ----------
   initRunPerk(opts) {
-    this.perk = null; this.synHit = []; this.steelUsed = false; this.airJ = 0; this.airJumpMax = 0; this.pickT = 0;
+    this.perk = null; this.synHit = []; this.steelUsed = false; this.airJ = 0; this.airJumpMax = 0; this.pickT = 0; this.pickDue = false;
     const ui = this.ctx.ui;
     ui.runnerPerkIcon?.(null);
     if (this.level || this.daily || this.tut || !ui.runnerPerkPick || !depthFull(this.depth)) return;      // no pick screen in the first 2 runs
     if (opts && opts.retry && this._lastPerk) { this.pickT = 1; this.pickPerk(this._lastPerk); return; }      // quick retry keeps your perk: no 6 s pick screen between a death and the next run
-    this.pickT = 6.1;
+    this.pickDue = true;      // the card comes after the first obstacle is cleared (perkTick), never in the first seconds: frame one = ball, Yeti, score, one mission
+  }
+
+  /** Offers the run perk once the first obstacle is behind the ball (PERK_AT m; the first one stands well before that). The world waits while the card is up. */
+  perkTick() {
+    if (!this.pickDue || !this.grounded || this.b.s < PERK_AT || this.gap < 6 || this.countT > 0) return;
+    this.pickDue = false; this.pickT = 6.1;
     const offer = rollPerks(this._nRuns < 8 ? 2 : 3);   // early runs: a slim two-card pick
-    ui.runnerPerkPick(offer, (id) => this.pickPerk(id), 6);
+    this.ctx.ui.runnerPerkPick(offer, (id) => this.pickPerk(id), 6);
   }
 
   pickPerk(id) {
@@ -1884,7 +1892,7 @@ export class Runner {
   radioTune(km) {
     const ST = [['Gün Batımı FM', 0xff9a6a], ['Kutup Işığı FM', 0x6affc8], ['Buz Lo-Fi', 0x8fb4ff], ['Pembe Kar FM', 0xff9ad0], ['Gece Vardiyası', 0x5a4cff], ['Altın Saat FM', 0xffd36a], ['Nane Esintisi', 0x9affb0]];
     const st = ST[(km - 1) % ST.length];
-    this.env?.setRadio?.(st[1], 0.22);          // cosmetic palette remix only: no toast (one message at a time)
+    if (!this._lookOn) this.env?.setRadio?.(st[1], 0.22);          // cosmetic palette remix only: no toast (one message at a time)
   }
 
   stormTick(dt) {
@@ -1941,15 +1949,15 @@ export class Runner {
     if (ds > 260 || ds < -25) { if (g) g.visible = false; return; }
     if (!g) {
       g = this.lmGate = new THREE.Group();
-      const m = new THREE.MeshLambertMaterial({ color: 0xffffff });
+      const m = nearFade(new THREE.MeshLambertMaterial({ color: 0xffffff }));   // (nearFade on all three: the chase camera rides through the gate at 6-8 m up and used to fill the screen with the flat sign)
       const pl = new THREE.CylinderGeometry(0.22, 0.22, 8, 6).translate(0, 4, 0);
       g.add(new THREE.Mesh(pl, m));
       this.lmPr = new THREE.Mesh(pl, m); g.add(this.lmPr);
-      this.lmBeam = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 0.5).translate(0.5, 8, 0), new THREE.MeshLambertMaterial({ color: 0xe8322a }));
+      this.lmBeam = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 0.5).translate(0.5, 8, 0), nearFade(new THREE.MeshLambertMaterial({ color: 0xe8322a })));
       g.add(this.lmBeam);
       const cv = this.lmCv = document.createElement('canvas'); cv.width = 256; cv.height = 96;
       this.lmTex = new THREE.CanvasTexture(cv);
-      this.lmBan = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.9).translate(0, 6.9, 0), new THREE.MeshBasicMaterial({ map: this.lmTex, side: THREE.DoubleSide }));
+      this.lmBan = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.9).translate(0, 6.9, 0), nearFade(new THREE.MeshBasicMaterial({ map: this.lmTex, side: THREE.DoubleSide }), 3, 9));
       g.add(this.lmBan);
       this.ctx.scene.add(g);
     }
@@ -1979,7 +1987,7 @@ export class Runner {
       this.kick += 1; this.ctx.audio.milestone?.(2);
       // gentle environment shift per 500 m (lerped by env.setRadio): snowfall -> clear -> sunset -> night
       const W = [[0xcfe3ff, 0.28, 0.35], [0xffffff, 0, 0], [0xff8a5a, 0.3, 0], [0x1a2a6a, 0.34, 0]], w = W[(next / 500) % 4 | 0];
-      this.env?.setRadio?.(w[0], w[1]);
+      if (!this._lookOn) this.env?.setRadio?.(w[0], w[1]);
       this.wxFog = w[2]; this.wxT = w[2] ? 14 : 0;
     }
   }
@@ -2250,9 +2258,10 @@ export class Runner {
     // ONE goal at a time: the closest open mission (also in the first two runs: the strip is never empty), else the record in POINTS, else the checkpoint strip
     const h = this._hud, m = this._mrow;
     if (m) {
-      const k = m.id + ':' + m.value;
-      if (k !== this._mK) { this._mK = k; this._mT0 = this.time; this._mTxt = (m.icon ? m.icon + ' ' : '') + t(m.text) + ' ' + m.value + '/' + m.goal; }
-      const stuck = m.value === 0 && this.time - this._mT0 > 8;      // no progress for 8 s: the pill pulses; a jump mission also says how
+      const intro = this._nRuns < 2 && m.id === 'jump' && m.value === 0 && this.time < 5;      // first 5 s of a first run: one word + the jump icon, pulsing
+      const k = m.id + ':' + m.value + (intro ? 'i' : '');
+      if (k !== this._mK) { this._mK = k; this._mT0 = this.time; this._mTxt = (m.icon ? m.icon + ' ' : '') + (intro ? t('ZIPLA!') : t(m.text)) + ' ' + m.value + '/' + m.goal; }
+      const stuck = intro || (m.value === 0 && this.time - this._mT0 > 8);      // no progress for 8 s: the pill pulses; a jump mission also says how
       if (stuck !== this._mStuck) { this._mStuck = stuck; ui.runnerGoalNudge?.(stuck); }
       if (stuck && m.id === 'jump' && !this._jnTip) { this._jnTip = true; ui.hint?.(true, '↑ YUKARI KAYDIR'); }
       h.goalKind = 'mission'; h.goalText = this._mTxt; h.goalFrac = missionFrac(m);
@@ -2273,7 +2282,7 @@ export class Runner {
 
   // ---------- chapters (PLAN_V3 §9; plan, rules and pieces: goals.js CHAPTERS) ----------
   chapterInit() {
-    this.chap = null; this.chapSpd = 1; this.chapCrash0 = 0; this.chapDone = 0; this.chapClean = 0; this.chapXp = 0; this.duelNear = 0; this._air = 0; this._armed = null; this.x2Up = 0;
+    this.chap = null; this._lookP = null; this.chapSpd = 1; this.lowG = false; this._lookOn = false; this._words = {}; this.rainT = 0; this.chapCrash0 = 0; this.chapDone = 0; this.chapClean = 0; this.chapXp = 0; this.duelNear = 0; this._air = 0; this._armed = null; this.x2Up = 0;
     this.upOn = !!((this.perm.speed | 0) || this.upTier > 0);
     this.bestChapter = this.chapters ? this.readBestChapter() : 0;
     this.nextBossS = this.chapters ? Infinity : 1800;      // (with chapters the Yeti boss is the duel chapter's: chapterTick arms it)
@@ -2308,6 +2317,7 @@ export class Runner {
   chapterTick() {
     const P = this.chapters, b = this.b, seg = P.at(b.s);
     if (seg !== this.chap) this.chapterEnter(seg);
+    if (this._lookP && (biomeAt(b.s, this._ba).index !== this._lookP.bi || b.s - this._lookP.s > 380)) this._lookApply();      // the chapter look arrives with the track biome
     const nx = P.at(b.s + 430);
     if (nx.def.duel && nx !== this._armed && !this.boss) { this._armed = nx; this.nextBossS = Math.max(b.s + 10, nx.s0 + 25); }
     if (!this.grounded && !this.zip && !this.grind && this.rocketT <= 0) this._air += this.stepDt || 0.016;
@@ -2318,21 +2328,36 @@ export class Runner {
       }
       this._air = 0;
     }
+    if (seg.def.rain && this.state === 'play' && !this.boss && (this.rainT -= this.stepDt || 0.016) <= 0) {      // HEYELAN: a boulder lands ~1.9 s ahead, a red disc shows where
+      const NLn = LANES.length, pl = Math.round(this.lane + (NLn - 1) / 2), lane = Math.random() < 0.55 ? pl : (Math.random() * NLn) | 0;
+      this.rainT = this.obstacles.throwBoulder(lane, b.s + b.vs * 1.9 + 9, false, { soft: true, T: 1.9, sStart: b.s + 30 }) < 0 ? 0.7 : 2.6 + Math.random() * 1.2;
+    }
   }
 
   chapterEnter(seg) {
     const prev = this.chap, def = seg.def, ui = this.ctx.ui;
     if (prev && !prev.bonus) this.chapterEnd(prev);
-    this.chap = seg; this.chapCrash0 = this.crashes; this.duelNear = 0; this._air = 0; this.chapSpd = def.spd || 1;
+    this.chap = seg; this.chapCrash0 = this.crashes; this.duelNear = 0; this._air = 0; this.chapSpd = def.spd || 1; this.lowG = !!def.lowg; this.rainT = def.rain ? 3 : 0;
     if (!seg.bonus && seg.n > this.bestChapter) { this.bestChapter = seg.n; this.saveBestChapter(); }
-    const line = seg.bonus ? t('ALTIN DAMAR') : chapterLine(seg.n, def.name, t, getLang() === 'en');
+    let line = seg.bonus ? t('ALTIN DAMAR') : chapterLine(seg.n, def.parts ? def.parts.map(t).join(' × ') : def.name, def.parts ? (x) => x : t, getLang() === 'en');
+    if (def.word && !def.parts && !this._words[seg.id]) { this._words[seg.id] = 1; const wd = t(def.word); if (!line.toUpperCase().includes(wd.replace(/[!?]/g, '').toUpperCase())) line += ' · ' + wd; }      // (a word the name already says is not repeated: MISSILE RAIN · MISSILE!)      // the new rule in one word, first time per run (on the name pill: a float would lose to the other messages)
     if (ui.runnerChapter) ui.runnerChapter(line, seg.n, seg.bonus); else this.queueBanner(line, 4, 1.0);      // a 1 s name strip
-    this.env?.setBackdrop?.(seg.bonus ? null : CH_SKY[seg.id] || null);
+    const look = seg.bonus ? null : def.look;      // chapter look: sky backdrop + radio tint (the km / 500 m palette remix stays out of its way)
+    const sky = seg.bonus ? null : look ? look.sky : CH_SKY[seg.id] || null;
+    this._lookP = { sky, look, bi: biomeAt(this.b.s, this._ba || (this._ba = {})).index, s: this.b.s };
+    if (!sky) this._lookApply();      // the procedural sky matches the track at once; a backdrop sky waits for the next biome portal (sunset sky over a snow chute looked wrong)
     this.ctx.audio.milestone?.(2);
-    if (!this.chapterSeen(seg.id)) {
+    if (!def.parts && !this.chapterSeen(seg.id)) {
       this.markChapterSeen(seg.id);
       this.after(1.2, () => { if (this.chap === seg) ui.toastSoft?.(t(def.intro), { icon: '🗺️', prio: 2, info: true }); });      // first entry: one sentence
     }
+  }
+
+  _lookApply() {
+    const p = this._lookP; this._lookP = null;
+    if (!p) return;
+    this.env?.setBackdrop?.(p.sky);
+    if (p.look) { this.env?.setRadio?.(p.look.tint, p.look.tk); this._lookOn = true; } else if (this._lookOn) { this.env?.setRadio?.(0xffffff, 0); this._lookOn = false; }
   }
 
   chapterEnd(prev) {
@@ -2380,7 +2405,7 @@ export class Runner {
   // The mission strip's row: the closest open one; a mission that has not moved for 120 m is rotated out for the rest of the run.
   _missionNow() {
     const rows = this.ctx.meta?.missions?.();
-    let m = pickMission(rows, this._mSkip);
+    let m = (this._nRuns < 2 && this._mSkip !== 'jump' && rows && rows.find((r) => r.id === 'jump' && r.value < r.goal)) || pickMission(rows, this._mSkip);      // first runs: the first goal is the jump (the one control the pill can teach)
     if (m) {
       const k = m.id + ':' + m.value;
       if (k !== this._mPk) { this._mPk = k; this._mPs = this.b.s; }
@@ -2397,7 +2422,7 @@ export class Runner {
     this._msT = this.time + 0.5;
     const ui = this.ctx.ui;
     this.hintOn = true;
-    ui.hint?.(true, missionLine(m, this.quietRun ? 0 : nextMult(meta?.multiplier?.() ?? 1), t) + (this._mutLine ? ' · ' + t(this._mutLine) : ''));   // (first runs: no multiplier jargon)
+    ui.hint?.(true, this._mutLine ? t(this._mutLine) : missionLine(m, this.quietRun ? 0 : nextMult(meta?.multiplier?.() ?? 1), t));   // (the mission itself is the top pill from frame one: the bottom line only names this week's twist; no twist = the mission line)
     this.after(2, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); });
   }
 
@@ -2518,7 +2543,7 @@ export class Runner {
         this.lastSurf = surf;
       }
     } else {
-      b.vh -= RCFG.gravity * (this.inZone === 'lowgrav' ? 0.5 : 1) * dt;
+      b.vh -= RCFG.gravity * (this.lowG ? 0.5 : 1) * dt;
       b.h += b.vh * dt;
       const pS = ps ?? -Infinity;
       if (pS > ts && b.vh <= 0 && b.h <= pS && b.h > pS - 1.2) {
@@ -3760,7 +3785,6 @@ export class Runner {
     // score read-out: one big number (score), how far from the best (deltaBest, signed) and one next goal (text is ready to show)
     const ng = nextGoal(score, bestBefore);
     const mrep = meta?.missionsReport?.(), mrows = mrep ? mrep.rows : (meta?.missions?.() ?? []), mrow = pickMission(mrows), dk = deathGoalKind(ng, score, bestBefore, mrow);
-    const left = missionsLeft(mrows);
     if (!canRevive && isScoreRecord(score, bestBefore, dist)) music.stinger('record');
     const dt = ui.runnerDeathText ? ui.runnerDeathText(this.cause, this.killKind) : null;
     ui.showRunnerResult({
@@ -3784,7 +3808,7 @@ export class Runner {
       deltaBest: isScoreRecord(score, bestBefore, dist) ? score - bestBefore : 0,
       nextGoal: ng,
       nextGoalKind: dk,
-      nextGoalText: dk === 'mission' ? t(mrow.text) + ' (' + mrow.value + '/' + mrow.goal + ')' + (left < 3 ? ' · ' + left + ' ' + t('kaldı') : '') : t(ng.k === 'rec' ? 'EN İYİYE ' + NUM(ng.val) + ' PUAN' : 'SIRADAKİ: ' + NUM(ng.val) + ' PUAN'),
+      nextGoalText: dk === 'mission' ? missionResultText(mrow, t) : t(ng.k === 'rec' ? 'EN İYİYE ' + NUM(ng.val) + ' PUAN' : 'SIRADAKİ: ' + NUM(ng.val) + ' PUAN'),
       missions: mrows,
       layer: this.layer + 1,
       boxes: this.boxes,
@@ -4141,6 +4165,7 @@ export class Runner {
     let el = this._tagEl;
     if (!el) {
       el = this._tagEl = document.createElement('div');
+      el.className = 'rtag';
       el.style.cssText = 'position:fixed;left:50%;top:60%;z-index:31;pointer-events:none;text-align:center;white-space:nowrap;opacity:0;font-weight:900;font-size:clamp(18px,5.6vw,27px);line-height:1.05;letter-spacing:.03em;' +
         'text-shadow:0 3px 0 var(--ink,#17345c),2px 2px 0 var(--ink,#17345c),-2px 2px 0 var(--ink,#17345c),2px -2px 0 var(--ink,#17345c),-2px -2px 0 var(--ink,#17345c),0 6px 12px rgba(10,30,60,.35)';
       el.innerHTML = '<div></div><small style="display:block;margin-top:3px;font-size:.6em;letter-spacing:.05em;color:#ffe9a0"></small>';
@@ -4214,9 +4239,9 @@ export class Runner {
       const d3 = Math.hypot(dCam, this.camUpH);
       const open = clamp((2.8 - this.time) / 1.2, 0, 1);       // the opening ~2 s: the Yeti is bigger and further inside the lane, so the first frames show what chases you
       const calm = clamp((gapV - 6) / 3, 0, 1) * clamp((this.time - 2.5) / 2.5, 0, 1);      // not close (gap > ~9 m) after the opening 5 s: the claw shrinks and slides off the lane edge instead of cropping the bottom corner
-      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, (0.09 + 0.05 * loom) * (1 - 0.5 * calm) * (1 + 0.35 * open));   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
+      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, (0.09 + 0.05 * loom) * (1 - 0.5 * calm) * (1 + 0.35 * open) * 0.75);   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
       const side = b.u > 0.01 ? -1 : 1, hw = (tr.halfWidth(Math.max(0, gs)) || 3.8) - 0.3;
-      uT = clamp(b.u + side * (3.4 - 0.8 * loom + 1.2 * calm - 0.9 * open) * yetiSide(dCam), -hw - 1.2 * calm, hw + 1.2 * calm);
+      uT = clamp(b.u + side * (3.4 - 0.8 * loom + 1.2 * calm - 0.2 * open) * yetiSide(dCam), -hw - 1.2 * calm, hw + 1.2 * calm);
       if (dCam < 1.5) y.group.visible = false;      // right under / behind the camera: out of the picture anyway (and no draw call)
       if (dCam < 5 || this.state === 'dying' || this.state === 'over') this.avalanche.group.visible = false;   // (the death view sits in front of the powder wall: it used to fill the screen white)   // its powder wall sits 6 m behind the Yeti: behind the camera too (3 draw calls saved while the Yeti is far)
     }
@@ -4322,7 +4347,7 @@ export class Runner {
 
     const camS = Math.max(0, b.s - this.camBackS);
     tr.frame(camS, _f);
-    // Camera "up": a stable blend, 70% world up + 30% the track's up, with the roll clamped to 12 deg. A banked or twisted
+    // Camera "up": a stable blend, 70% world up + 30% the track's up, with the roll clamped to 7 deg. A banked or twisted
     // track can't flip or roll the view, and the camera's height / look offsets use this up too (not the track's own up,
     // which on a steep bank would park the camera off the side of the track).
     _x.copy(WORLD_UP).multiplyScalar(0.7).addScaledVector(_f.up, 0.3);
@@ -4349,7 +4374,7 @@ export class Runner {
       _v.lerp(_tp, lk);
       _x.lerp(_f2.up, lk).normalize();
     }
-    if (pc && (lk > 0.001 || ROUND_KINDS.has(kind) || dying) && this.env?.groundAt) {   // (dying: the death pull-back must not end up inside a slope wall = a white screen)
+    if (pc && (lk > 0.001 || ROUND_KINDS.has(kind) || dying || (playing && b.s > 30)) && this.env?.groundAt) {   // (also while playing past 30 m: a hill flank beside the chase camera filled a Rush frame with flat green; not at the start: the path is not there yet; dying: the death pull-back must not end up inside a slope wall = a white screen)
       // Safety net: never below the terrain under the camera (+2 m), at most 6 m of correction.
       const gy = this.env.groundAt(_v.x, _v.z, b.s);
       if (gy !== null && _v.y < gy + 2) _v.y += Math.min(6, gy + 2 - _v.y);
