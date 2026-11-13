@@ -124,13 +124,13 @@ function junction(f, { secBefore = 0 } = {}) {
   ok('worth +1 on the multiplier', Math.abs((w - wo) - r.mutScore) < 0.06);
   r.furyT = 3; const both = r.mult; r.flowSt = 0; const fury = r.mult; r.flowSt = fl; r.furyT = 0;
   ok('never stacks with ÖFKE', Math.abs(both - fury) < 1e-9);
-  step(h, 90); const fovIn = h.ctx.camera.userData.fovBoost;
+  step(h, 90); const fovIn = r.fovX;   // (the flow-state share only: the speed share of fovBoost keeps growing and made this check flaky)
   r.cmbT = 0.01; step(h, 3);
   ok('a combo timeout rides the flow state out', r.cmbN === 0 && r.flowSt > 0);
   r.flow = 0; r.breakCombo();
   ok('a hit ends it', r.flowSt === 0);
   step(h, 120);
-  ok('the view eases back', h.ctx.camera.userData.fovBoost < fovIn - 1);
+  ok('the view eases back', r.fovX < fovIn - 1);
   r.flowStateStart(2); let k = 0; while (r.flowSt > 0 && k++ < 1000) step(h);
   ok('and it expires by itself after ~6 s', k * DT > 5.5 && k * DT < 6.6 && r.flowSt === 0);
 }

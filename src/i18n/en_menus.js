@@ -38,7 +38,7 @@ export const words = {
   'ÇEVİR': 'SPIN', 'ÇEVİR!': 'SPIN!', 'Çarkı çevir': 'Spin the wheel', 'Hoş geldin hediyesi: bir kez çevir!': 'Welcome gift: spin once!',
   'Kar Küresi': 'Snow Globe', 'KAR KÜRESİ': 'SNOW GLOBE', 'KAR KÜRESİ!': 'SNOW GLOBE!', 'Günlük Kar Küresi': 'Daily Snow Globe',
   'Salla, sürpriz ödül çıksın!': 'Shake it for a surprise reward!', 'Bugün sallandı': 'Shaken today', 'SALLA': 'SHAKE',
-  'Yarın yeniden salla!': 'Shake again tomorrow!', 'Yeti Postası': 'Yeti Mail', 'YETİ POSTASI': 'YETI MAIL',
+  'Yarın yeniden salla!': 'Shake again tomorrow!', 'Yeti Postası': 'Yeti Mail', 'Hediye': 'Gift', 'YETİ POSTASI': 'YETI MAIL',
   'Bugünün kartı alındı': "Today's card collected", 'GÜNÜN KELİMESİ': 'WORD OF THE DAY', 'Günün kelimesi': 'Word of the day',
   'Bugün tamam!': 'Done for today!', 'YAKIN BAŞARIM': 'ACHIEVEMENT NEARBY', "BU HAFTANIN RUSH'I": "THIS WEEK'S RUSH",
   '🏆 Başarımlar': '🏆 Achievements', '📜 Görevler': '📜 Missions', '🧣 Sezon': '🧣 Season', '🎁 Günlük': '🎁 Daily',
@@ -97,7 +97,7 @@ export const words = {
   // ---- level end / main menu
   'Bölüm tamam': 'Level complete', 'YETİ YENİLDİ!': 'YETI DEFEATED!', 'BÖLÜM TAMAM!': 'LEVEL COMPLETE!', '💎 KUSURSUZ ACT! +💎 2 · 🎁 1': '💎 PERFECT ACT! +💎 2 · 🎁 1',
   '∞ YETİ RUSH AÇILDI!': '∞ YETI RUSH UNLOCKED!', 'SONRAKİ BÖLÜM ▶': 'NEXT LEVEL ▶', '🗺️ HARİTA': '🗺️ MAP', 'Bölüm başarısız': 'Level failed',
-  '↻ TEKRAR DENE': '↻ TRY AGAIN', 'BAŞLA!': 'GO!', 'PATRON!': 'BOSS!', 'SON DAĞ ▶': 'FINAL MOUNTAIN ▶',
+  '↻ TEKRAR DENE': '↻ TRY AGAIN', 'BAŞLA!': 'GO!', 'PATRON!': 'BOSS!', 'SON DAĞ ▶': 'FINAL MOUNTAIN ▶', 'SONRAKİ KASABA ▶': 'NEXT TOWN ▶', 'SON KASABA ▶': 'FINAL TOWN ▶', 'KASABALAR': 'TOWNS',
   'KARTOPU · YETİ · ÇIĞ': 'SNOWBALL · YETI · AVALANCHE', 'HAPŞUU!': 'ACHOO!', 'Yeti seni bekliyor!': 'The yeti is waiting for you!',
   'YETİ RUSH REKORU': 'YETI RUSH RECORD', '✖️ ×1 ÇARPAN': '✖️ ×1 MULTIPLIER', '📅 GÜNLÜK GÖREVLER': '📅 DAILY MISSIONS',
   'Kartopu Arena': 'Snowball Arena', 'KARTOPU ARENA': 'SNOWBALL ARENA', 'Dev harita · botlar · arkadaşlarınla oda kur': 'Giant map · bots · make a room with friends', 'Dev harita · botlar': 'Giant map · bots',
@@ -254,7 +254,7 @@ export const patterns = [
   P(/^(\S+) (.*): HAZIR!$/, '$1 $2: READY!'), P(/^(\S+) (.*): (\S+) ❄️ kaldı$/, '$1 $2: $3 ❄️ left'),
   P(/^(Ödül: |SET ÖDÜLÜ: )?([❄💎🎁🛷👕✨]\uFE0F? [^ ·]+(?: [^ ·]+)*(?:  [❄💎🎁🛷👕✨]\uFE0F? [^ ·]+(?: [^ ·]+)*)*)$/u, (m, pre, c) => (pre ? (pre === 'Ödül: ' ? 'Reward: ' : 'SET REWARD: ') : '') + chips(c)),
   // ---- menu modes / SIRADAKİ HEDEF (stage B)
-  P(/^(\d+)\. koşu$/, 'Run $1'), P(/^KASABA AVI · (.*)$/, 'TOWN HUNT · $1'), P(/^Görev seti → ×(\d+)$/, 'Mission set → ×$1'), P(/^MACERA Act (\d+)$/, 'ADVENTURE Act $1'), P(/^Kasaba (\d+)$/, 'Town $1'), P(/^Kasaba (\d+)\/(\d+)$/, 'Towns $1/$2'),
+  P(/^(\d+)\. koşu$/, 'Run $1'), P(/^KASABA AVI · (.*)$/, 'TOWN HUNT · $1'), P(/^Kasabayı yık · (\d+)\/(\d+)$/, 'Destroy town $1/$2'), P(/^Görev seti → ×(\d+)$/, 'Mission set → ×$1'), P(/^MACERA Act (\d+)$/, 'ADVENTURE Act $1'), P(/^Kasaba (\d+)$/, 'Town $1'), P(/^Kasaba (\d+)\/(\d+)$/, 'Towns $1/$2'),
   // ---- 1.0 sweep (specific patterns first: the first match wins)
   P(/^REKOR (\S+) PUAN$/, 'RECORD $1 PTS'), P(/^(\S+) puan$/, '$1 pts'), P(/^BUGÜN REKOR! (\S+) puan$/, 'NEW BEST TODAY! $1 pts'), P(/^Bugün (\S+) puan · rekora (\S+)$/, 'Today $1 pts · $2 to your record'), P(/^Rekoru geç: (\S+) puan$/, 'Beat it: $1 pts'),
   P(/^BUGÜN REKOR! (\S+) m$/, 'NEW BEST TODAY! $1 m'), P(/^Bugün (\S+) m · rekora (\S+) m$/, 'Today $1 m · $2 m to your record'), P(/^\+(\S+) ❄️ hediye!$/, '+$1 ❄️ gift!'),

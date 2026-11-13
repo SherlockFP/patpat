@@ -1368,6 +1368,7 @@ export class CigGame {
   // ---- lifecycle
   reset() {
     this._starNudge = null;
+    this._growMsg = 0; this._kgT = 0;
     const G = this.G, b = this.ball, w = this.world;
     this._clearLoot();
     let r0 = this.L ? this.L.r0 : CFG.startR;
@@ -1732,6 +1733,7 @@ export class CigGame {
     this.stats.eats++;
     this._comboUi(G.combo);
     const nowT = G.t;
+    if (!this.L && !chunk && q.r > b.r * 0.3 && nowT - (this._kgT || 0) > 0.4) { this._kgT = nowT; this._call('text', '+' + Math.max(1, Math.round(q.mass * M.tonMul * 1000)) + ' kg', q, ''); }   // endless: the weight you just gained pops at the bite
     if (nowT - this.lastPopT > 0.03) {
       this.lastPopT = nowT;
       this._h('sfx', 'pop', clamp(q.r / Math.max(0.3, b.r) * 0.9, 0, 1), G.combo);
@@ -2252,6 +2254,7 @@ export class CigGame {
   _tips() {
     const L = this.L, b = this.ball, G = this.G;
     if (!L) {   // endless: ONE first-seconds line that says why you grow
+      if (!this._growMsg && G.t > 0.4) { this._growMsg = 1; this._msg(2, '🍎 HER ŞEYİ YE, BÜYÜ!'); }   // every run's first seconds (the once-ever tip below only fires while you are not biting)
       if (G.t > 1 && this.stats.eats < 3 && !this._tipSeen().eat) this._tip('eat', TIPS.eat);   // (until the first 3 bites, not on a timer)
       return;
     }

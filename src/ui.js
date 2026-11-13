@@ -61,7 +61,7 @@ export function runnerResultLines(p, prevBest) {
   const rec = p.isRecord !== undefined ? !!p.isRecord : pb > 0 && score > pb;
   const ngt = p.nextGoalText || '', ngk = p.nextGoal && p.nextGoal.k;
   if (rec) {
-    const dB = Number.isFinite(p.deltaBest) ? p.deltaBest : score - pb;
+    const dB = p.deltaBest > 0 ? p.deltaBest : score - pb;   // (a first record has no old one: the gap is the whole score, the line is never missing)
     return { rec, delta: dB > 0 ? '+' + fmtN(dB) : '', goal: ngk === 'next' ? ngt : '' };
   }
   if (pb > 0) return { rec, delta: ngk === 'rec' && ngt ? ngt : 'EN İYİYE ' + fmtN(Math.max(1, pb - score + 1)) + ' PUAN', goal: 'EN İYİ ' + fmtN(pb) };
@@ -326,10 +326,14 @@ export class UI {
   runnerChapter(line, n, bonus) {
     let e = this.el.chapPill;
     if (!e) { e = this.el.chapPill = document.createElement('div'); e.className = 'chap-pill'; this.el.hud.appendChild(e); }
-    e.textContent = line;
-    e.classList.toggle('bonus', !!bonus);
-    e.classList.remove('on'); void e.offsetWidth; e.classList.add('on');   // (event, not per frame)
-    clearTimeout(this._chapT); this._chapT = setTimeout(() => e.classList.remove('on'), 1400);
+    // one transient message at a time: the name pill waits for / replaces the other announcements (RUN!, toasts) instead of stacking under them
+    this._say('c', { text: 'chap' + line, prio: 2, ms: 1400, show: () => {
+      e.textContent = line;
+      e.classList.toggle('bonus', !!bonus);
+      e.classList.remove('on'); void e.offsetWidth; e.classList.add('on');   // (event, not per frame)
+      clearTimeout(this._chapT); this._chapT = setTimeout(() => e.classList.remove('on'), 1400);
+      return () => { clearTimeout(this._chapT); e.classList.remove('on'); };
+    } });
   }
   _chapBar(i) {
     let e = this.el.chapBar;
@@ -338,6 +342,8 @@ export class UI {
     const pct = Math.round(clamp01(i.chapterFrac) * 100), near = i.chapterLeft > 0 && i.chapterLeft <= 100, k = pct * 8 + (i.chapterBonus ? 1 : 0) + (i.chapterClean ? 2 : 0) + (near ? 4 : 0);
     if (k === this._chK && !e.hidden) return;
     this._chK = k; e.hidden = false;
+    if (pct > (this._chP || 0) && !e.classList.contains('pulse')) { e.classList.add('pulse'); setTimeout(() => e.classList.remove('pulse'), 450); }
+    this._chP = pct;
     e.classList.toggle('bonus', !!i.chapterBonus); e.classList.toggle('dirty', !i.chapterClean); e.classList.toggle('near', near);   // (the flag at the end pulses inside the last 100 m)
     e.firstChild.style.width = `${pct}%`;
     const lb = i.chapterBonus ? 'BONUS' : 'BÖL ' + i.chapter;      // micro-label left of the bar (en: CH n): the bar is the chapter progress
@@ -473,7 +479,7 @@ export class UI {
     let seaTok = 0;
     try { seaTok = Math.floor(Number(p && (p.seasonTokens ?? (p.stats && p.stats.seasonTokens))) || meta.stats().seasonTokens || 0); } catch { seaTok = 0; }
     if (seaTok > 0) chips.push(chip(`+${fmtN(seaTok)} 🧣`));
-    let html = `<div class="rx-row">${chip(`❄️ +${fmtN(coins)}`)}</div>` + this.progressBlock();      // flakes and the XP / season bars sit up front on every run, short ones too
+    let html = `<div class="rx-row">${chip(`❄️ +${fmtN(coins)}`)}</div>`;      // the flakes only: LEVEL / SEASON bars sit behind Details (one number to sell)
     let nup = null;
     try { nup = this.hooks?.nextPower?.() || null; } catch { nup = null; }
     this._nupAfford = !!(nup && nup.afford);
@@ -482,7 +488,7 @@ export class UI {
       const left = Math.max(0, nup.price - nup.have), fr = Math.round(clamp01(nup.have / Math.max(1, nup.price)) * 100);
       html = `<button type="button" class="rx-up${nup.afford ? ' ok' : ''}"><div>${nup.icon} ${tr('Sıradaki:')} <b>${tr(nup.name)}</b> · ${nup.afford ? tr('ALABİLİRSİN!') + ' ▶' : fmtN(left) + ' ❄️ ' + tr('kaldı')}</div><div class="ru-b"><i style="width:${nup.afford ? 100 : fr}%"></i></div></button>` + html;
     }
-    let det = `<div class="rx-row">${chips.join('')}</div>`;
+    let det = this.progressBlock() + `<div class="rx-row">${chips.join('')}</div>`;
     if (p && p.perk) det += `<div class="rx-line">${p.perk.icon} ${tr(p.perk.name)}</div>`;
     if (p && p.mutator) det += `<div class="rx-line"><span>${tr('BU HAFTA: ' + p.mutator.name)}</span> ${p.mutator.icon}${p.mutator.score > 1 ? ' · ' : ''}${p.mutator.score > 1 ? `<span>${tr('x' + p.mutator.score + ' puan')}</span>` : ''}</div>`;
     if (p && p.weeklyBest) det += `<div class="rx-line">🏆 Haftalık rekor! ${fmtN(p.weeklyRecord || score)}</div>`;
@@ -874,6 +880,7 @@ export class UI {
       this.el.goalLbl.textContent = text ? text : mode === 'clean' ? (val > 0 ? `TEMİZ KAT: ${val} m` : 'TEMİZ KAT') : mode === 'cp' ? `SIRADAKİ: ${val} m` : mode === 'rec' ? `REKORA ${val} m` : mode === 'new' ? 'YENİ REKOR!' : mode === 'cannon' ? `KAR KANONU ×${val}` : mode === 'boss' ? 'YETİ ÖNÜNDE!' : mode === 'fury' ? 'YETİ ÖFKESİ' : '⚠ YETİ ÖFKESİ';
     }
     if (mode && (mChanged || pct !== this.gPct)) this.el.goalFill.style.width = `${pct}%`;
+    if (text && !mChanged && pct > this.gPct) this.runnerGoalPop();   // mission progress moved: the pill pulses
     this.gMode = mode; this.gVal = val; this.gPct = pct; this.gTxt = text;
   }
 
@@ -922,7 +929,7 @@ export class UI {
       return;
     }
     const over = dist > best;
-    const rg = !over && best >= 50 && best - dist <= 150 ? Math.max(1, Math.ceil(best - dist)) : 0;
+    const rg = !over && best >= 50 && best - dist <= 400 ? Math.max(1, Math.ceil(best - dist)) : 0;
     if (rg !== (this._rg || 0)) { this._rg = rg; if (this._co != null) this._coinsRender(); }
     const km = over ? Math.floor(dist / 1000) : -1;
     const bq = Math.round(best);
@@ -1044,8 +1051,8 @@ export class UI {
       // a micro-label names it the first time it changes in a run, a drop pulses it (at most every 0.6 s: the multiplier decays continuously)
       const m = mu > 1 ? Math.round(mu * 10) / 10 : 1, pm = this._mSh || 0;
       this._mSh = m;
-      if (pm && m !== pm && !this._mLb) { this._mLb = 1; clearTimeout(this._mLbT); this._mLbT = setTimeout(() => { this._mLb = 2; this._cmRender(); }, 2200); }
-      this._cmKs.textContent = this._mLb === 1 ? 'ÇARPAN' : ''; this._cmKe.textContent = `x${m}`; this._cmKe.dataset.t = `x${m}`; this._cmKu.textContent = '';
+      if (pm && m !== pm) { this._mLb = m > pm ? 1 : 2; clearTimeout(this._mLbT); this._mLbT = setTimeout(() => { this._mLb = 0; this._cmRender(); }, 1600); }   // a green up / red down arrow tab for 1.6 s: one chip, no label
+      this._cmKs.textContent = this._mLb === 1 ? '▲' : this._mLb === 2 ? '▼' : ''; this._cmKs.style.color = this._mLb === 1 ? '#6dff8f' : '#ff7a7a'; this._cmKe.textContent = `x${m}`; this._cmKe.dataset.t = `x${m}`; this._cmKu.textContent = '';
       this._cmK.style.display = ''; this._cmM.style.display = 'none';
       const ts = `t${Math.min(4, Math.max(1, Math.floor(m) - 1))}`;   // tinted by whole step: x2 yellow, x3 orange, x4 pink, x5+ purple
       if (!c.classList.contains('on') || !c.classList.contains(ts)) { c.classList.remove('t0', 't1', 't2', 't3', 't4'); c.classList.add('on', 'nobar', ts); }
@@ -1317,6 +1324,7 @@ export class UI {
     secs = Math.min(secs, 3.5);   // PLAY -> run: the pick never holds the player for 6 s (the timeout is a random card anyway)
     const root = document.createElement('div');
     root.className = 'perk-pick';
+    root.style.gridTemplateColumns = `repeat(${perks.length}, 1fr)`;
     const h = document.createElement('div'); h.className = 'pp-h'; h.textContent = 'YETENEK SEÇ';
     root.appendChild(h);
     let done = false;
@@ -1498,7 +1506,7 @@ export class UI {
     if (bk !== c.bk) { c.bk = bk; this.el.cgBest.textContent = bk ? `REKOR ${fmtTons(bk / 1000)}` : ''; }
     // the ladder is the goal: "sıradaki: MEGA ÇIĞ · 12 t" (next tier and the snow tons still missing); nothing on the last tier
     let nx = this.el.cgNext;
-    if (!nx) { nx = this.el.cgNext = document.createElement('span'); nx.className = 'cg-nx'; this.el.cgDist.parentNode.appendChild(nx); }   // (same row as the metres: one centre line)
+    if (!nx) { nx = this.el.cgNext = document.createElement('span'); nx.className = 'cg-nx'; this.el.cgFill.parentNode.appendChild(nx); }   // (inside the tier bar: the bar says what the next tier is and how far)
     const nk = d.nextName ? 'sıradaki: ' + UP(d.nextName) + ' · ' + fmtTons(Math.ceil(d.nextTons || 0)) : '';
     if (nk !== c.nx) { c.nx = nk; nx.textContent = nk; }
   }
@@ -1707,7 +1715,7 @@ export class UI {
     this.el.resTitle.textContent = title;
     this.el.resSub.textContent = sub || '';
     this.el.resLabel.textContent = 'kasaba yıkıldı';
-    this.el.next.textContent = 'SONRAKİ DAĞ ▶';
+    this.el.next.textContent = 'SONRAKİ KASABA ▶';
     this.el.next.classList.toggle('hidden', !hasNext);
     const lh = mrep.html + this.goalBlock(coins);
     this.el.resExtra.innerHTML = lh;

@@ -92,3 +92,5 @@ Models used (game key <- pack/file):
   k_mesa_b           <- nature-kit/rock_largeD
   k_basalt_a         <- nature-kit/stone_tallB
   k_basalt_b         <- nature-kit/stone_largeD
+
+PATPAT original models (yeti.glb, critter_*.glb, prop_*.glb): original, made for PATPAT (Blender, baked vertex colours).

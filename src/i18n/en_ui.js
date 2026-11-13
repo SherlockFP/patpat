@@ -220,7 +220,7 @@ export const words = {
   "Yeti'nin İni! Yeti hızlı ve sana kaya fırlatıyor. Kayalardan kaç!": "The Yeti's Den! The Yeti is fast and throws boulders at you. Dodge them!",
   // ---- KASABA (ÇIĞ finale) + ÇIĞ SONSUZ ladder
   'Dağın dibindeki KASABAYI yık! Küçükleri ye, büyü, kapıları kır: ⛔ boyuta ulaşmalısın.': 'Destroy the TOWN at the foot of the mountain! Eat small things, grow, smash the gates: reach the ⛔ size.',
-  'KASABAYI YIK!': 'DESTROY THE TOWN!', 'Günün Kasabası': "Today's Town",
+  'KASABAYI YIK!': 'DESTROY THE TOWN!', '🍎 HER ŞEYİ YE, BÜYÜ!': '🍎 EAT EVERYTHING TO GROW!', 'Günün Kasabası': "Today's Town",
 };
 const w = (s) => words[s] || s;
 export const patterns = [

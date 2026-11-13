@@ -11,7 +11,8 @@ import { BuffSet, BUFFS, rollBuff, BUFF_LEN, DESTRUCTION, destructionTier, RUN_P
 import { music } from './music.js';
 import { RhythmLane } from './rhythm.js';
 import { patchMaterial } from '../shaders.js';
-import { nfBall } from './nearfade.js';
+import { nfBall, nearFade } from './nearfade.js';
+import { cloneYeti } from '../glb.js';
 import { gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionLine, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
 import { starProgress } from '../campaign.js';
 
@@ -268,6 +269,7 @@ export class Runner {
       tutorial: this.tut,
     });
     this.rhythm?.dispose();
+    if (typeof document !== 'undefined') document.getElementById('hud')?.classList.remove('goal-intro');
     this.rhythm = new RhythmLane(this);
     this.obstacles = new Obstacles(scene, this.track, { seed: seed ^ 0x9e3779b9, jumpPadV: RCFG.jumpPadV, vGen: (s) => 1.1 * speedAt(s), tutorial: this.tut, endless: !level, scarves: !level && !this.tut });
     this.track.onPiece = (piece) => {
@@ -400,6 +402,8 @@ export class Runner {
     this.passedDist = this.bestDist < 50;
     this.passedScore = this.bestScore < 100;
     let nRuns = 0; try { nRuns = this.ctx.meta?.stats?.().runs || 0; } catch (e) { nRuns = 0; }
+    this._nRuns = nRuns;
+    if (nRuns < 2 && typeof document !== 'undefined') { const h = document.getElementById('hud'); h?.classList.add('goal-intro'); setTimeout(() => h?.classList.remove('goal-intro'), 4500); }   // first runs: the goal pill is big for 4 s
     this.quietRun = nRuns < 2;      // the first two runs: no jargon, no scoring toasts; only what teaches a control (TEACH_MSG)
     this.baseHard = level ? level.hardness : 1;
     this.hardS = -1e9;
@@ -1395,7 +1399,7 @@ export class Runner {
     if (this.level || this.daily || this.tut || !ui.runnerPerkPick || !depthFull(this.depth)) return;      // no pick screen in the first 2 runs
     if (opts && opts.retry && this._lastPerk) { this.pickT = 1; this.pickPerk(this._lastPerk); return; }      // quick retry keeps your perk: no 6 s pick screen between a death and the next run
     this.pickT = 6.1;
-    const offer = rollPerks(3);
+    const offer = rollPerks(this._nRuns < 8 ? 2 : 3);   // early runs: a slim two-card pick
     ui.runnerPerkPick(offer, (id) => this.pickPerk(id), 6);
   }
 
@@ -1543,25 +1547,9 @@ export class Runner {
     el.style.display = this.bread ? 'block' : 'none';
     el.textContent = '🥐';
   }
-  cannonChip() {
-    if (!this._cannonEl && !(this.cannonN > 0)) return;
-    const el = this._chipEl('_cannonEl', 27);
-    el.style.display = this.cannonN > 0 ? 'block' : 'none';
-    el.textContent = '❄️×' + Math.max(0, this.cannonN);
-  }
+  cannonChip() { /* no side chip: the goal strip already reads "KAR KANONU ×n" (one count on the HUD, not two) */ }
 
-  scarfChip(say) {
-    let el = this._scarfEl;
-    if (!this.seasonTokens) { if (el) el.style.display = 'none'; return; }
-    if (!el) {
-      el = this._scarfEl = document.createElement('div');
-      el.className = 'rcol-chip';
-      this._col().appendChild(el);
-    }
-    el.style.display = 'block';
-    el.textContent = say ? '🧣 Sezon ' + this.seasonTokens : '🧣' + this.seasonTokens;   // (the pickup spells it out for 4 s, then it shrinks back to the badge)
-    if (say) this.after(4, () => { if (this._scarfEl && this.seasonTokens) this._scarfEl.textContent = '🧣' + this.seasonTokens; });
-  }
+  scarfChip() { /* no side chip: the pickup has its sound and score; the season count lives in the menu */ }
 
   baitChip() {
     let el = this._baitEl;
@@ -2970,6 +2958,7 @@ export class Runner {
     const b = this.b;
     const { audio, platform, ui } = this.ctx;
     this.crashes++;
+    const m0 = this.mult;
     this.flow = 0;
     this.flowLvl = 0;
     this.breakCombo();
@@ -3004,7 +2993,8 @@ export class Runner {
     audio.crash(0.5);
     audio.bump(1);
     platform.haptic('heavy');
-    this.float(this.tier === 0 ? 'ÇOK KÜÇÜLDÜN!' : 'TÖKEZLEDİN!', 'bad');
+    const m1 = this.mult, fm = (v) => String(v).replace('.', ',');
+    this.float(this.tier === 0 ? 'EN KÜÇÜK BOY! Bir daha = PATLAR' : m1 < m0 ? `ÇARPTIN: x${fm(m0)} → x${fm(m1)}` : 'TÖKEZLEDİN!', 'bad');   // names the cause and what it cost
   }
 
   // The ball bursts into powder (and is hidden): used by explode / the barrier.
@@ -3931,7 +3921,7 @@ export class Runner {
     ball.airborne = !this.grounded;
     if (this.state === 'play') {
       // Blink while invulnerable after a crash/revive.
-      ball.group.visible = this.invulnT > 0 ? Math.floor(this.time * 14) % 2 === 0 : true;
+      ball.group.visible = this.invulnT > 0 ? Math.floor(this.time * 14) % 4 !== 0 : true;   // the blink hides the ball one beat in four: it never reads as gone
     }
     if (snap) this.updateCamera(1, true);
   }
@@ -4137,6 +4127,7 @@ export class Runner {
   skillTag(main, sub, lvl, prio) {
     if (this.state !== 'play' || this.countT > 0 || typeof document === 'undefined') return;
     if (this.quietRun && !/DÖNÜŞ/.test(main)) return;
+    if (prio < 7 && this.ctx.ui.annBusy?.()) return;      // a banner / toast / chapter name owns the top: no second callout under it
     if (this.time - this.floatT < 0.9 && prio < 7) return;    // a centre float is showing: one transient message at a time
     if (this.time < this.tagT && prio < this.tagPrio) return;
     this.tagT = this.time + (prio >= 5 ? 0.55 : 0.3);
@@ -4178,7 +4169,7 @@ export class Runner {
     if (audio.roar) audio.roar(quiet ? 0.45 : clamp((9 - this.gap) / 5, 0.5, 1));
     else { audio.bump(1); audio.crash(0.25); }
     platform.haptic('heavy');
-    if (this.yeti) this.yeti.roar = quiet ? 0.7 : 1;
+    if (this.yeti) { this.yeti.roar = quiet ? 0.7 : 1; const ra = this.yeti.roarA; if (ra && !ra.isRunning()) { ra.reset().play(); ra.crossFadeFrom(this.yeti.runA, 0.12, false); } }
     this.trauma = Math.min(1, this.trauma + (quiet ? 0.15 : 0.3));
   }
 
@@ -4201,7 +4192,7 @@ export class Runner {
     y.spr += ((this.pulseT > 0 ? 1 : 0) - y.spr) * Math.min(1, dt * 5);
     y.roar = Math.max(0, y.roar - dt * 2.2);
     const heat = Math.max(y.spr * 0.8, y.roar, clamp((9 - this.gap) / 5, 0, 0.6));
-    if (Math.abs(heat - y.heat) > 0.01) { y.heat = heat; y.mat.emissive.setRGB(0.03 + 0.14 * heat, 0.05, 0.12 - 0.05 * heat); }
+    if (Math.abs(heat - y.heat) > 0.01) { y.heat = heat; y.mat.emissive.setRGB((y.mixer ? 0.12 : 0.03) + 0.14 * heat, y.mixer ? 0.1 : 0.05, (y.mixer ? 0.12 : 0.12) - 0.05 * heat); }
     if (this.boss) this.avalanche.group.visible = false;
     const gs = this.boss ? b.s + this.boss.off : b.s - Math.max(-0.5, gapV);
     const eat = this.baitT > 0 ? Math.min(1, (3 - this.baitT) * 5, this.baitT * 5) : 0;
@@ -4215,13 +4206,14 @@ export class Runner {
     if (!this.boss) {
       const dCam = this.camBackS - gapV;
       const d3 = Math.hypot(dCam, this.camUpH);
-      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, 0.14 + 0.1 * loom);   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
+      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, 0.09 + 0.05 * loom);   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
       const side = b.u > 0.01 ? -1 : 1, hw = (tr.halfWidth(Math.max(0, gs)) || 3.8) - 0.3;
       uT = clamp(b.u + side * (3.4 - 0.8 * loom) * yetiSide(dCam), -hw, hw);
       if (dCam < 1.5) y.group.visible = false;      // right under / behind the camera: out of the picture anyway (and no draw call)
       if (dCam < 5) this.avalanche.group.visible = false;   // its powder wall sits 6 m behind the Yeti: behind the camera too (3 draw calls saved while the Yeti is far)
     }
     y.u += (uT - y.u) * (this.time < 0.3 ? 1 : Math.min(1, dt * 2.5));   // (it starts already on its side of the track)
+    if (y.mixer) { y.runA.timeScale = 1 + 0.5 * y.spr; y.mixer.update(dt); }
     const hz = 7 + 4 * y.spr, run = Math.abs(Math.sin(y.t * hz)) * (1 - eat) * (1 + 0.5 * y.spr);
     const sf = tr.surfaceAt(gs, y.u);
     tr.toWorld(Math.max(0, gs), y.u, Math.max(0, sf === -Infinity ? 0 : sf) + run * 0.8, _v);
@@ -4235,7 +4227,7 @@ export class Runner {
     y.mesh.quaternion.copy(_q).multiply(_q2);
     y.mesh.position.copy(_v);
     const rp = y.roar * (0.12 + 0.06 * Math.sin(y.t * 30));     // roar: a quick swell that rings out
-    y.fit += (fit - y.fit) * Math.min(1, dt * 6);
+    y.fit += (fit - y.fit) * (this.time < 0.3 ? 1 : Math.min(1, dt * 6));   // (the first frame is already the small shape)
     const sc = y.scale * y.fit * (1 + Math.sin(y.t * 14) * 0.03 + eat * Math.sin(y.t * 16) * 0.06 + rp);
     y.mesh.scale.set(sc, sc * (1 - run * 0.06 - eat * Math.abs(Math.sin(y.t * 8)) * 0.12 + rp * 0.4), sc);
 
@@ -4502,29 +4494,42 @@ export class Runner {
 
 function makeYeti(scene, lib) {
   const group = new THREE.Group();
-  const def = lib.yeti;
+  const gl = cloneYeti();   // our own skinned Blender yeti (run / roar clips); the capsule only stands in when the file is missing
+  const def = !gl && lib.yeti;
   const geo = def ? def.geometry : new THREE.CapsuleGeometry(0.8, 1.6, 4, 8);
-  // dark cool tint (the warm vertex colours x 0x8fa6c8 read baby pink; x this navy they read as a shadowy snow monster against the snow)
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: !!def, color: 0x30508c, emissive: 0x0a1630, flatShading: true });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
+  // the GLB bakes its cream fur: no tint. The old fallback keeps its dark cool tint (warm vertex colours x navy read as a shadowy snow monster).
+  // nearFade: any fragment on the ball's line of sight dissolves (wide radius), so the Yeti never covers the ball.
+  const mat = nearFade(new THREE.MeshLambertMaterial({ vertexColors: !!(gl || def), color: gl ? 0xffffff : 0x30508c, emissive: 0x0a1630, flatShading: true, side: THREE.DoubleSide }), 2.5, 4.5, { r: 0.15, w: 0.2, a: 1 });
+  let mesh, mixer = null, runA = null, roarA = null, eg = null, em = null, eyes = null;
+  if (gl) {
+    mesh = gl.model;
+    mesh.traverse((o) => { if (o.isMesh) { o.material = mat; o.frustumCulled = false; } });
+    mixer = new THREE.AnimationMixer(mesh);
+    runA = mixer.clipAction(THREE.AnimationClip.findByName(gl.clips, 'run') || gl.clips[0]).play();
+    roarA = mixer.clipAction(THREE.AnimationClip.findByName(gl.clips, 'roar') || gl.clips[0]);
+    roarA.setLoop(THREE.LoopOnce, 1); roarA.clampWhenFinished = false;
+    mixer.addEventListener('finished', () => { runA.reset().play(); runA.crossFadeFrom(roarA, 0.2, false); });
+  } else {
+    mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    // two glowing eyes on the side that faces the camera (one tiny instanced mesh)
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox, hh = bb.max.y - bb.min.y;
+    eg = new THREE.IcosahedronGeometry(Math.max(0.05, hh * 0.045), 0);
+    em = new THREE.MeshBasicMaterial({ color: 0xff7a2a, toneMapped: false });
+    eyes = new THREE.InstancedMesh(eg, em, 2);
+    const ez = bb.min.z + (bb.max.z - bb.min.z) * 0.12, ey = bb.min.y + hh * 0.8, ex = (bb.max.x - bb.min.x) * 0.1;
+    eyes.setMatrixAt(0, new THREE.Matrix4().makeTranslation(-ex, ey, ez));
+    eyes.setMatrixAt(1, new THREE.Matrix4().makeTranslation(ex, ey, ez));
+    eyes.frustumCulled = false;
+    mesh.add(eyes);
+  }
   group.add(mesh);
-  // two glowing eyes on the side that faces the camera (one tiny instanced mesh)
-  geo.computeBoundingBox();
-  const bb = geo.boundingBox, hh = bb.max.y - bb.min.y;
-  const eg = new THREE.IcosahedronGeometry(Math.max(0.05, hh * 0.045), 0);
-  const em = new THREE.MeshBasicMaterial({ color: 0xff7a2a, toneMapped: false });
-  const eyes = new THREE.InstancedMesh(eg, em, 2);
-  const ez = bb.min.z + (bb.max.z - bb.min.z) * 0.12, ey = bb.min.y + hh * 0.8, ex = (bb.max.x - bb.min.x) * 0.1;
-  eyes.setMatrixAt(0, new THREE.Matrix4().makeTranslation(-ex, ey, ez));
-  eyes.setMatrixAt(1, new THREE.Matrix4().makeTranslation(ex, ey, ez));
-  eyes.frustumCulled = false;
-  mesh.add(eyes);
   group.visible = false;
   scene.add(group);
   // ~3.3 m tall: big next to the ball, but it must not wall off the chase camera.
-  const scale = def ? RCFG.yetiH / Math.max(0.5, def.height) : RCFG.yetiH / 3.2;
-  return { group, mesh, mat, scale, t: 0, u: 0, spr: 0, roar: 0, heat: -1, fit: 1, dispose: () => { mat.dispose(); em.dispose(); eg.dispose(); eyes.dispose(); if (!def) geo.dispose(); } };
+  const scale = gl ? RCFG.yetiH / 3.34 : def ? RCFG.yetiH / Math.max(0.5, def.height) : RCFG.yetiH / 3.2;
+  return { group, mesh, mat, mixer, runA, roarA, scale, t: 0, u: 0, spr: 0, roar: 0, heat: -1, fit: 1, dispose: () => { mat.dispose(); mixer?.stopAllAction(); if (eyes) { em.dispose(); eg.dispose(); eyes.dispose(); } if (!gl && !def) geo.dispose(); } };
 }
 
 function makeAvalanche(scene) {

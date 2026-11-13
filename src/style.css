@@ -1252,3 +1252,34 @@ body:has(#toast-soft:not(.res) .ts) #hud.rush .hud-goal:not(.rage):not(.fury), b
 .cig-hud .cg-nx:not(:empty)::before { content: "\00b7"; margin-right: 8px; color: #fff; }
 .cig-hud .cg-row:has(.cg-nx:not(:empty)) #cg-best { display: none; }   /* metres + the next stage on ONE line; the record waits for the result card */
 #hud.rush .hud-goal.cannon .goal-lbl::before { content: "\2744\FE0F  "; }
+
+/* ---- frame-critic pass 7: one thing at a time in the Rush top third ---- */
+body:has(#banner .b, #floats .float.big, #floats .float.bad, .chap-pill.on) #hud.rush .hud-goal:not(.rage):not(.fury), body:has(#banner .b, #floats .float.big, #floats .float.bad, .chap-pill.on) .chap-bar { visibility: hidden; }   /* any announcement owns the strip: the quest pill and the chapter bar wait */
+.cmb .ch.k small { padding: 0 7px 1px; font-size: 12px; letter-spacing: 0; }
+.chap-bar i { background: linear-gradient(90deg, #6dff8f, #d8ffe2); box-shadow: 0 0 6px rgba(109, 255, 143, 0.9); }
+.chap-bar.bonus i { background: linear-gradient(90deg, #ffd23a, #fff3b0); box-shadow: 0 0 6px rgba(255, 210, 58, 0.9); }
+.chap-bar.pulse { animation: chapPulse 0.45s ease-out; }
+@keyframes chapPulse { 40% { transform: scaleY(1.9); filter: brightness(1.4); } }
+#hud.goal-intro.rush.rush.rush .hud-goal { transform: scale(1.16); transform-origin: top center; box-shadow: 0 0 14px rgba(255, 224, 102, 0.85); }
+.perk-ico { animation: perkIco 7s linear forwards; }   /* the picked perk fades out of the HUD after a few seconds */
+@keyframes perkIco { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+.buff-card.perk-card { min-height: 92px; }
+@media (prefers-reduced-motion: reduce) { .chap-bar.pulse { animation: none; } }
+body:has(.fm-ov) #result { visibility: hidden; }   /* a panel (GÜÇ ...) over the result: its text never ghosts through the header */
+.res-extra .rx-ms { padding-bottom: 13px; }   /* the 4 px mission fill lives in this strip, clear of the text */
+/* Avalanche (endless) HUD: the next tier lives inside the tier bar, the tier row steps aside for the combo badge */
+.cig-hud .cg-bar { position: relative; width: 168px; height: 16px; }
+.cig-hud .cg-bar .cg-nx { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 900 10px/1 system-ui, sans-serif; letter-spacing: 0.03em; color: #fff; white-space: nowrap; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 -1px 0 var(--ink); }
+.cig-hud .cg-nx:not(:empty)::before { content: none; }
+#hud.cig-endless:has(.cmb.on) .cig-hud { padding-left: 76px; box-sizing: border-box; }
+.cig-hud:has(.cg-nx:not(:empty)) #cg-best { display: none; }   /* metres alone on the row; the record waits for the result card */
+
+/* hybrid pass: bigger metres readout; perk picker row at most ~80 px so the lane and ball stay visible */
+#hud.rush.rush.rush .hud-coins .hc-d { font-size: 19px; line-height: 1.1; }
+.perk-pick .pp-h { font-size: 16px; }
+.buff-card.perk-card { min-height: 72px; padding: 5px 6px; gap: 2px; }
+.perk-card .bc-i { font-size: 26px; }
+.perk-card .bc-n { font-size: 14px; }
+.perk-card .bc-s { font-size: 11px; line-height: 1.1; }
+#hud.cig-endless .hud-tons { -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; }   /* the hero number stays readable over a pale sky */
+#hud.cig-lvl .hud-top .hud-level[data-near="1"] { box-shadow: 0 0 12px #ffcf3a; filter: brightness(1.3); }

@@ -98,7 +98,7 @@ export const words = {
   'İKİZ TOP!': 'TWIN BALL!', 'İKİZ PATLADI!': 'TWIN BLEW UP!', 'İKİZ GİTTİ': 'TWIN GONE',
   'KÜÇÜLDÜN': 'YOU SHRANK', 'YETİ ATTI!': 'YETI THREW!', 'YETİ ÖNÜNDE!': 'YETI AHEAD!', "YETİ'Yİ ATLATTIN!": 'YOU OUTRAN THE YETI!',
   'YIKIM MODU!': 'SMASH MODE!', 'SİMİT KURTARDI!': 'THE FLOAT SAVED YOU!', 'SÜRÜ DAĞILDI!': 'THE HERD SCATTERED!',
-  'ÇOK KÜÇÜLDÜN!': 'YOU SHRANK A LOT!', 'TÖKEZLEDİN!': 'YOU STUMBLED!', 'KARTOPU!': 'SNOWBALL!',
+  'ÇOK KÜÇÜLDÜN!': 'YOU SHRANK A LOT!', 'EN KÜÇÜK BOY! Bir daha = PATLAR': 'SMALLEST SIZE! One more = BOOM', 'TÖKEZLEDİN!': 'YOU STUMBLED!', 'KARTOPU!': 'SNOWBALL!',
   'BUZ KAYDIRAĞI!': 'ICE SLIDE!', 'TÜNEL!': 'TUNNEL!', 'ZAMAN RAMPASI!': 'TIME RAMP!', 'HALAT!': 'ROPE!', 'TAKLA!': 'FLIP!', 'RAY!': 'RAIL!',
   'RAY BİTTİ! +HIZ': 'RAIL OVER! +SPEED', 'SÜPER DALIŞ!': 'SUPER DIVE!', 'MÜKEMMEL SLALOM!': 'PERFECT SLALOM!',
   'ÇARPAN +3!': 'MULTIPLIER +3!', 'SÜPER ZIPLAMA!': 'SUPER JUMP!', 'KAR SAVAŞI! +500': 'SNOWBALL FIGHT! +500',
@@ -160,6 +160,7 @@ const KILL = {
 };
 
 export const patterns = [
+  [/^ÇARPTIN: x([0-9,]+) → x([0-9,]+)$/, (s, a, b) => `HIT: x${a.replace(',', '.')} → x${b.replace(',', '.')}`],
   [/^✔ (\d+) m · TEMİZ KAT! \+(\d+) (.+)$/, '✔ $1 m · CLEAN LAYER! +$2 $3'],
   [/^([\d.,]+) m · ([\d.,]+) puan$/, '$1 m · $2 points'],      // the pause line (main.js): "90 m · 468 puan"
   [/^EN İYİYE ([\d.,]+) PUAN$/, 'BEAT YOUR BEST: $1 PTS'],      // death screen: points still missing to the record

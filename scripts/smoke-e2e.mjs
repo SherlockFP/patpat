@@ -16,8 +16,8 @@
 //   5  cig mountains 1/33/37 (8 s each, ?auto)               6  cig endless + daily            7  arena solo
 //   8  english leak scan                                      9  fullscreen                    11  soak (heap after GC)
 //   12 frame pacing (Rush, rAF deltas)                        13 first-run frames first_00..03.png at 0.5/2/5/10 s (fresh save)
-//   14 cig mountain 1 start/mid/end (cig_1_*.png)             15 cig mountain 12 start/mid/end (cig_12_*.png)
-//   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   10 is the final blank-frame check (always printed)
+//   14 cig mountain 1 start/mid/town/end (cig_1_*.png)             15 cig mountain 12 start/mid/end (cig_12_*.png)
+//   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   10 is the final blank-frame check (always printed)
 import { spawn, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -347,6 +347,20 @@ async function hudStates(ctx) {
   if (b.pill === 'hidden' && (b.bar === 'hidden' || b.bar === 'none')) ctx.pass(`toast up: goal pill and chapter bar hidden (${JSON.stringify(b)})`); else ctx.fail(`toast up but strip still shows: ${JSON.stringify(b)}`);
 }
 
+// scenario 19: model gallery. Spawns the Blender critters / props straight ahead of an invulnerable ball (needs ?debug hooks) and shoots them at phone size (gal_critters_a/b, gal_props_a/b.png).
+async function gallery(ctx) {
+  await load('?endless&notut&debug', seed3());
+  await waitFor(`${rushPlay}&&(${hudDist})>=0`, 30000, 'rush playing');
+  const put = (spec) => ev(`(()=>{const r=cig.runner,o=r.obstacles,b=r.b;r.invulnT=999;r.yetiHoldT=99;${spec}})()`);
+  const crit = (rows) => put(`const C=o.critters;${JSON.stringify(rows)}.forEach((row,i)=>row.forEach((sp,l)=>C.spawnGroup({species:sp,s:b.s+9+i*6.5,lane:l,n:1,spacing:2,vc:0.2,hopTo:-1,second:-1,seed:i*7+l})))`);
+  const prop = (rows) => put(`${JSON.stringify(rows)}.forEach((row,i)=>row.forEach((ty,l)=>o._static({batch:[]},ty,b.s+10+i*7,[-2.4,0,2.4][l],ty==='crate'?{n:2}:{})))`);
+  const go = async (name) => { await sleep(120); await ev('window.__raf&&(window.__raf.skip=true)'); await shot(name, ctx); await ev('window.__raf&&(window.__raf.skip=false)'); await put('r.b.s=Math.max(r.b.s,0)'); };
+  await crit([['penguin', 'bunny', 'squirrel'], ['miniyeti', 'snowmini', 'scorpion'], ['jelly', 'robot', 'arcticfox']]); await go('gal_critters_a');
+  await put('o.critters.reset?.()'); await crit([['panda', 'polarcub', 'clownbot'], ['lavabug', 'penguin', 'bunny']]); await go('gal_critters_b');
+  await prop([['snowman', 'sign', 'crate'], ['sled', 'logpile', 'pine'], ['rock', 'stone', 'snowman']]); await go('gal_props_a');
+  ctx.pass('gallery frames shot');
+}
+
 let rushStats = null, rushGl = null;   // rushStats: rAF data of the last Rush run, reused by s12 when s4 ran first
 async function rushPlaytest(ctx) {
   await load('?endless&notut', seed3());
@@ -364,7 +378,8 @@ async function rushPlaytest(ctx) {
   const cap = Date.now() + 74000;
   const afterResult = async (td) => {   // result screen is up: shoot once, retry, back to playing
     await sleep(600);
-    if (!resultShot) { resultShot = true; await shot('rush_result', ctx); const t = await ev(`document.getElementById('result').innerText.replace(/\\s+/g,' ').slice(0,100)`); ctx.pass(`result screen: "${t}"`); }
+    if (!resultShot) { resultShot = true; await ev(`document.querySelector('.rx-ms')?.style.setProperty('--f','45%')`); await shot('rush_result', ctx);   // (--f 45%: the mission fill is on screen, so the frame shows it next to the text)
+      const t = await ev(`document.getElementById('result').innerText.replace(/\\s+/g,' ').slice(0,100)`); ctx.pass(`result screen: "${t}"`); }
     // GÜÇ entry on the result: the button (only while something is affordable) or the 'Next: ...' bar of the card; opens the panel over it, closes again
     const pwSel = !powerShot && await ev(`(()=>{const b=document.getElementById('btn-power');return document.querySelector('.rx-up')?'.rx-up':b&&b.style.display!=='none'?'#btn-power':''})()`);   // the Next bar (button) first: it opens GÜÇ at that upgrade's row
     if (pwSel) {
@@ -455,6 +470,9 @@ async function cigFrames(ctx, n) {
   await at(2000); await shot(`cig_${n}_start`, ctx);
   await at(8000);
   if (await ev(RESULT_UP)) ctx.warn(`mountain ${n}: result already up at 8 s, no mid frame`); else await shot(`cig_${n}_mid`, ctx);
+  // mid-demolition frame: the town chip ("TOWN 40%+") before the result (QA critic: the payoff must be visible in a frame)
+  const town = await waitFor(`(()=>{const m=/TOWN (\d+)%/.exec((document.getElementById('hud-level')||{}).textContent||'');return (!!m&&+m[1]>=40)||(${RESULT_UP})})()`, Math.max(1000, t + 42000 - Date.now()), 'town 40%').then(() => true, () => false);
+  if (town && !(await ev(RESULT_UP))) await shot(`cig_${n}_town`, ctx);
   const end = await waitFor(RESULT_UP, Math.max(1000, t + 42000 - Date.now()), 'result').then(() => true, () => false);
   if (end) { await sleep(900); await shot(`cig_${n}_end`, ctx); await sleep(1700); await fitCheck(ctx, `mountain ${n} result (real run, 2.6 s in)`); const tx = await ev(`document.getElementById('result').innerText.replace(/\\s+/g,' ').slice(0,80)`); ctx.pass(`mountain ${n}: finale/result reached at ${((Date.now() - t) / 1000).toFixed(0)} s: "${tx}"`); }
   else ctx.warn(`mountain ${n}: no result within 42 s of start (?auto bot still running), no end frame`);
@@ -668,6 +686,7 @@ async function main() {
   await scenario(2, 'first-run TR', 30000, (c) => firstRun(c, 'tr'));
   await scenario(3, 'returning player + bottom nav', 30000, returning);
   await scenario(4, 'rush 1-minute playtest', 90000, rushPlaytest);
+  await scenario(19, 'model gallery (Blender critters + props)', 30000, gallery);
   await scenario(18, 'rush HUD states (cannon bar, flag, toast)', 30000, hudStates);
   await scenario(12, 'frame pacing (Rush)', 30000, s12);
   await scenario(13, 'first-run frames 0.5/2/5/10 s', 30000, firstFrames);

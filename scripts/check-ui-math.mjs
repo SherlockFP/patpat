@@ -194,7 +194,9 @@ assert.equal(UI.fmtTons(1.5), '1.5 ton', 'English: decimal point');
   u._mu = 3;
   u._mu = 0; u._cmRender();
   assert.ok(u._cmb.classList.contains('on') && u._cmb.classList.contains('dim') && u._cmKe.textContent === 'x1', 'Rush chip: always drawn, dim x1 without a multiplier');
-  assert.equal(u._cmKs.textContent, 'ÇARPAN', 'Rush chip: micro-label on the first change of the run');
+  assert.equal(u._cmKs.textContent, '▼', 'Rush chip: a red down arrow on a drop');
+  u._mu = 2; u._cmRender();
+  assert.equal(u._cmKs.textContent, '▲', 'Rush chip: a green up arrow on a rise');
   assert.ok(u._cmb.classList.contains('decay'), 'Rush chip: pulses when the multiplier drops');
   clearTimeout(u._mLbT);
 

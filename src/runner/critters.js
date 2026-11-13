@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import { makeRng } from '../rng.js';
 import { LANES } from './track.js';
 import { nearFade } from './nearfade.js';
+import { GLB } from '../glb.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -169,8 +170,8 @@ export class Critters {
   _species(id) {
     let S = this.sp[id];
     if (S) return S;
-    const def = SPECIES[id], geo = build(def.parts, !!def.unlit);
-    this._geos.push(geo);
+    const def = SPECIES[id], geo = GLB['critter_' + id] || build(def.parts, !!def.unlit);   // our Blender model (baked colours), else the procedural one
+    if (!GLB['critter_' + id]) this._geos.push(geo);
     const mesh = new THREE.InstancedMesh(geo, def.unlit ? this.glow : this.lit, CAP);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CAP * 3).fill(1), 3);

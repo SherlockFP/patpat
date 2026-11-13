@@ -81,7 +81,7 @@ const CSS = `
   padding-top: calc(var(--sat, env(safe-area-inset-top, 0px)) + 8px);
   background:
     radial-gradient(ellipse 85% 42% at 50% 56%, rgba(40, 20, 100, 0) 0%, rgba(40, 20, 100, 0) 55%, rgba(26, 14, 78, 0.38) 100%),
-    linear-gradient(180deg, rgba(34, 24, 104, 0.84) 0%, rgba(40, 52, 140, 0.52) 17%, rgba(46, 78, 170, 0.3) 36%, rgba(36, 60, 140, 0.26) 56%, rgba(28, 22, 92, 0.58) 82%, rgba(22, 14, 74, 0.86) 100%);
+    linear-gradient(180deg, rgba(34, 24, 104, 0.84) 0%, rgba(40, 52, 140, 0.44) 17%, rgba(46, 78, 170, 0.14) 36%, rgba(36, 60, 140, 0.08) 56%, rgba(28, 22, 92, 0.58) 82%, rgba(22, 14, 74, 0.86) 100%);
 }
 .fm-main.fm-hide { display: none; }
 .fm-main.fm-under { visibility: hidden; }
@@ -297,7 +297,7 @@ const CSS = `
   text-shadow: 0 3px 0 var(--ink), 3px 3px 0 var(--ink), -3px 3px 0 var(--ink), 3px -3px 0 var(--ink), -3px -3px 0 var(--ink), 0 -3px 0 var(--ink), 3px 0 0 var(--ink), -3px 0 0 var(--ink), 0 8px 8px rgba(10, 30, 60, 0.35);
   transition: transform 0.06s, box-shadow 0.06s;
 }
-.fm-play small { display: block; margin-top: 4px; font-size: 14px; letter-spacing: 0.2em; color: #1f4a0d; text-shadow: none; opacity: 0.9; }
+.fm-play small { display: block; margin-top: 4px; font-size: 20px; letter-spacing: 0.16em; color: #1f4a0d; text-shadow: none; opacity: 0.9; }
 .fm-play::after { content: ""; position: absolute; top: -20%; bottom: -20%; left: -60%; width: 34%; background: linear-gradient(100deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0)); transform: skewX(-20deg); animation: fmShine 3.8s ease-in-out infinite; pointer-events: none; }
 @keyframes fmShine { 0%, 55% { left: -60%; } 80%, 100% { left: 130%; } }
 .fm-play:active { transform: translateY(6px); box-shadow: 0 2px 0 #2f7a14, 0 4px 8px rgba(10, 30, 60, 0.3), inset 0 4px 0 rgba(255, 255, 255, 0.6); }
@@ -850,6 +850,7 @@ const CSS = `
 .fm-stamp.got .si { filter: none; }
 .fm-post { position: absolute; right: 14px; top: -44px; width: 46px; height: 38px; border: 0; padding: 0; cursor: pointer; font-size: 26px; line-height: 38px; text-align: center; border-radius: 10px; background: linear-gradient(180deg, #fffdf2, #f1e2b0); box-shadow: 0 3px 0 #a98a3c, 0 5px 8px rgba(10, 30, 60, 0.35); animation: fmPostB 2.2s ease-in-out infinite; }
 .fm-post.off { display: none; }
+.fm-post .fm-pl { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 3px; padding: 1px 7px; border-radius: 8px; background: rgba(23, 52, 92, 0.85); color: #fff; font-size: 11px; line-height: 13px; font-weight: 900; letter-spacing: 0.04em; white-space: nowrap; pointer-events: none; }
 .fm-post .fm-bdg { top: -6px; right: -6px; }
 @keyframes fmPostB { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-4px) rotate(3deg); } }
 .fm-card { position: relative; margin: 8px 6px 12px; padding: 16px 14px 14px; border-radius: 6px; text-align: center; background: repeating-linear-gradient(180deg, #fff9e3 0 26px, #f0e4bd 26px 27px); border: 3px solid #c9a95a; box-shadow: 0 6px 0 #9b7d34, 0 10px 16px rgba(10, 30, 60, 0.3); transform: rotate(-1.2deg); color: var(--ink); }
@@ -3100,7 +3101,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       ov.appendChild(gl);
     }
 
-    const chips = (Array.isArray(d.chips) ? d.chips.slice() : []).concat(rewardChips(rw));
+    const chips = [...new Set((Array.isArray(d.chips) ? d.chips.slice() : []).concat(rewardChips(rw)))];   // (one flake tile, even when the caller also passes one)
     if (chips.length) {
       const rc = el('div', 'fm-rchips');
       { const n = chips.length, cols = n <= 3 ? n : (n === 6 ? 3 : 2); rc.style.cssText = `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:6px;justify-items:stretch;width:min(calc(100% - 24px),380px);margin-left:auto;margin-right:auto`; }
@@ -3126,7 +3127,9 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const retryFirst = !!lv && stars < 3 && !!d.hasNext;
     if (d.hasNext && !retryFirst) btns.appendChild(button('fm-btn big green', LB.next || 'SONRAKİ BÖLÜM ▶', done(h.onNext)));
     if (retryFirst) btns.appendChild(button('fm-btn big green', LB.retry || '↻ TEKRAR', done(h.onRetry)));
-    btns.appendChild(add(el('div', 'row'), retryFirst ? button('fm-btn blue', LB.next || 'SONRAKİ ▶', done(h.onNext)) : button('fm-btn blue', LB.retry || '↻ TEKRAR', done(h.onRetry)), button('fm-btn', LB.map ? '⛰️ ' + LB.map : '🗺️ HARİTA', done(h.onMap))));
+    const second = retryFirst ? button('fm-btn blue', LB.next || 'SONRAKİ ▶', done(h.onNext)) : button('fm-btn blue', LB.retry || '↻ TEKRAR', done(h.onRetry));
+    if (retryFirst) second.style.flex = '1.2 1 0';   // the main path (next mountain) keeps most of the row next to RETRY
+    btns.appendChild(add(el('div', 'row'), second, button('fm-btn', LB.map ? '⛰️ ' + LB.map : '🗺️ HARİTA', done(h.onMap))));
     ov.appendChild(btns);
     ov.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
     host.appendChild(ov);
@@ -3260,7 +3263,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const list = p.list;
     const np = dagPlan(next);
     const q = button('fm-btn big green fm-cgq', '', () => { sfx('confirm'); cigStart(next); });
-    add(q, el('b', '', cleared >= DAG_COUNT ? 'SON DAĞ ▶' : 'SONRAKİ DAĞ ▶'), el('small', '', 'DAĞ ' + next + ' · ' + np.name));
+    add(q, el('b', '', cleared >= DAG_COUNT ? 'SON KASABA ▶' : 'SONRAKİ KASABA ▶'), el('small', '', 'DAĞ ' + next + ' · ' + np.name));
     list.appendChild(q);
 
     const grid = el('div', 'fm-cgrid');
@@ -3500,7 +3503,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     const sPass = secBtn('c-pass', '🛂', 'Pasaport', () => { try { localStorage.setItem('patpat.stampsSeen', String(meta.stamps().filter((x) => x.got).length)); } catch { /* ignore */ } openPassport(); updateMain(); });
     r.passBdg = sPass.bdg; r.sPass = sPass.b;
     r.post = button('fm-post', '✉️', () => { sfx('click'); openPostcard(); }, 'Yeti Postası');
-    r.postBdg = el('span', 'fm-bdg dot off', '!'); r.post.appendChild(r.postBdg);
+    r.postBdg = el('span', 'fm-bdg dot off', '!'); r.post.appendChild(r.postBdg); r.post.appendChild(el('span', 'fm-pl', 'Hediye'));   // (a word under the envelope: it is the free daily mail coupon)
     r.railL.appendChild(r.globe); r.railL.appendChild(r.post);
     const sSet = secBtn('c-set', '⚙️', 'Ayarlar', () => openSettings());
     r.xchip = el('span', 'fm-xchip', ''); r.xchip.style.display = 'none';
@@ -3601,7 +3604,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     try {
       const c = campInfo();
       r.mapSub.textContent = c.done ? `⭐ ${c.totalStars}/${c.maxStars}` : `Bölüm ${c.current} · ⭐ ${c.totalStars}/${c.maxStars}`;
-      r.cigSub.textContent = `Kasaba ${save.cigCleared() | 0}/${DAG_COUNT}`;
+      r.cigSub.textContent = `Kasabayı yık · ${save.cigCleared() | 0}/${DAG_COUNT}`;
     } catch { /* ignore */ }
 
     const mult = meta.multiplier();

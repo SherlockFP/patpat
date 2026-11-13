@@ -25,6 +25,7 @@ import { LANES, LANE_W, setLanes, laneOf, hwFor } from './track.js';
 import { Critters } from './critters.js';
 import { gustAt } from './goals.js';
 import { nearFade } from './nearfade.js';
+import { GLB } from '../glb.js';
 
 const PI = Math.PI, TAU = PI * 2;
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
@@ -276,10 +277,13 @@ function makeGeometries() {
     [new THREE.CylinderGeometry(0.15, 0.15, 0.4, 6), 0x3f9a4a, -0.38, 1.6, 0, 0, 0, PI / 2], [new THREE.CylinderGeometry(0.15, 0.15, 0.6, 6), 0x4fae56, -0.55, 1.88, 0], [new THREE.SphereGeometry(0.16, 6, 5), 0x5fbd62, -0.55, 2.18, 0],
   ], true);
   G.gem = gemGeometry();
+  for (const k in GLB_PROPS) if (GLB[GLB_PROPS[k]]) G[k] = GLB[GLB_PROPS[k]];   // our Blender props (baked colours); a pool exists only for the ones that loaded
   return G;
 }
 
 // pool: key -> [geometry key, material key, capacity]
+const GLB_PROPS = { glbSnowman: 'prop_snowman', glbSign: 'prop_sign', glbCrate: 'prop_crate', glbSled: 'prop_sled', glbLog: 'prop_logpile', glbPine: 'prop_pine', glbRockBig: 'prop_rock_big', glbRockSmall: 'prop_rock_small' };
+const GLB_CAP = { glbSnowman: 30, glbSign: 30, glbCrate: 80, glbSled: 40, glbLog: 30, glbPine: 70, glbRockBig: 40, glbRockSmall: 70 };
 const POOLS = {
   box: ['box', 'lit', 1500], cyl: ['cyl', 'lit', 320], ball: ['ball', 'lit', 520], pine: ['pine', 'lit', 70], plow: ['plow', 'lit', 24],
   rockS: ['rockS', 'lit', 70], rockS2: ['rockS2', 'lit', 70], rockB: ['rockB', 'lit', 40], rockB2: ['rockB2', 'lit', 40], cone: ['cone', 'lit', 140], dome: ['dome', 'lit', 60], cactus: ['cactus', 'lit', 50],
@@ -321,6 +325,7 @@ export class Obstacles {
     };
     this.pool = {};
     for (const k in POOLS) this._mkPool(k, POOLS[k]);
+    for (const k in GLB_PROPS) if (this.G[k]) this._mkPool(k, [k, 'lit', GLB_CAP[k]]);
     this.obs = [];          // obstacles sorted by s (centre)
     this.picks = [];        // pickups sorted by s
     this.pending = [];      // hit obstacles awaiting resolve()
@@ -795,7 +800,8 @@ const KALIAS = { longLogs: 'longLog' };   // event kind names the runner knows (
 function bigRock(ob) {       // tall faceted boulder (lethal head-on) + hazard flag
   const sc = ob.sc || 1, W = 2.0 * sc, H = 2.25 * sc, key = ob.id & 1 ? 'rockB2' : 'rockB', g = this.G[key];
   ob.shape = 'cyl'; ob.rad = g.userData.fr * W; ob.ht = H;
-  this._part(ob, key, ROCK_TINT[ob.skin] || ROCK_TINT.snow, ob.u, 0, ob.u * 3.1 + ob.id, 0, W, H, W);
+  if (this.pool.glbRockBig) this._part(ob, 'glbRockBig', ROCK_TINT[ob.skin] || ROCK_TINT.snow, ob.u, 0, ob.u * 3.1 + ob.id, 0, 0.9 * sc, 0.96 * sc, 0.9 * sc, 0, 0, 0, null, 1.45);   // k: the model bakes ~0.7 grey, the tint was made for white
+  else this._part(ob, key, ROCK_TINT[ob.skin] || ROCK_TINT.snow, ob.u, 0, ob.u * 3.1 + ob.id, 0, W, H, W);
   this._part(ob, 'box', COL.dark, ob.u, H + 0.55, 0, 0, 0.07, 1.1, 0.07);
   this._part(ob, 'box', COL.red, ob.u + 0.27, H + 0.95, 0, 0, 0.52, 0.34, 0.04);
   this._part(ob, 'box', 0xffffff, ob.u + 0.27, H + 0.95, 0, 0, 0.52, 0.11, 0.05);
@@ -803,10 +809,12 @@ function bigRock(ob) {       // tall faceted boulder (lethal head-on) + hazard f
 function smallRock(ob) {     // low, wide, dark facets: jump it (or dodge)
   const sc = ob.sc || 1, W = 1.4 * sc, H = 0.64 * sc, key = ob.id & 1 ? 'rockS2' : 'rockS', g = this.G[key];
   ob.shape = 'cyl'; ob.rad = g.userData.fr * W; ob.ht = H;
-  this._part(ob, key, STONE_TINT[ob.skin] || STONE_TINT.snow, ob.u, 0, ob.u * 2.3 + ob.id, 0, W, H, W);
+  if (this.pool.glbRockSmall) this._part(ob, 'glbRockSmall', STONE_TINT[ob.skin] || STONE_TINT.snow, ob.u, 0, ob.u * 2.3 + ob.id, 0, sc, sc, sc, 0, 0, 0, null, 1.45);
+  else this._part(ob, key, STONE_TINT[ob.skin] || STONE_TINT.snow, ob.u, 0, ob.u * 2.3 + ob.id, 0, W, H, W);
 }
 function crateBuild(ob, hexA, hexB) {
   const n = ob.n || 1; ob.ht = 1.1 * n;
+  if (hexA === COL.wood && this.pool.glbCrate) { for (let k = 0; k < n; k++) this._part(ob, 'glbCrate', 0xffffff, ob.u, 1.1 * k, 0.1 * (k ? -1 : 1), 0, 1, 1, 1); return; }
   for (let k = 0; k < n; k++) this._part(ob, 'box', k & 1 ? hexB : hexA, ob.u, 0.55 + 1.1 * k, 0.1 * (k ? -1 : 1), 0, 1.1, 1.1, 1.1);
 }
 function fenceBuild(ob, post, rail) {
@@ -825,6 +833,7 @@ function logBuild(ob, hexA, hexB) {
 const DEFS = {
   snowman: { shape: 'cyl', tough: 1, color: 0xffffff, rad: 0.55, ht: 2.4, ext: 1.5, build(ob) {
     const u = ob.u, W = 0xdbe7f4;
+    if (this.pool.glbSnowman) { this._part(ob, 'glbSnowman', 0xffffff, u, 0, 0, 0, 0.85, 0.85, 0.85); return; }
     this._part(ob, 'ball', W, u, 0.6, 0, 0, 1.2, 1.2, 1.2); this._part(ob, 'ball', W, u, 1.5, 0, 0, 0.86, 0.86, 0.86);
     this._part(ob, 'ball', W, u, 2.1, 0, 0, 0.62, 0.62, 0.62);
     this._part(ob, 'cyl', COL.red, u, 1.86, 0, 0, 0.8, 0.17, 0.8);                                                  // scarf (colour against the white snow)
@@ -833,6 +842,7 @@ const DEFS = {
     this._part(ob, 'box', COL.orange, u, 2.1, 0, 0, 0.07, 0.07, 0.3, 0, 0, 0.32);
   } },
   sign: { shape: 'cyl', tough: 1, color: COL.red, rad: 0.45, ht: 1.8, ext: 1.2, build(ob) {
+    if (this.pool.glbSign) { this._part(ob, 'glbSign', 0xffffff, ob.u, 0, 0, 0, 1, 1, 1); return; }
     this._part(ob, 'box', COL.wood2, ob.u, 0.85, 0, 0, 0.12, 1.7, 0.12);
     this._part(ob, 'box', COL.red, ob.u, 1.5, 0, 0, 1.0, 0.5, 0.08, 0, 0, 0.1); this._part(ob, 'box', COL.snow, ob.u, 1.5, 0, 0, 0.8, 0.1, 0.09, 0, 0, 0.1);
   } },
@@ -840,12 +850,13 @@ const DEFS = {
   sled: { shape: 'box', tough: 2, color: COL.red, hs: 1.0, hu: 0.55, ht: 1.2, ext: 1.8, build(ob) { sledParts.call(this, ob, 0); } },
   logpile: { shape: 'box', tough: 3, color: COL.wood2, hs: 0.95, hu: 1.0, ht: 1.5, ext: 1.8, build(ob) {
     const u = ob.u, P = PI / 2;
+    if (this.pool.glbLog) { this._part(ob, 'glbLog', 0xffffff, u, 0, 0, 0, 1, 1, 1); return; }
     this._part(ob, 'cyl', COL.wood2, u, 0.42, 0, P, 0.84, 2.0, 0.84, 0, 0, -0.45); this._part(ob, 'cyl', COL.wood, u, 0.42, 0, P, 0.84, 2.0, 0.84, 0, 0, 0.45);
     this._part(ob, 'cyl', COL.wood, u, 1.1, 0, P, 0.84, 1.9, 0.84);
   } },
   pine: { shape: 'cyl', tough: 4, color: COL.pine, rad: 0.8, ht: 4.7, ext: 1.6, build(ob) {
     const sc = ob.sc || 1; ob.rad = 0.8 * sc; ob.ht = 4.7 * sc;
-    this._part(ob, 'pine', 0xffffff, ob.u, 0, ob.u * 3.1, 0, sc, sc, sc);
+    this._part(ob, this.pool.glbPine ? 'glbPine' : 'pine', 0xffffff, ob.u, 0, ob.u * 3.1, 0, sc, sc, sc);
   } },
   rock: { shape: 'cyl', tough: 5, color: COL.rock, rad: 1.0, ht: 2.2, ext: 1.8, lethal: true, build: bigRock },
   stone: { shape: 'cyl', tough: 2, color: 0x6a7280, rad: 0.7, ht: 0.64, ext: 1.2, build: smallRock },
@@ -1171,6 +1182,7 @@ const SK = {
 function sledParts(ob, du) {
   const u = (ob.cu !== undefined ? ob.cu : ob.u) + du, c = ob.color || COL.red;
   const mk = (key, hex, ou, h, sx, sy, sz, oz = 0, f = null) => { const p = this._part(ob, key, hex, u + ou, h, 0, 0, sx, sy, sz, 0, 0, oz, f); p.du = ou; return p; };
+  if (this.pool.glbSled) { mk('glbSled', 0xffffff, 0, 0, 0.9, 0.9, 0.9); return; }
   mk('box', c, 0, 0.55, 0.95, 0.55, 1.9); mk('box', COL.dark, 0, 0.95, 0.5, 0.2, 0.8, 0.15); mk('box', 0x9fd8ff, 0, 1.05, 0.7, 0.45, 0.06, -0.55);
   mk('box', COL.dark, -0.42, 0.08, 0.14, 0.08, 1.95); mk('box', COL.dark, 0.42, 0.08, 0.14, 0.08, 1.95); mk('box', COL.dark, 0, 1.0, 0.85, 0.08, 0.08, -0.45);
 }
@@ -3264,7 +3276,7 @@ Object.assign(Obstacles.prototype, {
   _tintSmash(ob, on) {
     if (!!ob.smashTint === on) return;
     ob.smashTint = on;
-    for (const p of ob.parts) if (p.idx >= 0 && (p.key === 'box' || p.key === 'cyl' || p.key === 'ball' || p.key.indexOf('rock') === 0)) this._tint(p, on ? 0.3 : 0);
+    for (const p of ob.parts) if (p.idx >= 0 && (p.key === 'box' || p.key === 'cyl' || p.key === 'ball' || p.key.indexOf('rock') === 0 || p.key.indexOf('glb') === 0)) this._tint(p, on ? 0.3 : 0);
   },
   _tint(p, k) {
     const a = this.pool[p.key].m.instanceColor.array, i = p.idx * 3;

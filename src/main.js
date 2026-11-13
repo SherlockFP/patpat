@@ -19,6 +19,7 @@ import { PostFX, VISUAL_MODES, SU, patchMaterial, makeGovernor } from './shaders
 import { makeSkin, disposeSkin, trailStyle, setGoldBall } from './skins.js';
 import { Scenery, themeForLevel } from './scenery.js';
 import { loadModels } from './assets.js';
+import { loadGlbs } from './glb.js';
 import { meta } from './meta.js';
 import { createMenus } from './menus.js';
 import { levelById, evalGoals, countStars } from './campaign.js';
@@ -126,7 +127,7 @@ const lib = buildPropLibrary();
 // The ~1 MB imported models: the download starts NOW and is off the critical path of the first screen (boot() gives it a short head start only).
 // Anything that builds a world waits for it (afterModels), so a very fast tap never plays on a half-filled prop library.
 let modelsDone = false;
-const modelsP = loadModels().then((m) => { Object.assign(lib, m); }, (e) => console.warn(e)).then(() => { modelsDone = true; });
+const modelsP = Promise.all([loadModels().then((m) => { Object.assign(lib, m); }, (e) => console.warn(e)), loadGlbs()]).then(() => { modelsDone = true; });
 const afterModels = (fn) => (modelsDone ? fn() : modelsP.then(fn));
 const propMat = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
 const ball = new Ball(scene, lib, propMat);
@@ -381,7 +382,7 @@ function comboMilestone(n) {
   audio.milestone(1 + k); audio.pop(0.9, CM_AT[k]);
   platform.haptic(k ? 'success' : 'medium');
   ui.banner?.('KOMBO x' + CM_AT[k] + '!', 2 + (k > 1 ? 1 : 0), 800);
-  game._msg?.(2, '🪙 +' + coins + ' KOMBO ÖDÜLÜ');
+  if (k >= 1 && performance.now() - (G.cmMsgAt || -1e9) > 6000) { G.cmMsgAt = performance.now(); game._msg?.(2, '🪙 +' + coins + ' KOMBO ÖDÜLÜ'); }   // (x10 only banks its coins + the banner: the bonus toast is for x25 / x50, at most every 6 s)
 }
 
 // level intro chip: PATRON SEVİYESİ and/or the chapter modifier, ~3 s, then it fades (one pooled element)
@@ -752,14 +753,14 @@ function updateLevelHud(V) {
   const s = V.finalBroken ? 'BİTİŞ' : V.final ? 'FİNAL' : 'ETAP ' + (V.gateI + 1) + '/' + V.S;
   const t0 = V.finalBroken ? '🏁' : V.locked ? '👹 ' + fmtD(V.need) + ' m' : V.need > 0 ? '⛔ ' + fmtD(V.need) + ' m' : m5 + ' m';
   // KASABA mountains: ONE gauge "⚪ have → 🏘️ target" (the stage gates are ticks on the bar), the destroyed % once the town starts
-  const t = V.townNeed > 0 ? (V.finalBroken || V.have >= V.townNeed ? '🏘️ KASABA %' + (V.pct | 0) : '⚪ ' + fmtD(V.have) + ' m → 🏘️ ' + fmtD(V.townNeed) + ' m')
+  const t = V.townNeed > 0 ? (V.finalBroken || V.have >= V.townNeed ? ((V.pct | 0) > 0 || V.finalBroken ? '🏘️ KASABA %' + (V.pct | 0) : '⚪ ' + fmtD(V.have) + ' m ✓ 🏘️ ' + fmtD(V.townNeed) + ' m') : '⚪ ' + fmtD(V.have) + ' m → 🏘️ ' + fmtD(V.townNeed) + ' m')
     : V.final || V.finalBroken ? s + ' · ' + t0 : t0;   // plain target (⛔ 1.6 m); the stage count lives in the bar's gate pips
   const r = V.finalBroken ? 2 : V.ready;
   if (h.s !== '-') { h.s = '-'; h.gs.textContent = ''; h.gs.style.display = 'none'; }
   if (t !== h.t) { h.t = t; h.gt.textContent = t; }
   const lv = ui.el.level;
   if (lv.textContent !== t) lv.textContent = t;   // the level label IS the ETAP chip now
-  const lvOff = G.t > 3 && h.g.style.display === 'flex' ? 'none' : '';   // the progress bar says the same: one goal readout after the first 3 s
+  const lvOff = '';   // the size -> town pill stays up the whole run (the bar shows how far, the pill says what size the town needs)
   if (lv.style.display !== lvOff) lv.style.display = lvOff;
   if (r !== h.r) { h.r = r; h.gc.className = 'cgl gc r' + r; lv.classList.remove('lr0', 'lr1', 'lr2'); lv.classList.add('lr' + r); }
   if (h.stars) updateStars(V);
@@ -795,6 +796,8 @@ function updateGauge(V) {
   for (let i = 0; i < h.gnotch.length; i++) h.gnotch[i].classList.toggle('passed', f >= nf[i]);
   const tp = V.townNeed > 0 ? (V.townPct >= V.townGoal && V.townGoal > 0 ? 3 : V.townPct >= V.townGoal * 0.55 ? 2 : V.townPct > 0 ? 1 : 0) : 0;
   if (ui.el.level.dataset.tp !== String(tp)) ui.el.level.dataset.tp = String(tp);
+  const nr = V.townNeed > 0 && V.have < V.townNeed && V.have >= 0.8 * V.townNeed ? '1' : '0';   // within 20% of the town size: the chip glows
+  if (ui.el.level.dataset.near !== nr) ui.el.level.dataset.near = nr;
 }
 // star pips: 0 = not yet, 1 = earned, 2 = impossible now (grey)
 function updateStars(V) {
@@ -965,7 +968,7 @@ function finishCigLevel() {
     const hasNext = !daily && n < MAX_DAG;
     menus.showLevelComplete({
       level: planAsLevel(plan), stars, goalsMet, rewards: { coins, crystals }, hasNext,
-      labels: { banner: townPct >= 0 ? 'KASABA %' + townPct + ' YIKILDI' : 'DAĞ TAMAM!', bossBanner: 'PATRON YENİLDİ!', next: 'SONRAKİ DAĞ ▶', map: 'DAĞLAR', retry: '↻ TEKRAR' },
+      labels: { banner: townPct >= 0 ? 'KASABA %' + townPct + ' YIKILDI' : 'DAĞ TAMAM!', bossBanner: 'PATRON YENİLDİ!', next: 'SONRAKİ KASABA ▶', map: 'KASABALAR', retry: '↻ TEKRAR' },
       chips: (townPct >= 0 ? ['🏘️ ' + townPct + '%'] : []).concat(['⚪ ' + fmtD(2 * G.finalR) + ' m', '⚖️ ' + fmtTons(r.tons), '⏱ ' + clock(st.time)]).concat(comboC ? ['🪙 KOMBO +' + comboC] : [], plan.bigBoss && firstClear ? ['👑 PATRON ÖDÜLÜ'] : [], lootChip ? [lootChip] : []),
       special: !daily && firstClear && n === 10 ? '∞ ÇIĞ SONSUZ AÇILDI!' : !daily && firstClear && n === MAX_DAG ? '🏆 TÜM DAĞLAR TAMAM!' : null,
     }, {
@@ -987,7 +990,7 @@ function finishCigLevel() {
       : wave ? 'Durma: çığ arkandan geliyor.' : 'Küçükleri ye, durursan kar erir.';
     menus.showLevelFailed({
       level: planAsLevel(plan), cause: G.cause, title: bossF ? 'PATRONA ÇARPTIN — daha büyük gel!' : wave ? 'ÇIĞ SENİ YAKALADI!' : 'ERİDİN!', icon: bossF ? '💥' : wave ? '🌨️' : '💧', tip,
-      distance: peakD, stats: { distance: peakD }, labels: { retry: '↻ TEKRAR DENE', map: 'DAĞLAR' },
+      distance: peakD, stats: { distance: peakD }, labels: { retry: '↻ TEKRAR DENE', map: 'KASABALAR' },
     }, {
       onRetry: () => startCigLevel(daily ? { daily: true } : n, { retry: true }),
       onMap: () => { toMenu(); menus.openCigLevels?.(n); },
