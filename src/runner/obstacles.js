@@ -1539,6 +1539,7 @@ const rowRate = (s) => (0.56 + 0.8 * (1 - Math.exp(-s / 1900))) * (1 + 0.26 * sm
 const tensionMul = (ph) => 1.22 - 0.38 * smooth(ph / BUILD_T);           // row gap multiplier over the build: calm 1.22 -> intense 0.84
 const lethalK = (d) => (d < 0.18 ? 0 : 0.3 + 1.0 * smooth((d - 0.18) / 0.62));      // multiplier of the lethal blockers' weights (<= ~30% share)
 const HARD_PAT = { double: 1, train: 1, mover: 1, rolling: 1, beat: 1, swing: 1, oncoming: 1, slide: 1, combo: 1, laser: 1, missile: 1, phrase: 1, turret: 1, pensled: 1 };
+const SIG_AT = { oncoming: 0, missile: 0 };      // metres into a chapter at which its signature row may start (the train / missile row places its hazard ~40 m ahead of the row, the rest sit on the row)
 const LETHAL_KIND = { oncoming: 1, slidewall: 1, missile: 1 };
 const SINGLE_VERB = { single: 1, low: 1, duck: 1, rest: 1 };            // round sections (loop, corkscrew, helix, half-pipe, tube): one verb per row
 // first 20 s: something every ~2.5 s (was every ~3.5 s from the 5 s mark): a block at 3.5 s, a critter, a hurdle, a pad jump over a flake arc (~11 s), a parade to stomp, a BOOST strip (the first speed-rush, ~16 s), a duck bar
@@ -1728,7 +1729,7 @@ Object.assign(Obstacles.prototype, {
         if (j) { ph = null; continue; }
       }
       if (okAt && !okAt(s)) { s += 2.5; ph = null; continue; }
-      const sgC = T.level || !T.chapterAt ? null : T.chapterAt(s), sgP = sgC && sgC.def.sig, sigDue = !!sgP && s - sgC.s0 < 36 && this._sigS !== sgC.s0;      // a new chapter's signature hazard lands in its first 36 m (the banner and the hazard arrive together; no breather, no phrase first)
+      const sgC = T.level || !T.chapterAt ? null : T.chapterAt(s), sgP = sgC && sgC.def.sig, sigAt = SIG_AT[sgP] ?? 30, sigDue = !!sgP && s - sgC.s0 >= sigAt && s - sgC.s0 < 70 && this._sigS !== sgC.s0;      // a new chapter's signature hazard is the first thing after the name strip appears, sigAt-70 m in (in view while the banner is up; no breather, no phrase first)
       let tn = 1;
       if (cyc) {
         const phs = (((T.timeAt(s) - cycT0) % CYCLE_T) + CYCLE_T) % CYCLE_T;     // the first cycle starts where the teaching rows end: calm -> build -> breather
@@ -1787,6 +1788,7 @@ Object.assign(Obstacles.prototype, {
       const vW = (k) => s < VT[k] - 150 ? 0 : s >= VT[k] ? 30 : 0.9;
       const wfn = (p) => {
         if (onlyNow && !onlyNow[p]) return 0;
+        if (p === sgP && sgC.s0 > 0 && s - sgC.s0 < sigAt) return 0;      // the signature hazard holds back until the name strip is up (sigAt m in), then it is the first thing the ball meets
         if (HARD_PAT[p] && hardN >= 3) return 0;
         if (split2 && p !== 'low' && p !== 'duck' && p !== 'rest' && p !== 'ice' && p !== 'melt' && p !== 'conveyor' && p !== 'rail' && p !== 'laser' && p !== 'icegate') return 0;
         if (tightRow && TIGHT_OK.indexOf(p) < 0) return 0;
@@ -1805,7 +1807,7 @@ Object.assign(Obstacles.prototype, {
           case 'melt': return plan.biomeId === 'desert' || plan.biomeId === 'volcano' ? 1.6 : (dz >= 0.3 ? 0.12 : 0);
           case 'conveyor': return F.conveyor !== false && dz >= 0.15 ? 0.6 : 0;
           case 'rail': return T.allows('rail') && dz >= 0.2 && room > 30 ? 0.5 : 0;
-          case 'oncoming': return plan.lethalOk && T.allows('oncoming') && dz >= 0.2 && room > onR && !hardEnd && !forcedNext && s + 52 <= lim && persist.length === 0 && free0.length >= 2 ? 1.0 + 0.8 * dz : 0;
+          case 'oncoming': return (plan.lethalOk || sigDue) && T.allows('oncoming') && dz >= 0.2 && room > onR && !hardEnd && !forcedNext && s + 52 <= lim && persist.length === 0 && free0.length >= 2 ? 1.0 + 0.8 * dz : 0;
           case 'duck': return T.allows('duck') && dz >= 0.04 && room > 8 ? 1.5 + 0.8 * dz : 0;
           case 'slide': return plan.lethalOk && slideOk && T.allows('slideWall') && dz >= 0.3 && s >= 1200 && room > 12 && adj ? 0.45 + 0.4 * dz : 0;
           case 'combo': return plan.lethalOk && slideOk && late && T.allows('oncoming') && T.allows('slideWall') && room > 40 && !forcedNext && s + 66 <= lim && persist.length === 0 && open3 ? 1.6 : 0;
@@ -1813,7 +1815,7 @@ Object.assign(Obstacles.prototype, {
           case 'laser': return T.allows('lasers') && dz >= 0.08 && room > 8 ? 1.4 + 1.2 * dz : 0;
           // a volley is launched 2 s before contact (reticle + warning), anywhere in a piece as long as its contact is clear of a lane-forcing
           // run-in and no other blocker persists (a missile that already hit does not count); rare in normal play (late), the missiles zone's main course
-          case 'missile': return (!!T.level || zone === 'missiles') && plan.lethalOk && T.allows('missiles') && dz >= (zone === 'missiles' ? 0.18 : 0.55) && room > 4 && tmHard === 0 && s + vs * 2.9 + 12 <= limM ? (zone === 'missiles' ? 1.0 + 1.2 * dz : 0.4 + 0.5 * dz) : 0;
+          case 'missile': return (!!T.level || zone === 'missiles') && (plan.lethalOk || sigDue) && T.allows('missiles') && dz >= (zone === 'missiles' ? 0.18 : 0.55) && room > 4 && tmHard === 0 && s + vs * 2.9 + 12 <= limM ? (zone === 'missiles' ? 1.0 + 1.2 * dz : 0.4 + 0.5 * dz) : 0;
           case 'phrase': return phOn && tm === 0 && hardN <= 1 && room > 8 && dz >= 0.05 ? (2.5 + 9.0 * dz) * (tn < 1 ? 1.7 : tn > 1 ? 0.6 : 1) : 0;
           case 'critter': return wantCrit ? 90 : 0;
           // variety (from ~1.2 km, modest weights)
@@ -1828,7 +1830,6 @@ Object.assign(Obstacles.prototype, {
       c.s = s; c.vs = vs; c.free0 = free0; c.rm = rm; c.room = room; c.lim = lim; c.prevRoute = prevRoute; c.open3 = open3; c.plain = !hardEnd && (nk0 === 'straight' || nk0 === 'curve'); c.vq = vq;
       const pushOnc = onR < 22 && !ph && s - (this._lastOnc === undefined ? -1e9 : this._lastOnc) > 110 && wfn('oncoming') > 0;      // EKSPRES: a train whenever the rules allow one and the last is > 110 m behind (the rows are too sparse to leave it to the dice)
       const sigNow = sigDue && !ph && wfn(sgP) > 0;
-      if (sigNow) this._sigS = sgC.s0;
       const pat = ph ? 'phrase' : sigNow ? sgP : pushOnc ? 'oncoming' : wpick(rng, pats, (p) => wfn(p) * (rockNear && RK_BAN[p] ? 0 : 1) * (zmap ? (zmap[p] !== undefined ? zmap[p] : zmap._) : 1));
       let free = FULL, ext = 1.5, jump = false, advanceExtra = 0, made = true, phK = 0, phI = 0, rowPat = pat, rext = -1;     // rext: extent the route / snow trails / gems see (a critter group never blocks the route lane: it keeps only the full `ext` in rowsLog)
       switch (pat) {
@@ -2090,6 +2091,7 @@ Object.assign(Obstacles.prototype, {
         }
         default: made = false;
       }
+      if (sigNow && made) this._sigS = sgC.s0;      // (a signature row that could not be placed is tried again on the next row)
       lastRest = !made || pat === 'rest';
       if (this.rowDbg) this.rowDbg.push([s, pat, made, piece.kind, tn]);
       if (made) {
@@ -3374,7 +3376,7 @@ Object.assign(Obstacles.prototype, {
     let l = clamp(lane | 0, 0, NL - 1);
     if (!force) {
       if (this.dyn.length) return -1;      // max one thrown boulder (flying or rolling) at a time
-      for (const r of this.rowsLog) if (Math.abs(r.s - s) < 15 + r.ext) return -1;      // never lands on / next to an obstacle row (>= 15 m clear)
+      if (!(opt && opt.nearOk)) for (const r of this.rowsLog) if (Math.abs(r.s - s) < 15 + r.ext) return -1;      // never lands on / next to an obstacle row (>= 15 m clear; the first boulder of a rockfall chapter is exempt)
       if (this._forcedStretch(s - 6, s + 100)) return -1;
       const bad = this._trapMask(s - 8, s + 100);
       if (bad & bit6(l)) {

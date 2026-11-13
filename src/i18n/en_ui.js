@@ -273,7 +273,7 @@ export const patterns = [
   [/^BENİ KURTAR 💎(\d+)$/, 'REVIVE 💎$1'],
   [/^DEVAM ❄ (.+)$/, 'CONTINUE ❄ $1'],
   [/^GÖREV TAMAM: (.+)$/, 'QUEST DONE: $1'],
-  [/^RİSK \+(\d+)$/, 'RISK +$1'], [/^TEHLİKE \+(\d+)$/, 'DANGER +$1'], [/^ZİNCİR \+(\d+)$/, 'CHAIN +$1'], [/^ZİNCİR x(\d+)$/, 'CHAIN x$1'],
+  [/^RİSK \+(\d+)$/, 'RISK +$1'], [/^RİSK MODU: ÇARPAN \+(\d+)$/, 'RISK MODE: MULTIPLIER +$1'], [/^TEHLİKE \+(\d+)$/, 'DANGER +$1'], [/^ZİNCİR \+(\d+)$/, 'CHAIN +$1'], [/^ZİNCİR x(\d+)$/, 'CHAIN x$1'],
   [/^SIRADAKİ: (.+) m$/, 'NEXT: $1 m'],
   [/^KAR KANONU ×(.+)$/, 'SNOW CANNON ×$1'],   // (the leading ❄️ is an edge: the translator strips it)
   [/^AKIŞ \+(\d+)$/, 'FLOW +$1'],

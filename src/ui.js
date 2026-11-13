@@ -150,12 +150,12 @@ export class UI {
       st.textContent = [
         '#hud.hc-new .mut-chip,#hud.hc-new .perk-ico{display:none!important}',
         // Rush HUD: the score is the hero (thick outline), the multiplier sits right beside it, the chips form one right-hand stack that fades after 2 s
-        '#hud.rush.rush.rush .hud-tons{font-size:48px;line-height:1;top:calc(var(--sat) + 10px);-webkit-text-stroke:7px var(--ink);paint-order:stroke fill;transform-origin:center}',
-        '#hud.rush.rush.rush .cmb{top:calc(var(--sat) + 20px);left:calc(50% + var(--sw,4)*13.5px + 10px);width:auto;text-align:left;transform-origin:left center}',
-        '#hud.rush.rush.rush .cmb .ch.k em{font-size:32px}',
-        '#hud.rush.rush.rush .hud-coins{top:calc(var(--sat) + 58px)}',   // under the score row: a 5-digit score + multiplier never runs into the coin chip
-        '#hud.rush.rush.rush .buffs{top:calc(var(--sat) + 114px)}',   // (clear of the coin / metre / BEST CH stack)
-        '#hud.rush.rush.rush .perk-ico{top:calc(var(--sat) + 114px);right:38px}',
+        '#hud.rush.rush.rush .hud-tons{font-size:34px;line-height:1;top:calc(var(--sat) + 12px);left:54px;right:auto;text-align:left;-webkit-text-stroke:6px var(--ink);paint-order:stroke fill;transform-origin:left center}',
+        '#hud.rush.rush.rush .cmb,#hud.rush.rush.rush .cmb:has(small:not(:empty)){top:calc(var(--sat) + 8px);left:calc(54px + var(--sw,4)*18.5px + 12px);width:auto;text-align:left;transform-origin:left center}',   // (the x badge follows the left-aligned score: --sw = its character count)
+        '#hud.rush.rush.rush .cmb .ch.k em{font-size:30px}',
+        '#hud.rush.rush.rush .hud-coins{top:calc(var(--sat) + 14px);right:10px}',   // right column: flakes + metres (the top HUD layout is the block at the end of style.css; smoke asserts the boxes do not touch)
+        '#hud.rush.rush.rush .buffs{top:calc(var(--sat) + 60px)}',
+        '#hud.rush.rush.rush .perk-ico{top:calc(var(--sat) + 84px);right:8px}',
         '#rcol{top:calc(var(--sat) + 128px)!important}',
         '#hud.rush .hud-coins,#hud.rush .buffs,#hud.rush .perk-ico,#hud.rush .mut-chip{transition:opacity .5s}',
         '#hud.rush.chips-dim .buffs,#hud.rush.chips-dim .perk-ico,#hud.rush.chips-dim .mut-chip{opacity:.3}#hud.rush.chips-dim .hud-coins{opacity:.8}#hud.rush.rush.rush .hud-coins{font-size:17px}',
@@ -331,7 +331,8 @@ export class UI {
     let e = this.el.chapPill;
     if (!e) { e = this.el.chapPill = document.createElement('div'); e.className = 'chap-pill'; this.el.hud.appendChild(e); }
     // one transient message at a time: the name pill waits for / replaces the other announcements (RUN!, toasts) instead of stacking under them
-    this._say('c', { text: 'chap' + line, prio: 2, ms: 1400, show: () => {
+    this._say('c', { text: 'chap' + line, prio: n > 1 || bonus ? 3 : 2, ms: 1400, show: () => {      // (chapters 2+ outrank a 500 m banner: the name must arrive with the chapter, not 2.7 s later)
+      this.el.banner.innerHTML = '';   // (and a banner never sits under the chapter pill)
       e.textContent = line;
       e.classList.toggle('bonus', !!bonus);
       e.classList.remove('on'); void e.offsetWidth; e.classList.add('on');   // (event, not per frame)
@@ -343,7 +344,7 @@ export class UI {
     let e = this.el.chapBar;
     if (!i.chapterId && !i.chapter) { if (e && !e.hidden) e.hidden = true; return; }
     if (!e) { e = this.el.chapBar = document.createElement('div'); e.className = 'chap-bar'; e.append(document.createElement('i'), document.createElement('b')); this.el.goal.appendChild(e); }   // the strip is the bottom edge of the goal pill: ONE goal element
-    const pct = Math.round(clamp01(i.chapterFrac) * 100), near = i.chapterLeft > 0 && i.chapterLeft <= 100, k = pct * 8 + (i.chapterBonus ? 1 : 0) + (i.chapterClean ? 2 : 0) + (near ? 4 : 0);
+    const pct = Math.round(clamp01(i.chapterFrac) * 100), near = i.chapterLeft > 0 && i.chapterLeft <= 100, k = (i.chapter * 128 + pct) * 8 + (i.chapterBonus ? 1 : 0) + (i.chapterClean ? 2 : 0) + (near ? 4 : 0);   // (the chapter number is part of the key: the CH tag must follow a chapter change at the same percent)
     if (k === this._chK && !e.hidden) return;
     this._chK = k; e.hidden = false;
     if (pct > (this._chP || 0) && !e.classList.contains('pulse')) { e.classList.add('pulse'); setTimeout(() => e.classList.remove('pulse'), 450); }
@@ -367,6 +368,7 @@ export class UI {
         b.append(n, s);
         this.el.banner.innerHTML = '';
         this.el.banner.appendChild(b);
+        this.el.chapPill?.classList.remove('on');   // one centre message: the chapter pill never sits above a milestone
         this.flash('gold');
         snd('chime');
         return () => { b.getAnimations?.().forEach((an) => an.cancel()); b.style.opacity = '0'; this.el.banner.innerHTML = ''; };
@@ -707,7 +709,11 @@ export class UI {
     if (!list || !list.length) return;
     let n = 0;
     for (const x of list) {
-      if (x.kind === 'mission' && n < 3) { const t = x; this.timers.push(setTimeout(() => this.toastSoft(`${t.icon || '🎯'} ${tr('GÖREV TAMAM:')} ${tr(t.text)}`), 700 + n * 900)); n++; }
+      if (x.kind === 'mission' && n < 3) {
+        const t = x; let pips = '';
+        try { const rows = meta.missionsReport().rows.slice(0, 3); pips = ' · ' + rows.map((m) => (m.done ? '●' : '○')).join(''); } catch { /* no pips */ }   // the set: how many of 3 are done (the multiplier pays when all are)
+        this.timers.push(setTimeout(() => this.toastSoft(`${t.icon || '🎯'} ${tr('GÖREV TAMAM:')} ${tr(t.text)}${pips}`, { long: true }), 700 + n * 900)); n++;
+      }
       else if (x.kind === 'missionset') {
         const t = x, r = x.reward || {};
         const gift = `${r.coins ? ` · +❄️${fmtN(r.coins)}` : ''}${r.crystals ? ` +💎${r.crystals}` : ''}${r.boxes ? ' +🎁' : ''}`;
@@ -854,7 +860,7 @@ export class UI {
     this._dgD = danger; this._dgC = chain; this._dgR = risk;
     const el = this.dangerEl || (this.dangerEl = document.getElementById('danger'));
     const parts = [];
-    if (risk) parts.push(tr(`RİSK +${risk}`));   // each part is translated BEFORE joining: the anchored patterns cannot match the joined string
+    if (risk) parts.push(tr(`RİSK MODU: ÇARPAN +${risk}`));   // each part is translated BEFORE joining: the anchored patterns cannot match the joined string
     // (danger and chain are already in the x multiplier: its green ▲ tab shows them; the centre chip carries RISK alone, one line)
     const t = parts.join(' · ');
     if (t !== this.lastDanger) {
@@ -1061,7 +1067,7 @@ export class UI {
       this._mSh = m;
       if (!pm && m > 1) { this._mFirst = true; clearTimeout(this._mFT); this._mFT = setTimeout(() => { this._mFirst = false; this._cmRender(); }, 4000); }   // the first multiplier of a run is named for 4 s (x2 SCORE)
       if (pm && m !== pm) { /* (a slow decay tick of 0.1 stays a bare arrow) */ this._mLbV = Math.abs(m - pm) >= 0.3 ? (m > pm ? '+' : '') + (Math.round((m - pm) * 10) / 10) : ''; this._mLb = m > pm ? 1 : 2; clearTimeout(this._mLbT); this._mLbT = setTimeout(() => { this._mLb = 0; this._cmRender(); }, 1600); }   // a green up / red down arrow tab for 1.6 s: one chip, no label
-      this._cmKs.textContent = this._mLb === 1 ? '▲ ' + this._mLbV : this._mLb === 2 ? '▼ ' + this._mLbV : ''; this._cmKs.style.color = this._mLb === 1 ? '#6dff8f' : '#ff7a7a'; this._cmKe.textContent = `x${m}`; this._cmKe.dataset.t = `x${m}`; this._cmKu.textContent = this._mLb && this._mLbV ? tr(this._mLb === 1 ? 'BONUS ARTTI' : 'BONUS DÜŞTÜ') : this._mFirst ? tr('SKOR') : '';
+      this._cmKs.textContent = this._mLb === 1 ? '▲ ' + this._mLbV : this._mLb === 2 ? '▼ ' + this._mLbV : ''; this._cmKs.style.color = this._mLb === 1 ? '#6dff8f' : '#ff7a7a'; this._cmKe.textContent = `x${m}`; this._cmKe.dataset.t = `x${m}`; this._cmKu.textContent = !this._mLb && this._mFirst ? tr('SKOR') : '';   // (the green ▲ / red ▼ number says it; the words BONUS UP / DOWN named no cause)
       this._cmK.style.display = ''; this._cmM.style.display = 'none';
       const ts = `t${Math.min(4, Math.max(1, Math.floor(m) - 1))}`;   // tinted by whole step: x2 yellow, x3 orange, x4 pink, x5+ purple
       if (!c.classList.contains('on') || !c.classList.contains(ts)) { c.classList.remove('t0', 't1', 't2', 't3', 't4'); c.classList.add('on', 'nobar', ts); }
@@ -1081,7 +1087,7 @@ export class UI {
 
   _comboSet(n, drainMs) {
     const c = this._cmb || this._mkCmb();
-    if (n >= 3) {
+    if (n >= (this.el.hud.classList.contains('cig-endless') ? 5 : 3)) {      // (avalanche endless: the pill waits for x5, the top 130 px is busy enough)
       if (n === this._cmN) return;
       const rose = n > this._cmN;
       this._cmN = n;
@@ -1574,6 +1580,7 @@ export class UI {
     try { st.cur?.clear?.(); } catch { /* ignore */ }
     let clear = null;
     try { clear = r.show(); } catch { /* ignore */ }
+    if (r.prio >= 2 && this.floatCount > 0) for (const f of this.el.floats.querySelectorAll('.float:not(.big):not(.bad)')) f.remove();   // an announcement owns the lane: plain floats (SMASHED +400) leave
     st.cur = { prio: r.prio, until: now + r.ms, clear };
     st.last = now;
   }
@@ -1653,7 +1660,7 @@ export class UI {
     t.textContent = text;
     d.appendChild(t);
     d.addEventListener('animationend', () => d.remove());
-    setTimeout(() => d.remove(), opts && opts.long ? 3300 : 2200);
+    setTimeout(() => d.remove(), box.classList.contains('res') ? 6300 : opts && opts.long ? 3300 : 2200);   // (the result screen: a quest chip stays 6 s)
     box.appendChild(d);
     return () => { d.getAnimations?.().forEach((an) => an.cancel()); d.style.opacity = '0'; d.remove(); };
   }

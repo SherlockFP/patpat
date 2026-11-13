@@ -232,7 +232,7 @@ export const words = {
   'Haftalık Rush ve sezon ödülleri burada.': 'The weekly Rush and season rewards live here.',
   'BEDAVA SANDIK': 'FREE CHEST', 'Kısa bir reklam izle, bir sandık kazan.': 'Watch a short ad and win a chest.', '📺 İZLE': '📺 WATCH',
   'EK ÇEVİRME': 'EXTRA SPIN', 'Reklam izle, bir kez daha çevir': 'Watch an ad and spin once more',
-  'HEDEF': 'GOAL', 'GÜNÜN KOŞULARI': "TODAY'S RUNS", "Günün Rush'ı": "Today's Rush", 'Herkese aynı pist: bugün dene': 'Same track for everyone: try it today', 'Her gün yeni bir dağ': 'A new mountain every day',
+  'HEDEF': 'GOAL', 'GÜNÜN KOŞULARI': "TODAY'S RUNS", "Günün Rush'ı": "Today's Rush", 'Herkese aynı pist: bugün dene': 'Same track for all', 'Her gün yeni bir dağ': 'A new mountain every day',
   'Çam Topu': 'Pine Ball', 'Balon Topu': 'Balloon Ball', 'Kiremit': 'Roof Tile', 'Kaktüs': 'Cactus', 'Obur': 'Glutton', 'Efsane': 'Legend', 'Roket': 'Rocket',
   'Penguen takipçisiyle başla (x1)': 'Start with a penguin follower (x1)', '🐧 Penguen takipçisiyle başla (x1)': '🐧 Start with a penguin follower (x1)',
 };

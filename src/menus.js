@@ -98,12 +98,13 @@ const CSS = `
   background: radial-gradient(circle at 35% 28%, #fff 0 25%, #d7ebff 60%, #9cc5f0 100%); box-shadow: 0 4px 0 var(--ink2), 0 6px 8px rgba(10, 30, 60, 0.35); text-shadow: none;
 }
 .fm-lv {
-  position: absolute; right: -6px; bottom: -6px; min-width: 26px; height: 26px; padding: 0 5px; display: grid; place-items: center; border-radius: 13px; border: 2.5px solid var(--ink);
+  position: absolute; right: -9px; bottom: -8px; min-width: 26px; height: 26px; padding: 0 5px; display: grid; place-items: center; border-radius: 13px; border: 2.5px solid var(--ink);
   background: linear-gradient(180deg, #ffe27a, #ffae00); color: var(--ink); font-size: 15px; line-height: 1; text-shadow: none; box-shadow: 0 2px 0 var(--ink2);
 }
 .fm-avt { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .fm-nm { font-size: 17px; line-height: 1; text-shadow: var(--ol); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fm-xp { position: relative; width: 78px; max-width: 100%; height: 11px; border-radius: 6px; border: 2.5px solid var(--ink); background: rgba(10, 25, 55, 0.6); overflow: hidden; }
+.fm-xp { position: relative; width: 78px; max-width: 100%; height: 15px; border-radius: 6px; border: 2.5px solid var(--ink); background: rgba(10, 25, 55, 0.6); overflow: hidden; }
+.fm-xp b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; line-height: 1; font-weight: 900; color: #fff; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }
 .fm-xp i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--p, 0%); background: linear-gradient(180deg, #8dff9a, #2fc13f); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45); }
 .fm-cur {
   position: relative; flex: none; display: flex; align-items: center; gap: 5px; height: 38px; padding: 0 4px 0 9px; border-radius: 19px; border: 3px solid var(--ink);
@@ -169,7 +170,7 @@ const CSS = `
 .fm-chip.got { background: linear-gradient(180deg, #fff3a8, var(--gold)); color: var(--ink); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.7); }
 .fm-chip.next { color: #fff; animation: fmChip 1s ease-in-out infinite alternate; }
 @keyframes fmChip { from { box-shadow: 0 0 0 0 rgba(255, 207, 58, 0.9); } to { box-shadow: 0 0 0 4px rgba(255, 207, 58, 0); } }
-.fm-tag { flex: none; text-align: center; margin-top: -2px; font-size: 12px; letter-spacing: 0.26em; color: #e4ecff; text-shadow: var(--ol-sm); }
+.fm-tag { position: relative; z-index: 1; flex: none; align-self: center; text-align: center; margin-top: -2px; padding: 2px 12px 2px 16px; border-radius: 10px; background: rgba(23, 52, 92, 0.72); font-size: 12px; font-weight: 800; letter-spacing: 0.22em; color: #fff; text-shadow: var(--ol-sm); }   /* a plate: the leaf sprites drifting behind never cut the words */
 .fm-avt { display: none; }
 .fm-av { flex: 0 0 auto; }
 .fm-top { gap: 6px; }
@@ -194,12 +195,12 @@ const CSS = `
 .fm-mid { flex: 1 1 0; min-height: 0; position: relative; }
 .fm-hero { position: absolute; left: 12%; right: 12%; top: 0; bottom: 0; touch-action: none; pointer-events: auto; }
 .fm-best {
-  position: absolute; left: 50%; top: 18px; transform: translateX(-50%) rotate(-1.5deg); max-width: 100%; padding: 5px 12px 6px; text-align: center; pointer-events: none; border-radius: 16px; border: 3px solid var(--ink);
+  position: absolute; left: 50%; top: 8px; transform: translateX(-50%) rotate(-1.5deg); max-width: 100%; padding: 5px 12px 6px; text-align: center; pointer-events: none; border-radius: 16px; border: 3px solid var(--ink);
   background: linear-gradient(180deg, #ffffff, #dfeaff); color: var(--ink); text-shadow: none; box-shadow: 0 4px 0 var(--ink2), 0 8px 12px rgba(10, 20, 60, 0.35); animation: fmBubble 3.2s ease-in-out infinite alternate;
 }
 .fm-best::after { content: ""; position: absolute; z-index: -1; left: 50%; bottom: -11px; width: 16px; height: 16px; margin-left: -8px; transform: rotate(45deg); background: #dfeaff; border: 0 solid var(--ink); border-right-width: 3px; border-bottom-width: 3px; border-radius: 0 0 5px 0; }
 .fm-best .bk { display: block; font-size: 11px; line-height: 1; letter-spacing: 0.12em; color: #5a7196; }
-.fm-best .bv { display: block; margin-top: 2px; font-size: 24px; line-height: 1.05; color: var(--orange-dark); white-space: nowrap; }
+.fm-best .bv { display: block; margin-top: 2px; font-size: 22px; line-height: 1.05; color: var(--orange-dark); white-space: nowrap; }
 .fm-best .bs { display: block; margin-top: 2px; font-size: 12px; line-height: 1.1; white-space: nowrap; }
 @keyframes fmBubble { from { transform: translateX(-50%) translateY(0) rotate(-1.5deg); } to { transform: translateX(-50%) translateY(-4px) rotate(1deg); } }
 .fm-achoo {
@@ -3118,7 +3119,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       { const n = chips.length, cols = n <= 3 ? n : (n === 6 ? 3 : 2); rc.style.cssText = `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:6px;justify-items:stretch;width:min(calc(100% - 24px),380px);margin-left:auto;margin-right:auto`; }
       chips.forEach((c, i) => {
         const ch = el('div', `fm-rchip${/^(👕|✨)/.test(c) ? ' gold' : ''}${i === 0 && /^(⚪|🏘️)/.test(c) ? ' hero' : ''}`, c);
-        ch.style.animationDelay = `${900 + i * 160}ms`;
+        ch.style.animationDelay = `${450 + i * 90}ms`;   // (the stat chips fill the gap under the stars within ~1 s)
         rc.appendChild(ch);
       });
       ov.appendChild(rc);
@@ -3380,7 +3381,8 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.avName = el('span', 'fm-nm', 'Oyuncu');
     r.avXp = el('span', 'fm-xp');
     r.avXpFill = el('i');
-    r.avXp.appendChild(r.avXpFill);
+    r.avXpTxt = el('b');
+    r.avXp.append(r.avXpFill, r.avXpTxt);
     add(r.av, avc, add(el('span', 'fm-avt fm-prof'), r.avName, r.avXp));
     r.dl = button('fm-dl', '', () => openDaily(), 'Günlük ödül');
     r.dlBdg = el('span', 'fm-bdg dot off', '!');
@@ -3597,6 +3599,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     let nick = '';
     try { nick = localStorage.getItem('patpat.agar.nick') || ''; } catch { /* ignore */ }
     r.avName.textContent = nick || 'Oyuncu';
+    r.avXpTxt.textContent = `${fmt(li.cur)}/${fmt(li.need)}`;   // the bar says how far: 0/100
     r.avXpFill.style.width = `${Math.round(Math.max(0, Math.min(1, li.cur / Math.max(1, li.need))) * 100)}%`;
     r.coinsPill.set(coins(), false);
     r.crPill.set(meta.crystals, false);

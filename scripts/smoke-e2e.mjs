@@ -142,8 +142,15 @@ function pngStats(buf) {
   return { std: Math.sqrt(Math.max(0, s2 / n - (s / n) ** 2)), uniq: set.size, dom: Math.max(0, ...bins.values()) / (mid || 1) };
 }
 // opts.noBlank: intro frames that may legitimately be near-empty (boot veil, first paint) are kept but not blank-checked
+// Rush top HUD: no two of these boxes may touch (score, x-multiplier, flakes + metres, mission / rage pill, chapter name, soft toast, buff icon, pause)
+const HUD_CLASH = `(()=>{const S=['#btn-pause','.hud-tons','.cmb.on','.hud-coins','.hud-goal:not(.hidden)','.chap-pill.on','#toast-soft .ts','.buffs .buff:first-child','.perk-ico'],R=[];for(const q of S)for(const e of document.querySelectorAll(q)){const b=e.getBoundingClientRect(),cs=getComputedStyle(e);if(b.width<2||b.height<2||cs.visibility==='hidden'||cs.display==='none'||+cs.opacity<0.3)continue;R.push([q,b.left,b.top,b.right,b.bottom])}
+const bad=[];for(let i=0;i<R.length;i++)for(let j=i+1;j<R.length;j++){const a=R[i],b=R[j];if(a[0]===b[0])continue;if(Math.min(a[3],b[3])-Math.max(a[1],b[1])>1&&Math.min(a[4],b[4])-Math.max(a[2],b[2])>1)bad.push(a[0]+' x '+b[0]+' @'+Math.round(a[2])+'/'+Math.round(b[2]))}return bad})()`;
+const HUD_FRAME = /^(rush_(?!result)|mech_)/;
+const frames = [];                                // every frame this run wrote: _manifest.json lists them next to the result lines, so frames and logs travel together
 async function shot(name, ctx, opts = {}) {
-  const r = await cdp.send('Page.captureScreenshot', { format: 'png' });
+  let clash = []; if (ctx && HUD_FRAME.test(name)) { try { clash = await ev(HUD_CLASH); } catch { /* page busy */ } }
+  if (clash.length) ctx.fail(`top HUD boxes touch in ${name}.png: ${clash.join(', ')}`);
+  const r = await cdp.send('Page.captureScreenshot', { format: 'png' }); frames.push(name + '.png');
   const buf = Buffer.from(r.data, 'base64'); writeFileSync(join(SHOTS, name + '.png'), buf);
   const s = pngStats(buf); s.bytes = buf.length; s.name = name;
   if (!opts.noBlank) { shotStats.push(s); if (ctx) (ctx.shots ||= []).push(s); }
@@ -669,20 +676,26 @@ async function newChapters(ctx) {
   await ev(`(()=>{const r=cig.runner,D=window.__defs={};for(const [id] of ${JSON.stringify(CH_NEW)}){let g;for(let i=0;i<40&&!(g=r.chapters.segs.find((x)=>x.id===id));i++)r.chapters.at(r.chapters.segs[r.chapters.segs.length-1].s1+1);D[id]=g}})()`);
   for (const [id, kind, re] of CH_NEW) {
     await ev(`(()=>{const r=cig.runner,g=window.__defs['${id}'];
-      const seg=Object.assign({},g,{n:7,s0:450,s1:1e9,i:0}),pl=Object.assign({},r.chapters.segs[0],{s0:0,s1:450});r.start(5,null,{chapterPlan:{segs:[pl,seg],at:(s)=>s>=450?seg:pl}});r.invulnT=1e9;r.yetiHoldT=99;r.track.features.junction=false;r.track.setHardness(3)})()`);      // (the chapter starts at 450 m like in a real run: plain slope before it; hardness 3: the 3.5 km difficulty from the first metres; no corners, the sim does not steer)
+      const seg=Object.assign({},g,{n:7,s0:560,s1:1e9,i:0}),pl=Object.assign({},r.chapters.segs[0],{s0:0,s1:560});r.start(5,null,{chapterPlan:{segs:[pl,seg],at:(s)=>s>=560?seg:pl}});r.invulnT=1e9;r.yetiHoldT=99;r.track.features.junction=false;r.track.setHardness(3)})()`);      // (the chapter starts at 560 m (past the 500 m arch) like in a real run: plain slope before it; hardness 3: the 3.5 km difficulty from the first metres; no corners, the sim does not steer)
     await waitFor(dbgRush, 8000, 'rush restarted ' + id);
-    await ev(`(()=>{const r=cig.runner;for(let i=0;i<60*90&&r.b.s<452&&r.state!=='over';i++){if(r.pickT>0){r.pickPerk('kalin');document.querySelectorAll('.perk-pick').forEach((e)=>e.remove())}r.invulnT=1e9;cig.simEndless(1/60)}})()`);
+    await ev(`(()=>{const r=cig.runner;for(let i=0;i<60*90&&r.b.s<557&&r.state!=='over';i++){if(r.pickT>0){r.pickPerk('kalin');document.querySelectorAll('.perk-pick').forEach((e)=>e.remove())}r.invulnT=1e9;cig.simEndless(1/60)}})()`);
+    await ev(`(()=>{const u=cig.runner.ctx.ui;for(const c of Object.values(u._chs||{})){c.q.length=0;c.cur=null;c.last=-1e9}if(u._heldQ)u._heldQ.length=0})()`);   // (a real chapter starts 350+ m into a run: the announcement lane is empty when it begins. The sim jumps there in milliseconds, so the run-start messages and the 500 m banner are still queued: empty the lane by hand just before the chapter or its name strip waits ~2.5 s behind them)
+    await ev(`(()=>{const r=cig.runner;for(let i=0;i<60*90&&r.b.s<562&&r.state!=='over';i++){if(r.pickT>0){r.pickPerk('kalin');document.querySelectorAll('.perk-pick').forEach((e)=>e.remove())}r.invulnT=1e9;cig.simEndless(1/60)}})()`);
     await waitFor(`${re.toString()}.test(document.querySelector('.chap-pill.on')?.textContent||'')`, 4000, 'name pill ' + id).catch(() => {});      // (the name pill is a real-time message, queued behind the last one: wall time, not sim time)
-    await sleep(450);   // (the name pill fades in)
-    await ev('window.__raf&&(window.__raf.skip=true)'); await shot('rush_ch_' + id, ctx); await ev('window.__raf&&(window.__raf.skip=false)');
+    await sleep(100);   // (the name pill fades in)
+    // the frame is named rush_ch_<id> only when the chapter's signature hazard is on screen (6-48 m ahead) while the name strip is up; otherwise it is saved as _unreached and the run FAILs
+    const inView = `(()=>{const r=cig.runner,K=${JSON.stringify(kind)};if(K==='boulder')return r.obstacles.dyn.some((b)=>b.sLand-r.b.s>6&&b.sLand-r.b.s<30);if(!K)return true;if(K==='icebridge'&&r.track.pieces.some((p)=>p.kind==='iceBridge'&&p.s1>r.b.s&&p.s0<r.b.s+55))return true;for(const ob of r.obstacles.obs){const s=ob.cs!==undefined?ob.cs:ob.s;if(ob.kind===K&&ob.alive!==false&&s-r.b.s>6&&s-r.b.s<55)return true}return false})()`;
+    let seen = false; for (let i = 0; i < 40 && !(seen = await ev(inView)) && await ev(`!!document.querySelector('.chap-pill.on')`); i++) await sleep(50);
+    await ev('window.__raf&&(window.__raf.skip=true)'); await shot('rush_ch_' + id + (seen ? '' : '_unreached'), ctx); await ev('window.__raf&&(window.__raf.skip=false)');
+    if (seen) ctx.pass(`chapter ${id}: ${kind || 'chapter state'} in view in rush_ch_${id}.png`); else ctx.fail(`chapter ${id}: ${kind} not on screen while the name strip was up (frame saved as rush_ch_${id}_unreached.png)`);
     const w = await ev(`(document.querySelector('.chap-pill')?.textContent||'').replace(/\s+/g,' ')`);
-    if (process.env.VERBOSE) console.log('  s22 ' + id + ' pieces ' + await ev(`cig.runner.track.pieces.filter(p=>p.s1>400&&p.s0<560).map(p=>p.kind+':'+Math.round(p.s0)+'-'+Math.round(p.s1)).join(' ')`) + ' | obs ' + await ev(`cig.runner.obstacles.obs.filter(o=>(o.cs??o.s)>440&&(o.cs??o.s)<560).map(o=>o.kind+'@'+Math.round(o.cs??o.s)).join(' ')`));
-    if (kind && kind !== 'boulder') {   // the chapter's signature hazard must land within 40 m of the chapter start (450 m), the banner and the hazard arrive together
-      const f = await ev(`(()=>{let m=1e9;for(const ob of cig.runner.obstacles.obs){const x=ob.s;if(ob.kind===${JSON.stringify(kind)}&&x>=438&&x<m)m=x}return m<1e9?Math.round(m-450):-1})()`);
-      if (f > -13 && f <= 45) ctx.pass(`chapter ${id}: first ${kind} ${f} m after the chapter start`); else ctx.fail(`chapter ${id}: first ${kind} ${f < 0 ? 'not spawned' : f + ' m'} after the chapter start (limit 45 m)`);
+    if (process.env.VERBOSE) console.log('  s22 ' + id + ' pieces ' + await ev(`cig.runner.track.pieces.filter(p=>p.s1>510&&p.s0<670).map(p=>p.kind+':'+Math.round(p.s0)+'-'+Math.round(p.s1)).join(' ')`) + ' | obs ' + await ev(`cig.runner.obstacles.obs.filter(o=>(o.cs??o.s)>550&&(o.cs??o.s)<670).map(o=>o.kind+'@'+Math.round(o.cs??o.s)).join(' ')`));
+    if (kind && kind !== 'boulder' && kind !== 'icebridge') {   // the chapter's signature hazard must land within 40 m of the chapter start (560 m), the banner and the hazard arrive together
+      const f = await ev(`(()=>{let m=1e9;for(const ob of cig.runner.obstacles.obs){const x=ob.s;if(ob.kind===${JSON.stringify(kind)}&&x>=548&&x<m)m=x}return m<1e9?Math.round(m-560):-1})()`);
+      if (f >= 6 && f <= 70) ctx.pass(`chapter ${id}: first ${kind} ${f} m after the chapter start`); else ctx.fail(`chapter ${id}: first ${kind} ${f < 0 ? 'not spawned' : f + ' m'} after the chapter start (want 6-70 m: in view under the name strip)`);
     }
     const hunt = await ev(`(()=>{const r=cig.runner,o=r.obstacles,K=${JSON.stringify(kind)};r.invulnT=1e9;r.yetiHoldT=99;let ds=null;
-      for(let i=0;i<60*70&&r.state!=='over';i++){if(r.pickT>0){const c=document.getElementById('perk-cards').firstElementChild;if(c)c.click();else r.pickPerk('kalin');document.getElementById('perks').classList.add('hidden')}r.invulnT=1e9;cig.simEndless(1/60);if(r.b.s<420)continue;
+      for(let i=0;i<60*70&&r.state!=='over';i++){if(r.pickT>0){const c=document.getElementById('perk-cards').firstElementChild;if(c)c.click();else r.pickPerk('kalin');document.getElementById('perks').classList.add('hidden')}r.invulnT=1e9;cig.simEndless(1/60);if(r.b.s<530)continue;
         if(K==='boulder'){if(o.dyn.length){ds=1;break}}else if(K){for(const ob of o.obs){const s=ob.cs!==undefined?ob.cs:ob.s;if(ob.kind===K&&ob.alive!==false&&s-r.b.s>14&&s-r.b.s<46){ds=Math.round(s-r.b.s);break}}if(ds!==null)break}else if(i>60*14)break}
       const h={};for(const ob of o.obs)h[ob.kind]=(h[ob.kind]||0)+1;return{ds,cause:r.cause,s:Math.round(r.b.s),chap:r.chap&&r.chap.id,lowG:r.lowG,spd:r.chapSpd,t:+r.time.toFixed(1),st:r.state,h:JSON.stringify(h)}})()`);
     await ev("document.getElementById('perks').style.display='none'"); await ev('window.__raf&&(window.__raf.skip=true)'); await shot('mech_' + id, ctx); await ev('window.__raf&&(window.__raf.skip=false)');
@@ -867,6 +880,7 @@ async function finish(code) {
   console.log(`wall time: ${((Date.now() - T0) / 1000).toFixed(0)} s`);
   if (externals.size) console.log(`blocked external hosts (never contacted): ${[...externals].join(', ')}`);
   console.log(`screenshots: ${SHOTS}`);
+  try { writeFileSync(join(SHOTS, '_manifest.json'), JSON.stringify({ at: new Date().toISOString(), frames, results: lines.filter((l) => !l.startsWith('PASS')) }, null, 1)); } catch { /* shots dir gone */ }
   killAll(); dropLock();
   process.exit(code || (fails ? 1 : 0));
 }

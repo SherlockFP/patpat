@@ -176,25 +176,26 @@ export const CHAPTERS = [
   { id: 'yamac', name: 'YAMAÇ', unlock: 0, intro: 'Zıpla, eğil, şerit değiştir.' },
   { id: 'orman', name: 'ORMAN SLALOMU', unlock: 0, intro: 'Ağaç kapılarından sağa sola kay.', slalom: 1, gates: 0.95, pat: { phrase: 2.2, single: 1.2, _: 0.6 } },
   { id: 'tunel', name: 'BUZ TÜNELİ', unlock: 600, intro: 'Tünelde duvarlara tırman, sarkıtlardan eğil.', set: 'tube', plain: 1 },
-  { id: 'ray', name: 'RAY HATTI', unlock: 1200, intro: 'Raylara bin, raydan raya atla.', pat: { rail: 8, _: 0.4 }, own: ['rail'], gap: 0.3 },
+  { id: 'ray', name: 'RAY HATTI', unlock: 1200, ground: { tileA: 0x9aa4b0, tileB: 0x808a98, edge: 0xd8e0ea, glow: 0xffd23f, under: 0x333a44 }, intro: 'Raylara bin, raydan raya atla.', pat: { rail: 8, _: 0.4 }, own: ['rail'], gap: 0.3 },
   { id: 'cig', name: 'ÇIĞ KAÇIŞI', unlock: 1800, intro: 'Çığ arkanda: durma, engel az.', plain: 1, dens: 0.55, spd: 1.1, pin: 6.5 },
-  { id: 'duello', name: 'YETİ DÜELLOSU', unlock: 2400, intro: 'Yeti kaya atıyor: 3 kıl payı onu sersemletir.', plain: 1, dens: 0.6, duel: 1, len: 680 },
+  { id: 'duello', name: 'YETİ DÜELLOSU', unlock: 2400, ground: { tileA: 0x6a5a8a, tileB: 0x57487a, edge: 0xc8a8ff, glow: 0xe0c8ff, under: 0x261c40 }, intro: 'Yeti kaya atıyor: 3 kıl payı onu sersemletir.', plain: 1, dens: 0.6, duel: 1, len: 680 },
   { id: 'damar', name: 'ALTIN DAMAR', unlock: 0, intro: 'Engel yok: kar tanesi yağıyor!', plain: 1, bonus: 1 },
-  { id: 'sis', name: 'SİS VADİSİ', unlock: 3000, intro: 'Görüş kısa: kenardaki ışıkları izle.', plain: 1, fog: 0.9, lights: 1 },
+  { id: 'sis', name: 'SİS VADİSİ', unlock: 3000, ground: { tileA: 0xb4b8c8, tileB: 0x9a9eb4, edge: 0xe6e8f4, glow: 0xffffff, under: 0x3c4056 }, intro: 'Görüş kısa: kenardaki ışıkları izle.', plain: 1, fog: 0.9, lights: 1 },
   { id: 'rampa', name: 'KAYAK RAMPALARI', unlock: 3600, intro: 'Art arda rampalar: havada kal, bonus kap.', set: 'skiJump', plain: 1 },
   { id: 'ruzgar', name: 'TERS RÜZGÂR', unlock: 4200, intro: 'Rüzgâr seni yana iter: şeridini tut.', plain: 1, wind: 0.9 },
   { id: 'yay', name: 'YAY TARLASI', unlock: 5000, intro: 'Yaylara bas, havadaki kar tanelerini topla.', plain: 1, pads: 0.9 },
-  { id: 'kaydirak', name: 'BUZ KAYDIRAĞI', unlock: 6000, intro: 'Buzda hızlan: dönüşler genişler.', plain: 1, dens: 0.7, slide: 1 },
+  { id: 'kaydirak', name: 'BUZ KAYDIRAĞI', unlock: 6000, ground: { tileA: 0xb6e6ff, tileB: 0x92d2f6, edge: 0xffffff, glow: 0xe8faff, under: 0x3a78b0 }, intro: 'Buzda hızlan: dönüşler genişler.', plain: 1, dens: 0.7, slide: 1 },
+  // ground: the track colours of a chapter (tileA / tileB top, edge, glow, under; runner.js groundPal over the biome's palette): consecutive chapters differ underfoot, not only in the sky.
   // Chapters 7+ (TOUR): each brings one NEW rule. word = the one-word label shown the first time per run; look = sky backdrop (public/sky) + radio tint (colour, strength).
   // zone: the track.zoneAt rule of a whole chapter (lasers / missiles / movers); lowg: half gravity; rain: boulders fall with a landing disc; boost: chance of a speed strip per plain piece.
-  { id: 'ay', name: 'AY ZIPLAMASI', unlock: 0, intro: 'Yerçekimi yarıya indi: uzun uç, bol yay.', plain: 1, pads: 0.9, dens: 0.6, lowg: 1, word: 'AY!', look: { sky: 'night', tint: 0x8fb4ff, tk: 0.25 } },
-  { id: 'ekspres', name: 'EKSPRES', unlock: 0, intro: 'Karşıdan tren geliyor: boş şeride geç ya da çatısına zıpla.', plain: 1, nojunc: 1, pat: { oncoming: 8, train: 3, _: 0.4 }, own: ['oncoming'], sig: 'oncoming', word: 'TREN!', look: { sky: 'canyon', tint: 0xff9a6a, tk: 0.18 } },
-  { id: 'kopru', name: 'ÇÖKEN KÖPRÜ', unlock: 0, intro: 'Köprü çatlıyor: durma, boşlukta zıpla.', set: 'iceBridge', gap: 0.35, plain: 1, dens: 0.5, word: 'ÇÖKÜYOR!', look: { sky: 'dawn', tint: 0xbfe3ff, tk: 0.2 } },
-  { id: 'lazer', name: 'BUZ LAZERLERİ', unlock: 0, intro: 'Lazer kapıları: açık aralıktan geç.', plain: 1, zone: 'lasers', sig: 'laser', word: 'LAZER!', look: { sky: 'night', tint: 0xff2a6a, tk: 0.3 } },
-  { id: 'fuze', name: 'FÜZE YAĞMURU', unlock: 0, intro: 'Füzeler şeritlere iniyor: kırmızı işarete dikkat.', plain: 1, dens: 0.8, zone: 'missiles', sig: 'missile', word: 'FÜZE!', look: { sky: 'canyon', tint: 0xff5a3a, tk: 0.22 } },
-  { id: 'hareket', name: 'HAREKETLİ ENGELLER', unlock: 0, intro: 'Engeller yana kayıyor: boşluğu kolla.', plain: 1, zone: 'movers', sig: 'mover', word: 'KAY!', look: { sky: 'dawn', tint: 0xffd36a, tk: 0.2 } },
-  { id: 'heyelan', name: 'HEYELAN', unlock: 0, intro: 'Kayalar yağıyor: kırmızı daireden uzak dur.', plain: 1, dens: 0.5, rain: 1, word: 'KAYA!', look: { sky: 'canyon', tint: 0x8a6a50, tk: 0.3 } },
-  { id: 'turbo', name: 'HIZ ŞERİDİ', unlock: 0, intro: 'Hız şeritleri: hızlan, ama engellere dikkat.', plain: 1, spd: 1.12, pads: 0.5, dens: 0.8, boost: 0.8, word: 'HIZ!', look: { sky: 'night', tint: 0x00e5ff, tk: 0.25 } },
+  { id: 'ay', name: 'AY ZIPLAMASI', unlock: 0, ground: { tileA: 0xcfd3ee, tileB: 0xaeb4dc, edge: 0x9fb0ff, glow: 0xdfe6ff, under: 0x2a3258 }, intro: 'Yerçekimi yarıya indi: uzun uç, bol yay.', plain: 1, pads: 0.9, dens: 0.6, lowg: 1, word: 'AY!', look: { sky: 'night', tint: 0x8fb4ff, tk: 0.25 } },
+  { id: 'ekspres', name: 'EKSPRES', unlock: 0, ground: { tileA: 0xbfa387, tileB: 0xa08566, edge: 0xffb27a, glow: 0xffd2a0, under: 0x4a3626 }, intro: 'Karşıdan tren geliyor: boş şeride geç ya da çatısına zıpla.', plain: 1, nojunc: 1, pat: { oncoming: 8, train: 3, _: 0.4 }, own: ['oncoming'], sig: 'oncoming', word: 'TREN!', look: { sky: 'canyon', tint: 0xff9a6a, tk: 0.18 } },
+  { id: 'kopru', name: 'ÇÖKEN KÖPRÜ', unlock: 0, ground: { tileA: 0xd6efff, tileB: 0xb0d8f4, edge: 0x6fc8ff, glow: 0xbff0ff, under: 0x3a6ca4 }, intro: 'Köprü çatlıyor: durma, boşlukta zıpla.', set: 'iceBridge', gap: 0.35, plain: 1, dens: 0.5, word: 'ÇÖKÜYOR!', look: { sky: 'dawn', tint: 0xbfe3ff, tk: 0.2 } },
+  { id: 'lazer', name: 'BUZ LAZERLERİ', unlock: 0, ground: { tileA: 0x3c2458, tileB: 0x2e1a46, edge: 0xff2a6a, glow: 0xff5a8a, under: 0x1a0e2c }, intro: 'Lazer kapıları: açık aralıktan geç.', plain: 1, zone: 'lasers', sig: 'laser', word: 'LAZER!', look: { sky: 'night', tint: 0xff2a6a, tk: 0.3 } },
+  { id: 'fuze', name: 'FÜZE YAĞMURU', unlock: 0, ground: { tileA: 0x5c3030, tileB: 0x482222, edge: 0xff6a3a, glow: 0xffa060, under: 0x241010 }, intro: 'Füzeler şeritlere iniyor: kırmızı işarete dikkat.', plain: 1, dens: 0.8, zone: 'missiles', sig: 'missile', word: 'FÜZE!', look: { sky: 'canyon', tint: 0xff5a3a, tk: 0.22 } },
+  { id: 'hareket', name: 'HAREKETLİ ENGELLER', unlock: 0, ground: { tileA: 0xeed89c, tileB: 0xd8bf80, edge: 0xffd36a, glow: 0xfff0b0, under: 0x7a6038 }, intro: 'Engeller yana kayıyor: boşluğu kolla.', plain: 1, zone: 'movers', sig: 'mover', word: 'KAY!', look: { sky: 'dawn', tint: 0xffd36a, tk: 0.2 } },
+  { id: 'heyelan', name: 'HEYELAN', unlock: 0, ground: { tileA: 0x92929c, tileB: 0x777782, edge: 0xd8d8e4, glow: 0xffd8a8, under: 0x34343e }, intro: 'Kayalar yağıyor: kırmızı daireden uzak dur.', plain: 1, dens: 0.5, rain: 1, word: 'KAYA!', look: { sky: 'canyon', tint: 0x8a6a50, tk: 0.3 } },
+  { id: 'turbo', name: 'HIZ ŞERİDİ', unlock: 0, ground: { tileA: 0x2ab4d6, tileB: 0x1c98c0, edge: 0xffffff, glow: 0x7af4ff, under: 0x0e4a6a }, intro: 'Hız şeritleri: hızlan, ama engellere dikkat.', plain: 1, spd: 1.12, pads: 0.5, dens: 0.8, boost: 0.8, word: 'HIZ!', look: { sky: 'night', tint: 0x00e5ff, tk: 0.25 } },
 ];
 export const CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
 export const CHAPTER_FIXED = ['yamac', 'orman', 'tunel', 'ray', 'cig', 'duello'];
