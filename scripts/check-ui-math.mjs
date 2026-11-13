@@ -193,7 +193,10 @@ assert.equal(UI.fmtTons(1.5), '1.5 ton', 'English: decimal point');
   assert.ok(u._cmb.classList.contains('t4') && !u._cmb.classList.contains('t2'), 'Rush chip: tint follows the whole step');
   u._mu = 3;
   u._mu = 0; u._cmRender();
-  assert.ok(!u._cmb.classList.contains('on'), 'Rush chip: gone without a multiplier');
+  assert.ok(u._cmb.classList.contains('on') && u._cmb.classList.contains('dim') && u._cmKe.textContent === 'x1', 'Rush chip: always drawn, dim x1 without a multiplier');
+  assert.equal(u._cmKs.textContent, 'ÇARPAN', 'Rush chip: micro-label on the first change of the run');
+  assert.ok(u._cmb.classList.contains('decay'), 'Rush chip: pulses when the multiplier drops');
+  clearTimeout(u._mLbT);
 
   // 'clean' goal: always shown (unlike 'cp'), label with / without the metres, other modes unchanged
   u.runnerGoal('clean', 120, 0.3);

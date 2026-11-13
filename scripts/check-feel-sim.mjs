@@ -73,7 +73,7 @@ const goLive = (h) => { while (h.runner.countT > 0) step(h); step(h, 5); };
 
 // ---------- junction turn: timing tiers and the 120 ms buffer ----------
 function junction(f, { secBefore = 0 } = {}) {
-  const h = make({ seed: 777 }), r = h.runner;
+  const h = make({ seed: 778 }), r = h.runner;
   let k = 0;
   while (!(r.jnJ && r.jnJ.s - r.b.s < 70 && r.countT <= 0) && k++ < 6000) step(h);
   const J = r.jnJ;
@@ -434,7 +434,7 @@ function junction(f, { secBefore = 0 } = {}) {
     return d.log.ui.filter((x) => x[0] === 'showRunnerResult').pop();
   };
   const res = dead(64, missions3), res2 = dead(65, null);
-  ok('death screen names the closest mission and how many are left', !!res && res[1].nextGoalKind === 'mission' && /(GÖREV|MISSION): .*\(2\/3\)/.test(res[1].nextGoalText) && /(1 GÖREV|1 MISSION)/.test(res[1].nextGoalText));
+  ok('death screen names the closest mission and how many are left', !!res && res[1].nextGoalKind === 'mission' && /\(2\/3\)/.test(res[1].nextGoalText) && /· 1 (kaldı|to go)/.test(res[1].nextGoalText));
   // the death screen reads missionsReport (a set finished this run stays all-done: no new mission line); cig-only rows are never named
   const fin = make({ seed: 66 }); fin.ctx.meta.missionsReport = () => ({ rows: missions3.map((m) => ({ ...m, done: true })), setDone: true }); fin.ctx.save.runnerBest = () => 100000; fin.runner.start(66, null, {}); goLive(fin); step(fin, 60); fin.runner.die('wall');
   { let kk = 0; while (fin.runner.state !== 'over' && kk++ < 200) step(fin, 1, false); }
@@ -474,7 +474,7 @@ function junction(f, { secBefore = 0 } = {}) {
   {
     const p = new ChapterPlan(7, 0, () => 20), got = plan(p), reg = got.filter((c) => !c.bonus);
     ok('the first 6 chapters are fixed: Yamaç, Orman, Buz Tüneli, Ray, Çığ, Düello', CHAPTER_FIXED.every((id, i) => reg[i].id === id && reg[i].n === i + 1));
-    ok('chapters run 500-700 m, the plan is contiguous', reg.every((c) => c.s1 - c.s0 >= 500 && c.s1 - c.s0 <= 700) && got.every((c, i) => !i || c.s0 === got[i - 1].s1));
+    ok('chapters 1-2 run 350 m, the rest 500-700 m, the plan is contiguous', reg.every((c, i) => (i < 2 ? c.s1 - c.s0 === 350 : c.s1 - c.s0 >= 500 && c.s1 - c.s0 <= 700)) && got.every((c, i) => !i || c.s0 === got[i - 1].s1));
     ok('ALTIN DAMAR (10 s) follows every 4th chapter and is not numbered', got.every((c, i) => (i > 0 && !got[i - 1].bonus && got[i - 1].n % BONUS_EVERY === 0) === c.bonus) && got.filter((c) => c.bonus).every((c) => c.s1 - c.s0 === 200));
     ok('same seed = same plan; at() reuses its segments', JSON.stringify(got.map((c) => [c.id, c.s0])) === JSON.stringify(plan(new ChapterPlan(7, 0, () => 20)).map((c) => [c.id, c.s0])) && p.at(100) === p.at(100));
     const seen = new Set(), early = [];

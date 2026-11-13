@@ -10,9 +10,9 @@
 // injected into every document (all passes of a frame summed), so they work without ?debug.
 //
 // Scenario ids (ONLY=<ids>, comma separated; every id runs alone, nothing depends on another scenario):
-//   1  first-run EN (FTUE autostart into YETI RUSH)          2  first-run TR
+//   1  first-run EN (FTUE autostart into YETI RUSH)          2  first-run TR (s2_play_tr.png: Turkish HUD on purpose)
 //   3  returning player: settled main menu, s3_menu_early.png (150 ms after first appearance), every bottom-nav button by label
-//   4  Rush 60 s playtest (save with 3 previous runs, normal game): rush_00..11.png, rush_result.png, retry
+//   4  Rush 60 s playtest (save with 3 previous runs, normal game): rush_00..11.png, rush_section.png, rush_ch2.png (1.1 s after CHAPTER 2 shows), rush_result.png, retry
 //   5  cig mountains 1/33/37 (8 s each, ?auto)               6  cig endless + daily            7  arena solo
 //   8  english leak scan                                      9  fullscreen                    11  soak (heap after GC)
 //   12 frame pacing (Rush, rAF deltas)                        13 first-run frames first_00..03.png at 0.5/2/5/10 s (fresh save)
@@ -273,7 +273,7 @@ async function firstRun(ctx, lang) {
   const d0 = await waitFor(`(${hudDist})>=0&&(${hudDist})`, 12000, 'first distance>0').catch(() => 0);
   await sleep(3000);
   const d1 = await ev(hudDist);
-  await shot('s' + (lang === 'tr' ? 2 : 1) + '_play', ctx);
+  await shot(lang === 'tr' ? 's2_play_tr' : 's1_play', ctx);   // (s2 is the deliberate Turkish run: its HUD is Turkish on purpose)
   if (d1 > d0) ctx.pass(`playing Rush, distance ${d0} -> ${d1} m, load ${ms} ms`); else ctx.fail(`distance not increasing (${d0} -> ${d1})`);
 }
 
@@ -339,7 +339,8 @@ async function rushPlaytest(ctx) {
   ctx.pass(`time page-load -> first playable frame (HUD+state=play): ${tFirst} ms`);
   const KS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
   let secShot = false;
-  const sections = new Set();   // set-piece name strips seen in the toast line
+  const sections = new Set();   // set-piece name strips seen (.sec-strip)
+  const chaps = new Set(); let ch2At = 0, ch2Shot = false;   // chapter name pills seen; rush_ch2.png is shot 1.1 s after 'CHAPTER 2' appears (the new biome palette has blended in)
   let played = 0, frame = 0, deaths = 0, tick = 0, lastT = Date.now(), resultShot = false, powerShot = false, retryMs = [], paceDone = false;
   const rows = [];
   const cap = Date.now() + 74000;
@@ -347,7 +348,7 @@ async function rushPlaytest(ctx) {
     await sleep(600);
     if (!resultShot) { resultShot = true; await shot('rush_result', ctx); const t = await ev(`document.getElementById('result').innerText.replace(/\\s+/g,' ').slice(0,100)`); ctx.pass(`result screen: "${t}"`); }
     // GÜÇ entry on the result: the button (only while something is affordable) or the 'Next: ...' bar of the card; opens the panel over it, closes again
-    const pwSel = !powerShot && await ev(`(()=>{const b=document.getElementById('btn-power');return b&&b.style.display!=='none'?'#btn-power':document.querySelector('.rx-up')?'.rx-up':''})()`);
+    const pwSel = !powerShot && await ev(`(()=>{const b=document.getElementById('btn-power');return document.querySelector('.rx-up')?'.rx-up':b&&b.style.display!=='none'?'#btn-power':''})()`);   // the Next bar (button) first: it opens GÜÇ at that upgrade's row
     if (pwSel) {
       powerShot = true;
       await tapSel(pwSel, null, 3000).catch(() => {}); await sleep(700); await shot('rush_power', ctx);
@@ -363,9 +364,15 @@ async function rushPlaytest(ctx) {
     const dt = Date.now() - lastT; lastT = Date.now();
     if (st.play) played += dt;
     if (st.rv) { await tapSel('#btn-revive-end', null, 3000).catch(() => {}); continue; }
-    if (st.res) { deaths++; await afterResult(Date.now()); continue; }
+    if (st.res) { deaths++; ch2At = 0; await afterResult(Date.now()); continue; }
     if (st.play) { if (tick++ % 2 === 0) await key(KS[(Math.random() * KS.length) | 0]); }
-    if (st.play && tick % 3 === 0) { const sx = await ev(`((document.querySelector('.sec-strip')||{}).textContent||'').match(/SECTION \\d+ · [A-Z -]+/g)||[]`); for (const x of sx) sections.add(x); if (sx.length && !secShot) { secShot = true; await ev('window.__raf.skip=true'); await shot('rush_section', ctx); await ev('window.__raf.skip=false;window.__raf.ign=3'); } }
+    if (st.play && tick % 3 === 0) {
+      const o = await ev(`(()=>{const q=(c)=>{const e=document.querySelector(c);return e?e.textContent.trim():''};return{sec:q('.sec-strip.on'),ch:q('.chap-pill.on')}})()`);
+      if (o.sec) sections.add(o.sec);
+      if (o.sec && !secShot) { secShot = true; await ev('window.__raf.skip=true'); await shot('rush_section', ctx); await ev('window.__raf.skip=false;window.__raf.ign=3'); }
+      if (o.ch) { chaps.add(o.ch); if (/CHAPTER 2/.test(o.ch) && !ch2At && !ch2Shot) ch2At = Date.now(); }
+    }
+    if (ch2At && !ch2Shot && Date.now() - ch2At > 1100 && st.play) { ch2Shot = true; await ev('window.__raf.skip=true'); await shot('rush_ch2', ctx); await ev('window.__raf.skip=false;window.__raf.ign=3'); }
     if (frame < 12 && played >= frame * 5000) {
       const r = await ev(`({d:${hudDist},sc:(document.getElementById('hud-tons')||{}).textContent})`);
       await ev('window.__raf.skip=true'); await shot('rush_' + String(frame).padStart(2, '0'), ctx); await ev('window.__raf.skip=false;window.__raf.ign=3');
@@ -380,7 +387,8 @@ async function rushPlaytest(ctx) {
   await glTake(); rushGl = glLine(GLACC);
   if (frame < 12 || played < 60000) ctx.fail(`only ${frame}/12 frames, played ${(played / 1000).toFixed(0)} s in ${(74000 / 1000)} s wall cap`);
   console.log('  ' + rows.join('\n  '));
-  if (sections.size) ctx.pass(`section strips seen: ${[...sections].join(' | ')}`); else ctx.warn('no SECTION strip seen in 60 s (set pieces are random)');
+  if (sections.size) ctx.pass(`set-piece strips seen: ${[...sections].join(' | ')}`); else ctx.warn('no set-piece strip seen in 60 s (set pieces are random)');
+  if (ch2Shot) ctx.pass(`chapters seen: ${[...chaps].join(' | ')}; rush_ch2.png shot after the chapter change`); else ctx.warn(`CHAPTER 2 never reached in one life (chapters seen: ${[...chaps].join(' | ') || 'none'}); no rush_ch2.png`);
   ctx.pass(`60 s Rush playtest, ${rows.length} frames, deaths ${deaths}, played ${(played / 1000).toFixed(0)} s, bot=random keys, save with 3 previous runs`);
   await ev(`window.__raf.stop=true`);
   if (!resultShot) {   // bot survived: stop steering and let it crash, to exercise result + retry (no ?debug, so no runner.die())

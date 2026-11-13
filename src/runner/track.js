@@ -1531,7 +1531,7 @@ Object.assign(Track.prototype, {
         at(i, a); at(i + 1, b);
         this._P(s, a[0], a[1], VP[0]); this._P(s, b[0], b[1], VP[1]); this._P(s + 1, b[0], b[1], VP[2]); this._P(s + 1, a[0], a[1], VP[3]);
         const hm = 0.5 * (a[1] + b[1]);
-        const cc = isRing ? ring : mixc(mixc(C.A, C.edge, 0.3), C.under, smooth(hm / 9.5) * 0.85 + ((i + s) & 1) * 0.04);
+        const cc = isRing ? ring : mixc(mixc(C.A, C.edge, 0.3), C.under, smooth(hm / 9.5) * 0.5 + ((i + s) & 1) * 0.04);
         const hu = -0.5 * (a[0] + b[0]), hh = c - hm;      // inside faces: normal points towards the tube axis
         mb.quad(VP[0], VP[1], VP[2], VP[3], rx * hu + ux * hh, ry * hu + uy * hh, rz * hu + uz * hh, cc);
       }

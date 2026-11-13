@@ -111,7 +111,7 @@ for (const [tr, en] of EN) eq(`EN ${tr}`, t(tr), en);
 }
 for (const [tr, en] of [
   ['GÖREV: 3 yaratık ez (1/3) · ÇARPAN x4', null], ["REKOR'A 1,250 PUAN", '1,250 PTS TO RECORD'], ['KARTPOSTAL: Volkan 5/14', null],
-  ['SET İÇİN 1 GÖREV KALDI', '1 MISSION LEFT FOR THE SET'], ['SET İÇİN 2 GÖREV KALDI', '2 MISSIONS LEFT FOR THE SET'], ['az kaldı: %87', 'so close: 87%'],
+  ['kaldı', 'to go'], ['az kaldı: %87', 'so close: 87%'],
   ['TOPLA', 'COLLECT'], ['DOKUNULMAZ', 'UNTOUCHABLE'], ['KAÇIŞ', 'ESCAPE'], ['PATRON', 'BOSS'], ['Bitişe ulaş!', 'Reach the finish!'],
 ]) if (en) eq(`EN ${tr}`, t(tr), en);
 // the composed lines are built from translated parts: no Turkish word may survive in the English line

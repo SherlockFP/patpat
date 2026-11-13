@@ -3,7 +3,7 @@
 // The ball runs DOWNHILL on a ski-run carved along a mountain ridge (Temple-Run style). Everything around the track is
 // ours: sky dome, sun/moon, stars, fog + light colours, MOUNTAIN FLANKS (terrain that falls away from both track edges,
 // a snow bank where the track has a curb, a sheer cliff where it has none), the valley floor far below, scenery chunks,
-// clouds, ambient particles, biome blending and beat pulses. 14 biomes of 600 m cycle forever (BIOME_LENGTH): snow, forest, greenhill, kapadokya, town, desert, icecave, candy, sakura,
+// clouds, ambient particles, biome blending and beat pulses. 14 biomes of 350 m cycle forever (BIOME_LENGTH): snow, forest, greenhill, kapadokya, town, desert, icecave, candy, sakura,
 // istanbul, neon, moon, pirate, volcano. setBiomeOverride(id) locks the world to one of them (campaign levels).
 //
 // Contracts (see RUNNER.md):
@@ -48,7 +48,7 @@ import { SU, patchTail, setLookActive } from '../shaders.js';
 // ---------------------------------------------------------------------------------------------
 // constants
 // ---------------------------------------------------------------------------------------------
-export const BIOME_LENGTH = 600;
+export const BIOME_LENGTH = 350;
 const CH = 50;            // scenery chunk length (m of path)
 const AHEAD = 300;        // scenery is generated while chunk end <= ball.s + AHEAD
 const BEHIND = 70;        // chunks whose end is more than this behind the ball are recycled

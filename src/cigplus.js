@@ -2252,7 +2252,7 @@ export class CigGame {
   _tips() {
     const L = this.L, b = this.ball, G = this.G;
     if (!L) {   // endless: ONE first-seconds line that says why you grow
-      if (G.t > 1 && G.t < 5 && !this._tipSeen().eat) this._tip('eat', TIPS.eat);
+      if (G.t > 1 && this.stats.eats < 3 && !this._tipSeen().eat) this._tip('eat', TIPS.eat);   // (until the first 3 bites, not on a timer)
       return;
     }
     if (G.t - (this._tipT || 0) < 0.25) return;

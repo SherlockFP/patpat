@@ -1,6 +1,6 @@
 // English strings for YETI RUSH (src/runner/*.js)
 export const words = {
-  // set-piece names (the ETAP strip)
+  // set-piece names (the set-piece name strip)
   'GİRDAP': 'WHIRL', 'DALGALAR': 'WAVES', 'ATLAYIŞ RAMPASI': 'SKI JUMP', 'UÇURUM': 'CHASM', 'HALAT': 'ZIPLINE', 'BUZ KÖPRÜ': 'ICE BRIDGE', 'YARIM BORU': 'HALF-PIPE',
   'BUZ TÜNELİ': 'ICE TUNNEL', 'DÖNGÜ': 'LOOP', 'BURGU': 'CORKSCREW', 'KAVŞAK': 'JUNCTION', 'BASAMAKLAR': 'STAIRS', 'PORTAL': 'PORTAL',
   // buff cards
@@ -51,7 +51,7 @@ export const words = {
   'DUVARA ÇARPTIN!': 'YOU HIT A WALL!', 'ERİDİN!': 'YOU MELTED!', 'ÇARPTIN!': 'CRASH!', 'BİTTİ!': 'GAME OVER!',
   'DUVARA ÇARPTIN': 'HIT A WALL', 'DÜŞTÜN': 'YOU FELL', 'ERİDİN': 'YOU MELTED', 'YETİ YAKALADI': 'YETI CAUGHT YOU', 'ÇARPTIN': 'CRASH', 'PATLADIN': 'BLOWN UP', 'BİTTİ': 'GAME OVER',
   'REKOR': 'RECORD', 'BOSS': 'BOSS', 'KOMBO': 'COMBO', 'DUVAR': 'WALL', 'DÜŞÜŞ': 'FALL', 'ERİME': 'MELT', 'YETİ': 'YETI', 'ÇARPMA': 'CRASH', 'PATLAMA': 'EXPLOSION',
-  'BÖLÜM ÖZETİ': 'LEVEL SUMMARY',
+  'BÖLÜM ÖZETİ': 'CHAPTER SUMMARY',
   // hints / turns / tutorial
   '← → şerit · ↑ zıpla · ↓ eğil': '← → lane · ↑ jump · ↓ duck',
   'SAĞA KAYDIR ➜': 'SWIPE RIGHT ➜', '⬅ SOLA KAYDIR': '⬅ SWIPE LEFT',
@@ -134,7 +134,7 @@ export const words = {
   'Palyaço': 'Clown', 'Lav Boceği': 'Lava Bug', 'Penguen': 'Penguin', 'Kar Tavsani': 'Snow Bunny', 'Sincap': 'Squirrel',
   'Kardan Adamcik': 'Mini Snowman', 'Akrep': 'Scorpion', 'Jole Ayicik': 'Gummy Bear', 'Kutup Tilkisi': 'Arctic Fox', 'Buz Yavrusu': 'Ice Cub',
   // goal chain, postcards, level types (BİTİR is 'END RUN' in en_ui: not overridden here)
-  'GÖREV:': 'MISSION:', 'KARTPOSTAL:': 'POSTCARD:', 'SET İÇİN 1 GÖREV KALDI': '1 MISSION LEFT FOR THE SET',
+  'GÖREV:': 'MISSION:', 'KARTPOSTAL:': 'POSTCARD:',
   'TOPLA': 'COLLECT', 'DOKUNULMAZ': 'UNTOUCHABLE', 'KAÇIŞ': 'ESCAPE', 'PATRON': 'BOSS',
   // Rush chapters (goals.js CHAPTERS): names, the first-entry sentence, pay lines. The strip "BÖLÜM n · NAME" is built in runner.js (en: CHAPTER n · NAME), never via the en_menus ^BÖLÜM catch-all.
   'YAMAÇ': 'SLOPE', 'ORMAN SLALOMU': 'FOREST SLALOM', 'BUZ TÜNELİ': 'ICE TUNNEL', 'RAY HATTI': 'RAIL LINE', 'ÇIĞ KAÇIŞI': 'AVALANCHE RUN', 'YETİ DÜELLOSU': 'YETI DUEL',
@@ -164,7 +164,6 @@ export const patterns = [
   [/^([\d.,]+) m · ([\d.,]+) puan$/, '$1 m · $2 points'],      // the pause line (main.js): "90 m · 468 puan"
   [/^EN İYİYE ([\d.,]+) PUAN$/, 'BEAT YOUR BEST: $1 PTS'],      // death screen: points still missing to the record
   [/^REKOR'A ([\d.,]+) PUAN$/, '$1 PTS TO RECORD'],      // goal strip (never start with "REKORA " / "REKOR ": en_ui / en_menus catch-alls swallow those)
-  [/^SET İÇİN (\d+) GÖREV KALDI$/, '$1 MISSIONS LEFT FOR THE SET'],
   [/^az kaldı: %(\d+)$/, 'so close: $1%'],      // failed campaign level: how far the run got
   [/^SIRADAKİ: ([\d.,]+) PUAN$/, 'NEXT GOAL: $1 PTS'],      // death screen: the next round score once the record is yours
   [/^BU HAFTA: (.+?)(?:\s+\S{1,3})?$/, (m, n) => 'THIS WEEK: ' + W(n)],
@@ -172,7 +171,6 @@ export const patterns = [
   [/^KIL PAYI (\d)\/3$/, 'CLOSE CALL $1/3'],       // YETİ DÜELLOSU: boulder near-misses
   [/^RİTİM x(\d+)$/, 'RHYTHM x$1'],
   [/^RİTİM BİTTİ$/, 'RHYTHM OVER'],
-  [/^ETAP (\d+) · (.+)$/, 'SECTION $1 · $2'],      // the set-piece strip (names in `words`)
   [/^🧣 Sezon (\d+)$/, '🧣 Season $1'],
   [/^RİTİM$/, 'RHYTHM'],
   [/^SİNERJİ! (\S+) (.+)$/, (m, ic, n) => 'SYNERGY! ' + ic + ' ' + W(n)],
@@ -189,6 +187,7 @@ export const patterns = [
   [/^PARÇALADIN x(\d+)$/, 'SHATTERED x$1'],
   [/^KAR SERİSİ x(\d+)$/, 'SNOW STREAK x$1'],
   [/^ÇARPAN x(\d+)$/, 'MULTIPLIER x$1'],
+  [/^BÖL (\d+)$/, 'CH $1'],                    // chapter progress bar label
   [/^\+(\d+) · ÇARPAN \+0,5$/, '+$1 · MULTIPLIER +0.5'],
   [/^ÇARPAN \+1 · (\d+) sn$/, 'MULTIPLIER +1 · $1 s'],
   [/^(\S+ )?(.+?) · RİSKLİ$/, (m, ic, n) => (ic || '') + W(n) + ' · RISKY'],

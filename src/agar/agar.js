@@ -2188,7 +2188,7 @@ export class AgarMode {
       if (sk && sk.preview && sk.preview.a) { hex = sk.preview.b || sk.preview.a; ball.style.setProperty('--ba', sk.preview.a); }
     } catch { /* ignore */ }
     ball.style.setProperty('--bc', hex); c.appendChild(ball);
-    const s = document.createElement('div'); s.className = 'ag-sub'; s.textContent = 'Büyü, yut, hayatta kal! Rekor kütle: ' + fmtM(this.best) + ' · Seviye ' + lvlOf(this.xp); c.appendChild(s);
+    const s = document.createElement('div'); s.className = 'ag-sub'; s.textContent = this.best > 0 ? 'Büyü, yut, hayatta kal! Rekor kütle: ' + fmtM(this.best) + ' · Seviye ' + lvlOf(this.xp) : '4:00 içinde en büyük ol'; c.appendChild(s);   // (no dead 'best mass 0': the goal instead)
     this.btn(c, '▶ OYNA', () => { this.ensureNick(); this.playSolo(); }, 'go'); // offline vs bots: the one obvious action
     if (!NET_LOCAL) this.btn(c, '🌐 ÇEVRİMİÇİ', () => this.onlineGate(() => this.onlineScreen()), 'blue');
   }
@@ -2959,7 +2959,7 @@ export class AgarMode {
       sp.visible = true;
       const w = Math.max(o.maxR * 2.2, camH * 0.1) * (isM ? 1.3 : 0.8);
       sp.scale.set(w, w * 0.25, 1);
-      sp.position.set(o.lx, o.maxR + 0.3 + w * 0.1 + (isM ? w * 0.08 : 0) + (o === king ? w * 0.35 : 0), o.lz + o.maxR * 0.2);
+      sp.position.set(o.lx, o.maxR + 0.3 + w * 0.1 + (isM ? w * 0.08 : 0) + (o === king ? w * 0.35 : 0), o.lz + (isM ? -o.maxR * 1.9 : o.maxR * 0.2));      // (own tag sits above the ball on screen, not over its face)
       sp.renderOrder = isM ? 12 : 10; sp.material.opacity = isM ? 1 : 0.8;
     }
     // local player ring + crown + height caps / occlusion fade
@@ -3234,7 +3234,8 @@ export class AgarMode {
       h.arrow.style.opacity = this.arrOn ? '0.9' : '0'; h.arrow.style.transform = 'rotate(' + (this.arrAng || 0) + 'rad)';
     } else if (this.arrOn) { this.arrOn = false; h.arrow.style.opacity = '0'; }
     if (this.feedDirty || this.hudT <= 0) {
-      for (let i = 0; i < 4; i++) { const f = this.feed[i], e = h.feeds[i]; const on = f.until > this.time; if (e._t !== f.t || e._on !== on) { e.textContent = on ? f.t : ''; e.style.opacity = on ? '1' : '0'; e._t = f.t; e._on = on; } }
+      // first 10 s of a run: no chat / kill feed, only the steer hint
+      for (let i = 0; i < 4; i++) { const f = this.feed[i], e = h.feeds[i]; const on = f.until > this.time && this.time - me.t0 >= 10; if (e._t !== f.t || e._on !== on) { e.textContent = on ? f.t : ''; e.style.opacity = on ? '1' : '0'; e._t = f.t; e._on = on; } }
       this.feedDirty = false;
     }
     if (this.lbT <= 0) {
@@ -3285,7 +3286,7 @@ export class AgarMode {
         for (let i = 0; i < 6; i++) { const e = ch.els[i], m = L[L.length - 6 + i]; if (m) { e.children[0].textContent = m.n + ': '; e.children[0].style.color = '#' + ('000000' + m.c.toString(16)).slice(-6); e.children[1].textContent = m.x; } else { e.children[0].textContent = ''; e.children[1].textContent = ''; } }
         this.chatDirty = false;
       }
-      for (let i = 0; i < 6; i++) { const m = this.chatLog[this.chatLog.length - 6 + i]; ch.els[i].style.opacity = m ? clampN((m.until - this.time) / 1.5, 0, 1).toFixed(2) : '0'; }
+      for (let i = 0; i < 6; i++) { const m = this.chatLog[this.chatLog.length - 6 + i]; ch.els[i].style.opacity = m && this.time - me.t0 >= 10 ? clampN((m.until - this.time) / 1.5, 0, 1).toFixed(2) : '0'; }
       if (this.mp && this.net) { const hn = this.mp === 'host' ? this.net.clients.size + 1 : this.humans; h.room.style.display = ''; h.room.textContent = (this.net.pub === false ? '🔒 ' : this.net.pub ? '🌐 ' : '🏠 ') + 'Oda ' + this.net.code + ' · ' + hn + '/' + MAX_HUMANS + ' oyuncu'; } else { h.room.style.display = ''; h.room.textContent = (this.match && !this.matchDone && this.state !== 'title' ? '⏱ ' + fmtT(Math.ceil(Math.max(0, this.match.t))) + ' · ' : '') + (me.prot && me.shield > 0 ? '🛡 ' + fmtT(Math.ceil(me.shield)) : t('🤖 Botlarla')); }   // timer + shield in ONE pill
       const xp = this.xp + me.xpRun, lv = lvlOf(xp), lo = 60 * (lv - 1) * (lv - 1), hi = 60 * lv * lv;
       h.lv.textContent = 'Sv ' + lv;

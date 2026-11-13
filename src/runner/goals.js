@@ -206,7 +206,7 @@ export class ChapterPlan {
     } else {
       const n = last ? last.n + 1 : 1, prev = last ? this.segs[this.segs.length - (last.bonus ? 2 : 1)] : null;
       const id = this._pick(n, s0, prev ? prev.id : ''), def = CHAPTER_BY_ID[id];
-      const len = def.len || (n <= 2 ? 600 : 500 + Math.floor(ch1(this.seed % 7919, n + 50) * 200));
+      const len = def.len || (n <= 2 ? 350 : 500 + Math.floor(ch1(this.seed % 7919, n + 50) * 200));
       seg = { n, id, def, s0, s1: s0 + len, bonus: false, i: this.segs.length };
     }
     this.segs.push(seg);

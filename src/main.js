@@ -498,7 +498,7 @@ async function startEndless(level = null, opts = {}) {
 let prewarmed = false;
 // result screen hooks: GÜÇ button + the player level-up screen (menus owns both screens)
 ui.hooks = {
-  power: () => menus.openPower(),
+  power: (id) => menus.openPower(id),
   nextPower: () => { try { return menus.cheapestPower() || null; } catch { return null; } },   // { name, icon, price, have, afford } of the cheapest open upgrade
   affordPower: () => { try { return !!menus.cheapestPower()?.afford; } catch { return false; } },
   levelUp: () => { try { if (meta.pendingLevelUps().length) { fx?.levelUp?.(ball.group.position); menus.openLevelUp(); } } catch { /* optional */ } },
@@ -966,7 +966,7 @@ function finishCigLevel() {
     menus.showLevelComplete({
       level: planAsLevel(plan), stars, goalsMet, rewards: { coins, crystals }, hasNext,
       labels: { banner: townPct >= 0 ? 'KASABA %' + townPct + ' YIKILDI' : 'DAĞ TAMAM!', bossBanner: 'PATRON YENİLDİ!', next: 'SONRAKİ DAĞ ▶', map: 'DAĞLAR', retry: '↻ TEKRAR' },
-      chips: ['⚪ ' + fmtD(2 * G.finalR) + ' m', '⚖️ ' + fmtTons(r.tons), '⏱ ' + clock(st.time)].concat(comboC ? ['🪙 KOMBO +' + comboC] : [], plan.bigBoss && firstClear ? ['👑 PATRON ÖDÜLÜ'] : [], lootChip ? [lootChip] : []),
+      chips: (townPct >= 0 ? ['🏘️ ' + townPct + '%'] : []).concat(['⚪ ' + fmtD(2 * G.finalR) + ' m', '⚖️ ' + fmtTons(r.tons), '⏱ ' + clock(st.time)]).concat(comboC ? ['🪙 KOMBO +' + comboC] : [], plan.bigBoss && firstClear ? ['👑 PATRON ÖDÜLÜ'] : [], lootChip ? [lootChip] : []),
       special: !daily && firstClear && n === 10 ? '∞ ÇIĞ SONSUZ AÇILDI!' : !daily && firstClear && n === MAX_DAG ? '🏆 TÜM DAĞLAR TAMAM!' : null,
     }, {
       onNext: () => playCigLevel(n + 1),

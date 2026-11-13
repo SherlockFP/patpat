@@ -40,12 +40,12 @@ ok(SU.uTail.value === 1, 'environment switches the finish on (normal mode)');
 }
 { // across the first portal: 60 m before to 60 m after, monotonic
   const seq = [];
-  for (let s = 100; s <= 760; s += 4) { upd(s); seq.push([s, SU.uGrade.value.x, SU.uGrade.value.z, SU.uSh.value.r]); }
+  for (let s = BIOME_LENGTH - 200; s <= BIOME_LENGTH + 160; s += 4) { upd(s); seq.push([s, SU.uGrade.value.x, SU.uGrade.value.z, SU.uSh.value.r]); }
   const a = snow.grade.sat, b = forest.grade.sat, dir = Math.sign(b - a);
   ok(dir !== 0 && seq.every((r, i) => i === 0 || (r[1] - seq[i - 1][1]) * dir >= -1e-6), 'saturation blends monotonically across the portal');
-  ok(seq.filter((r) => r[0] < 520).every((r) => near(r[1], a)), 'nothing moves before the blend window opens (portal - 60 m)');
-  ok(seq.filter((r) => r[0] > 680).every((r) => near(r[1], b)), 'the new biome grade is in place after the portal');
-  const mid = seq.find((r) => r[0] === 600);
+  ok(seq.filter((r) => r[0] < BIOME_LENGTH - 80).every((r) => near(r[1], a)), 'nothing moves before the blend window opens (portal - 60 m)');
+  ok(seq.filter((r) => r[0] > BIOME_LENGTH + 80).every((r) => near(r[1], b)), 'the new biome grade is in place after the portal');
+  const mid = seq.find((r) => r[0] === BIOME_LENGTH);
   ok(mid && mid[1] > Math.min(a, b) + 1e-4 && mid[1] < Math.max(a, b) - 1e-4, 'half way through the portal the grade is in between');
   ok(seq.every((r) => r.every(Number.isFinite)), 'no NaN while blending');
 }

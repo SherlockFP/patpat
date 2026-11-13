@@ -457,6 +457,8 @@ html, body {
 .cig-hud .cg-row { display: flex; gap: 14px; font-weight: 900; font-size: 13px; color: #fff; text-shadow: 0 2px 0 var(--ink), 1px 1px 0 var(--ink), -1px 1px 0 var(--ink), 1px -1px 0 var(--ink), -1px -1px 0 var(--ink); }
 .cig-hud .cg-row span:last-child { color: #cfe6ff; }
 #hud.cig-endless .hud-progress { visibility: hidden; }
+#hud.cig-endless .hud-tons { font-size: 53px; top: calc(var(--sat) + 40px); }   /* tons is the hero number of the endless HUD (x1.2), the COMBO badge is the small one */
+#hud.cig-endless .cmb .ch.k em { font-size: 26px; }
 #hud.cig-endless .hud-coins { display: none; }
 
 #cig-banner {
@@ -807,8 +809,8 @@ html, body {
 #hud.rush.rush.rush .buffs .buff::before { inset: 2px; }
 #hud.rush.rush.rush .buffs .buff .bi { font-size: 11px; }
 #hud.rush.rush.rush ~ #buff-fly { display: none; }
-#hud.rush.rush.rush ~ #toast-soft:not(.res) { top: calc(var(--sat) + 122px); gap: 0; }
-#hud.rush.rush.rush ~ #toast-soft:not(.res) .ts { font-size: 12px; padding: 3px 11px 4px 8px; }
+#hud.rush.rush.rush ~ #toast-soft:not(.res) { top: calc(var(--sat) + 132px); gap: 0; }
+#hud.rush.rush.rush ~ #toast-soft:not(.res) .ts { font-size: 13px; padding: 3px 11px 4px 8px; }
 #hud.rush.rush.rush ~ #toast-soft:not(.res) .ts .ti { font-size: 14px; }
 
 /* ---- cycle 6: result z-order + fit, consistent top pills ---- */
@@ -974,13 +976,6 @@ html, body {
 #banner.runner .b, #banner.runner .b.l4, #banner.runner .b.l5 { font-size: 26px; }
 #hud.rush ~ #floats .float.big, #hud.rush ~ #floats .float.bad { font-size: 17px; max-width: 94vw; overflow: hidden; text-overflow: ellipsis; }
 
-.yeti-cue { position: absolute; left: 50%; top: calc(var(--sat) + 120px); width: 200px; height: 26px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; font-size: 20px; line-height: 1; opacity: 0; pointer-events: none; }
-.yeti-cue i { position: relative; flex: 1; height: 9px; border-radius: 5px; background: rgba(8, 22, 48, 0.7); border: 2px solid var(--ink); overflow: hidden; }
-.yeti-cue i::after { content: ''; position: absolute; inset: 0; transform-origin: left center; background: linear-gradient(90deg, #ff5a4a, #ffb04a); transform: scaleX(0.9); }
-.yeti-cue.on { animation: yetiCue 1.4s ease-out forwards; }
-.yeti-cue.on i::after { animation: ycFill 1.4s ease-out forwards; }
-@keyframes yetiCue { 0% { opacity: 0; } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes ycFill { from { transform: scaleX(0.9); } to { transform: scaleX(0.3); } }
 
 body:has(#result:not(.hidden)) #rcol { display: none; }   /* the Rush side chips never float over the result / GÜÇ panel */
 
@@ -1177,13 +1172,13 @@ html .fm-main > .fm-best .bv { font-size: 22px; }
 .fm-lvup .fm-rcard { margin-bottom: 8px; }
 
 /* ---- hybrid pass (integrator): Rush goal strip + chapter strip, hint off the ball, solid pills for floats, ÇIĞ gauge ---- */
-#hud.rush.rush.rush .hud-goal { top: calc(var(--sat) + 90px); width: 262px; height: 18px; border-radius: 9px; border-width: 2px; background: rgba(8, 22, 48, 0.62); }
-#hud.rush.rush.rush .hud-goal .goal-lbl { display: block; font-size: 10.5px; line-height: 14px; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; }
-.chap-bar { position: absolute; left: 0; right: 0; margin: 0 auto; top: calc(var(--sat) + 111px); width: 206px; height: 4px; border-radius: 2px; background: rgba(8, 22, 48, 0.5); overflow: hidden; pointer-events: none; }
+#hud.rush.rush.rush .hud-goal { top: calc(var(--sat) + 90px); width: 262px; height: 22px; border-radius: 11px; border-width: 2px; background: rgb(8, 22, 48); }
+#hud.rush.rush.rush .hud-goal .goal-lbl { display: block; font-size: 13px; line-height: 18px; letter-spacing: 0.02em; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; }
+.chap-bar { position: absolute; left: 0; right: 0; margin: 0 auto; top: calc(var(--sat) + 116px); width: 206px; height: 4px; border-radius: 2px; background: rgba(8, 22, 48, 0.5); overflow: hidden; pointer-events: none; }
 .chap-bar i { display: block; height: 100%; width: 0; background: #6dff8f; transition: width 0.15s linear; }
 .chap-bar.dirty i { background: #8fd0ff; }
 .chap-bar.bonus i { background: #ffd23a; }
-.chap-pill { position: absolute; left: 50%; top: calc(var(--sat) + 126px); transform: translateX(-50%); opacity: 0; pointer-events: none; padding: 4px 14px 5px; border-radius: 14px; background: rgba(10, 25, 55, 0.92); color: #ffd23a; font-weight: 900; font-size: 15px; letter-spacing: 0.05em; white-space: nowrap; text-shadow: 0 1px 0 var(--ink); }
+.chap-pill { position: absolute; left: 50%; top: calc(var(--sat) + 132px); transform: translateX(-50%); opacity: 0; pointer-events: none; padding: 4px 14px 5px; border-radius: 14px; background: rgba(10, 25, 55, 0.92); color: #ffd23a; font-weight: 900; font-size: 15px; letter-spacing: 0.05em; white-space: nowrap; text-shadow: 0 1px 0 var(--ink); }
 .chap-pill.bonus { color: #fff3a0; background: rgba(120, 70, 0, 0.92); }
 .chap-pill.on { animation: chapIn 1.3s ease-out forwards; }
 @keyframes chapIn { 0% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.9); } 14% { opacity: 1; transform: translateX(-50%) scale(1.06); } 28% { transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
@@ -1192,7 +1187,7 @@ html .fm-main > .fm-best .bv { font-size: 22px; }
 #hint > div:last-child { display: inline-block; max-width: 92%; padding: 5px 14px 6px; border-radius: 14px; background: rgba(8, 22, 48, 0.78); color: #fff; font-size: 15px; line-height: 1.25; }
 .float.big, .float.bad, #banner .b { background: rgba(8, 22, 48, 0.84); padding: 3px 16px 4px; border-radius: 14px; }
 .ftue-splash { transition-duration: 0.18s; }
-.res-extra .rx-ms { padding: 5px 10px 6px; border-radius: 10px; font-weight: 800; font-size: 12.5px; text-align: center; color: #fff; text-shadow: 0 1px 0 var(--ink); background: linear-gradient(90deg, rgba(255, 210, 58, 0.6) var(--f, 0%), rgba(8, 22, 48, 0.62) var(--f, 0%)); }
+.res-extra .rx-ms { padding: 5px 10px 6px; border-radius: 10px; font-weight: 800; font-size: 12.5px; text-align: center; color: #fff; text-shadow: 0 1px 0 var(--ink); background: linear-gradient(90deg, #ffd23a var(--f, 0%), rgba(255, 255, 255, 0.18) var(--f, 0%)) left bottom / 100% 4px no-repeat, rgb(8, 22, 48); padding-bottom: 9px; }
 .res-sub.chip { display: inline-block; padding: 4px 14px 5px; border-radius: 12px; color: #fff; border: 2px solid rgba(255, 255, 255, 0.28); background: linear-gradient(90deg, rgba(255, 210, 58, 0.6) var(--f, 0%), rgba(8, 22, 48, 0.62) var(--f, 0%)); text-shadow: 0 1px 0 var(--ink); }
 #btn-power { color: #3a1c00; background: linear-gradient(180deg, #ffd45a, #ff9a1a); box-shadow: 0 4px 0 #a85a00; }
 #btn-power.pulse { animation: pwPulse 1s ease-in-out infinite; }
@@ -1218,3 +1213,18 @@ html .fm-main > .fm-best .bv { font-size: 22px; }
 
 /* ---- critic pass: solid green PLAY on the Arena title ---- */
 .ag-title .ag-btn.go { background: linear-gradient(180deg, #e4ff7a, #8fe030 45%, #55c61f); box-shadow: 0 6px 0 #2f7a14, inset 0 3px 0 rgba(255, 255, 255, 0.45); text-shadow: 0 3px 0 #2a6a12; }
+
+/* --- v3 critic pass: chapter bar label, best-chapter chip, quiet intro frame, always-on multiplier badge, perk name under the banner --- */
+.chap-bar { overflow: visible; }
+.chap-bar i { border-radius: 2px; }
+.chap-bar b { position: absolute; right: 100%; top: -3px; margin-right: 6px; font-size: 11px; line-height: 12px; font-weight: 900; letter-spacing: 0.04em; color: #fff; white-space: nowrap; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }
+.cmb.on.dim { opacity: 0.5; }
+.cmb.decay { animation: cmbDecay 0.5s ease-out; }
+@keyframes cmbDecay { 0% { transform: scale(1); } 35% { transform: scale(0.7); filter: saturate(0.2); } 100% { transform: scale(1); } }
+.perk-ico.say .pn { position: fixed; left: 50%; right: auto; top: calc(var(--sat) + 216px); margin: 0; transform: translateX(-50%); }
+/* ÇIĞ mountains: ONE row + ONE bar (the ball -> town gauge replaces the old top bar; its gate emojis become ticks), toasts clear of the left chip column */
+#hud.cig-lvl.has-gauge .hud-progress .bar, #hud.cig-lvl.has-gauge .hud-progress .town { visibility: hidden; }
+.hud-progress .pt.gate { top: -2px; width: 3px; height: 14px; font-size: 0; border-radius: 2px; background: #ff6a5a; }
+#hud.cig-lvl ~ #toast-soft:not(.res) { padding: 0 12px 0 100px; box-sizing: border-box; }
+#hud.cig-lvl ~ #toast-soft:not(.res) .ts { max-width: 100%; font-size: 13px; }
+#hud.cig-lvl.has-gauge .hud-top .hud-progress { background: none; border-color: transparent; box-shadow: none; }

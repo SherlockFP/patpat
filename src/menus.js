@@ -136,7 +136,7 @@ const CSS = `
   background: linear-gradient(180deg, var(--c1) 0%, var(--c2) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
 }
 .fm-ball {
-  position: relative; display: inline-block; width: 0.74em; height: 0.74em; margin: 0 0.04em; border-radius: 50%; border: 0.07em solid var(--ink);
+  position: relative; display: inline-block; width: 0.74em; height: 0.74em; margin: 0 0.04em 0 0.2em; border-radius: 50%; border: 0.07em solid var(--ink);
   background: radial-gradient(circle at 34% 28%, #fff 0 30%, #e6f2ff 55%, #b9d6f5 100%);
   box-shadow: 0 0.07em 0 var(--ink), inset -0.05em -0.06em 0 rgba(120, 170, 225, 0.55), 0 0.16em 0.12em rgba(10, 30, 60, 0.3);
   animation: fmBob 2.4s ease-in-out infinite; animation-delay: calc(var(--i) * -0.19s);
@@ -863,28 +863,34 @@ const CSS = `
 .fm-troph.ach { background: linear-gradient(135deg, #e8f4ff 0%, #9bd1ff 45%, #3f8fe0 100%); box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.8), inset 0 -5px 0 rgba(10, 50, 120, 0.4), 0 4px 0 #1b5a9a, 0 6px 6px rgba(0, 0, 0, 0.3); }
 .fm-troph::after { content: ''; position: absolute; left: 6px; top: 5px; width: 6px; height: 16px; border-radius: 4px; background: rgba(255, 255, 255, 0.55); transform: rotate(12deg); }
 .fm-empty { font-size: 12px; font-weight: 700; opacity: 0.6; padding: 14px 4px; }
+.fm-info.one { display: none; }
+.fm-resov { justify-content: flex-start; gap: 9px; }   /* (flex centring clips the top of a tall card: auto margins centre it and still scroll) */
+.fm-resov > :first-child { margin-top: auto; } .fm-resov > :last-child { margin-bottom: auto; flex: none; }
+.fm-resov > * { flex-shrink: 0; }
 .fm-resov.fail { background: radial-gradient(ellipse at 50% 38%, rgba(120, 30, 40, 0.82), rgba(24, 8, 16, 0.95)); }
 .fm-banner {
-  position: relative; padding: 10px 28px 12px; border: 3px solid var(--ink); border-radius: 14px; font-size: clamp(26px, 8.5vw, 36px); line-height: 1; text-align: center; transform: rotate(-2deg);
+  position: relative; padding: 8px 24px 10px; border: 3px solid var(--ink); border-radius: 14px; font-size: clamp(24px, 8vw, 32px); line-height: 1; text-align: center; transform: rotate(-2deg);
   background: linear-gradient(180deg, #ffb06a, var(--orange)); box-shadow: 0 6px 0 var(--orange-dark), inset 0 3px 0 rgba(255, 255, 255, 0.45); text-shadow: var(--ol); animation: fmPopIn 0.5s cubic-bezier(.2, 1.4, .4, 1);
 }
 .fm-banner.boss { background: linear-gradient(180deg, #ff8a7a, #e0392b); box-shadow: 0 6px 0 #8a1a12, inset 0 3px 0 rgba(255, 255, 255, 0.45); }
 .fm-banner.red { background: linear-gradient(180deg, #ff8a8a, #e63b3b); box-shadow: 0 6px 0 #8f1c1c, inset 0 3px 0 rgba(255, 255, 255, 0.45); }
 .fm-rname { font-size: 18px; letter-spacing: 0.06em; color: #cfe2ff; }
 .fm-bigstars { display: flex; gap: 6px; align-items: flex-end; margin: 4px 0; }
-.fm-bigstar { font-size: 84px; line-height: 1; color: rgba(255, 255, 255, 0.22); text-shadow: 0 5px 0 rgba(0, 0, 0, 0.3); transform: scale(0.55); transition: none; }
-.fm-bigstar:nth-child(2) { font-size: 104px; margin-bottom: 8px; }
+.fm-bigstar { font-size: 56px; line-height: 1; color: rgba(255, 255, 255, 0.22); text-shadow: 0 5px 0 rgba(0, 0, 0, 0.3); transform: scale(0.55); transition: none; }
+.fm-bigstar:nth-child(2) { font-size: 72px; margin-bottom: 5px; }
 .fm-bigstar.on { color: var(--gold); text-shadow: 0 5px 0 #b36f00, 3px 3px 0 var(--ink), -3px 3px 0 var(--ink), 3px -3px 0 var(--ink), -3px -3px 0 var(--ink), 0 0 24px rgba(255, 207, 58, 0.9); animation: fmStarPop 0.6s cubic-bezier(.2, 1.8, .4, 1) forwards; }
 @keyframes fmStarPop { 0% { transform: scale(0.2) rotate(-40deg); } 60% { transform: scale(1.35) rotate(8deg); } 100% { transform: scale(1) rotate(0); } }
 .fm-rgoals { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 340px; }
-.fm-rgoal { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 14px; border: 2.5px solid var(--ink); background: rgba(10, 25, 55, 0.62); font-size: 15px; line-height: 1.2; opacity: 0; animation: fmUp 0.4s ease-out forwards; }
+.fm-rgoal { display: flex; align-items: center; gap: 10px; padding: 4px 12px; border-radius: 14px; border: 2.5px solid var(--ink); background: rgba(10, 25, 55, 0.62); font-size: 15px; line-height: 1.2; opacity: 0; animation: fmUp 0.4s ease-out forwards; }
 .fm-rgoal .gs { flex: none; font-size: 20px; line-height: 1; color: rgba(255, 255, 255, 0.35); }
 .fm-rgoal.got .gs { color: var(--gold); }
 .fm-rgoal.miss { opacity: 0.7; }
 .fm-rgoal .ck { margin-left: auto; flex: none; font-size: 18px; }
 .fm-rchips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 340px; }
-.fm-rchip { padding: 6px 12px; border-radius: 14px; border: 3px solid var(--ink); background: linear-gradient(180deg, #fff, #dcecff); color: var(--ink); font-size: 18px; text-shadow: none; opacity: 0; animation: fmPopIn 0.45s cubic-bezier(.2, 1.4, .4, 1) forwards; }
+.fm-rchip { padding: 4px 10px; border-radius: 14px; border: 3px solid var(--ink); background: linear-gradient(180deg, #fff, #dcecff); color: var(--ink); font-size: 16px; text-shadow: none; opacity: 0; animation: fmPopIn 0.45s cubic-bezier(.2, 1.4, .4, 1) forwards; }
 .fm-rchip.gold { background: linear-gradient(180deg, #fff3a8, var(--gold)); }
+.fm-rchip.hero { grid-column: 1 / -1; font-size: 28px; padding: 8px 16px; text-align: center; }
+.fm-up.fm-hl { box-shadow: 0 0 0 3px #ffd23a, 0 0 18px rgba(255, 210, 58, 0.8); }
 .fm-rspecial { width: 100%; max-width: 340px; padding: 10px 12px; text-align: center; border-radius: 16px; border: 3px solid var(--ink); background: linear-gradient(180deg, #c79bff, #7a3cf0); font-size: 17px; line-height: 1.2; box-shadow: 0 5px 0 #4b1fa8; animation: fmPopIn 0.5s cubic-bezier(.2, 1.4, .4, 1) both; }
 .fm-rbtns { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px; margin-top: 4px; }
 .fm-rbtns .row { display: flex; gap: 10px; }
@@ -2190,7 +2196,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
 
   // ---------------------------------------------------------------------------------------------- upgrades
 
-  function openPower() {
+  function openPower(focusId) {      // focusId: scroll to and mark that upgrade row (the result screen's YOU CAN BUY IT button)
     sfx('click');
     const p = openPanel({ id: 'up', title: 'GÜÇ', sub: 'KALICI GÜÇLENME', pills: ['coins', 'crystals'], tabs: POWER_BRANCHES.map((b) => `${b.icon} ${b.name}`), onTab: () => render() });
     // GÜÇ screen (PLAN_V3 8.2): three branches (TOP / GÜÇLER / KAZANÇ), 5 tiers each; the game lanes read meta.upgradeValue(id)
@@ -2202,6 +2208,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       const cost = meta.upgradeCost(u.id);
       const vals = u.durations || u.values;
       const r = el('div', 'fm-row fm-up');
+      r.dataset.up = u.id;
       const mid = el('div', 'fm-amid');
       add(mid, el('div', 'fm-an', u.name), el('div', 'fm-ad', u.desc), el('div', 'fm-ar', lv < 5 ? `${fmtUp(u, vals[lv])} → ${fmtUp(u, vals[lv + 1])}` : `${fmtUp(u, vals[lv])} (en yüksek)`));
       const pips = el('div', 'fm-pips');
@@ -2260,8 +2267,10 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     // open on the branch of the cheapest upgrade that can be bought now (else TOP)
     let first = 0;
     try { const c = cheapestPower(); if (c && c.afford) first = c.tab; } catch { /* ignore */ }
+    if (focusId) first = Math.max(0, POWER_BRANCHES.findIndex((b) => b.ids.includes(focusId)));
     render();
     if (first > 0) { const tabs = p.el.querySelectorAll('.fm-tab'); if (tabs[first]) tabs[first].click(); }
+    if (focusId) { const row = p.list.querySelector(`[data-up="${focusId}"]`); if (row) { row.classList.add('fm-hl'); row.scrollIntoView({ block: 'center' }); } }
     return p;
   }
   // cheapest unfinished GÜÇ upgrade: { id, tab, price, afford } (null when everything is maxed)
@@ -3077,7 +3086,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       const rc = el('div', 'fm-rchips');
       { const n = chips.length, cols = n <= 3 ? n : (n === 6 ? 3 : 2); rc.style.cssText = `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:6px;justify-items:stretch;width:min(calc(100% - 24px),380px);margin-left:auto;margin-right:auto`; }
       chips.forEach((c, i) => {
-        const ch = el('div', `fm-rchip${/^(👕|✨)/.test(c) ? ' gold' : ''}`, c);
+        const ch = el('div', `fm-rchip${/^(👕|✨)/.test(c) ? ' gold' : ''}${i === 0 && /^(⚪|🏘️)/.test(c) ? ' hero' : ''}`, c);
         ch.style.animationDelay = `${900 + i * 160}ms`;
         rc.appendChild(ch);
       });
@@ -3699,8 +3708,9 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
 
     // SIRADAKİ HEDEF: exactly ONE goal of the three pillars (never a claim: claims live in BUGÜN and on the badges)
     try {
-      const goal = nearGoal();
-      if (goal) {
+      const goal = nearGoal(), dayRdy = !!(dtl.claimable || db.available);
+      r.info.classList.toggle('one', !!goal && !dayRdy && !r.expanded);   // one line at a time: a claimable DAILY wins, else the NEXT GOAL (the daily card stays under MISSIONS)
+      if (goal && !dayRdy) {
         r._sgFn = goal.fn;
         r.sgoal.style.display = '';
         r.sgoal.classList.remove('claim');
