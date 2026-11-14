@@ -25,12 +25,12 @@ import { starProgress } from '../campaign.js';
 // critters can be stomped (Mario). Temporary buff cards arrive on their own — nothing ever pauses the game.
 // Physics live in track-local coordinates: s along the path, u sideways (+right), h above the surface.
 export const RCFG = {
-  startSpeed: 14 * 1.1,
-  maxSpeed: 48 * 1.1,    // asymptote of the late ramp (+10% pace)
+  startSpeed: 14 * 1.25,   // Temple Run pace: starts quick
+  maxSpeed: 48 * 1.2,    // asymptote of the late ramp (+20% pace)
   refSpeed: 30,          // "fast" for visuals (FOV, speed lines)
-  speedPerM: 0.0065 * 1.1, // linear ramp up to speedKnee (+10% pace)
+  speedPerM: 0.0065 * 1.25, // linear ramp up to speedKnee (+25% pace)
   speedKnee: 2000,
-  speedTau: 3230,        // (maxSpeed - v(knee)) / speedPerM: slope continuous at the knee
+  speedTau: 2935,        // (maxSpeed - v(knee)) / speedPerM: slope continuous at the knee
   layerLen: 600,         // a new difficulty layer every 600 m (also a buff-card checkpoint)
   sizeSpeed: 0.025,      // top speed +2.5% per size tier
   hardRamp: 0.1,         // hardness grows by this much per layer (smoothly, every ~60 m)
@@ -160,7 +160,7 @@ const ROUND_KINDS = new Set(['helix', 'halfpipe', 'tube', 'loop', 'corkscrew']);
 // set pieces that get a name strip when the ball enters them ("BUZ TÜNELİ", no number: CHAPTER n is the only counted noun): variety you can read, not only see
 const SECTION_NAME = { helix: 'GİRDAP', waves: 'DALGALAR', skiJump: 'ATLAYIŞ RAMPASI', chasm: 'UÇURUM', zipline: 'HALAT', iceBridge: 'BUZ KÖPRÜ', halfpipe: 'YARIM BORU', tube: 'BUZ TÜNELİ', loop: 'DÖNGÜ', corkscrew: 'BURGU', junction: 'KAVŞAK', stairs: 'BASAMAKLAR', portal: 'PORTAL' };
 const DEG = Math.PI / 180;
-const MAX_ROLL = 7 * DEG;                                             // chase camera roll limit (banked / twisted track)
+const MAX_ROLL = 12 * DEG;                                            // chase camera roll limit (banked / twisted track)
 const COS_LOOK = Math.cos(25 * DEG), SIN_LOOK = Math.sin(25 * DEG);   // look direction limit off the track's forward
 const LETHAL_BASE = new Set(['rock', 'cabin']);                  // campaign: from level 16
 const LETHAL_CAR = new Set(['snowcat', 'oncoming', 'missile']);  // campaign: from level 30
@@ -4337,11 +4337,11 @@ export class Runner {
     if (hk2 > 0.01) { tr.frame(b.s - 4, _f2); _x.copy(_f2.tan); tr.frame(b.s + 8, _f2); _ax.copy(_f2.tan).sub(_x); tr.frame(b.s, _f2); inside = clamp(_ax.dot(_f2.right) * 12, -1, 1); }
     this.camInK += (inside - this.camInK) * kfil(snap, cdt, 3);
     let backT = 7.6 + r * 2.9 - this.closeK * 1.2 + 1.0 * speedK;
-    let upT = 3.85 + r * 1.5 + this.closeK * 2.7 + curvK * 0.9 + pitchK * 1.5 + this.camRoundK * 0.8;
+    let upT = 3.85 + r * 1.5 + this.closeK * 3.2 + curvK * 1.4 + pitchK * 1.5 + this.camRoundK * 0.8;
     const dk = this.state === 'dying' && this.cause !== 'fall' ? clamp(this.deadT / 0.9, 0, 1) : 0;   // death pull-back: ease back and up
     if (dk > 0) { const e = dk * dk * (3 - 2 * dk); backT += 5 * e; upT += 3 * e; }
     let laT = 11 + 5 * speedK + 2 * this.closeK - 4 * this.cornerK;       // through a sharp corner: look a little shorter, swing a little slower
-    if (hk2 > 0.001) { backT += (5.6 + r * 1.8 - backT) * hk2; upT += (Math.min(upT, 3.4 + r * 1.1) - upT) * hk2; laT += (9.5 - laT) * hk2; }      // (a touch higher and further ahead than before: the turn's track stays in view instead of a green flank)
+    if (hk2 > 0.001) { backT += (5.6 + r * 1.8 - backT) * hk2; upT += (Math.min(upT, 2.9 + r * 1.1) - upT) * hk2; laT += (8 - laT) * hk2; }      // (a touch higher and further ahead than before: the turn's track stays in view instead of a green flank)
     if (kind === 'tube') { upT = Math.min(upT, 4.6); backT = Math.min(backT, 7); }   // stay inside the 5.6 m tube (axis 4 m up)
     // Inside a vertical loop (a circle only 5.5-11 m in radius) the camera is a rigid chase rig in the BALL's own frame:
     // close behind (along the tangent), up toward the circle's centre, looking at the track a short way ahead.
@@ -4359,7 +4359,7 @@ export class Runner {
 
     const camS = Math.max(0, b.s - this.camBackS);
     tr.frame(camS, _f);
-    // Camera "up": a stable blend, 70% world up + 30% the track's up, with the roll clamped to 7 deg. A banked or twisted
+    // Camera "up": a stable blend, 70% world up + 30% the track's up, with the roll clamped to 12 deg. A banked or twisted
     // track can't flip or roll the view, and the camera's height / look offsets use this up too (not the track's own up,
     // which on a steep bank would park the camera off the side of the track).
     _x.copy(WORLD_UP).multiplyScalar(0.7).addScaledVector(_f.up, 0.3);
@@ -4417,7 +4417,7 @@ export class Runner {
     if (!dying && lk < 0.5) {
       tr.toWorld(b.s, b.u, 0, _tp);
       const dx = _tp.x - _v.x, dz = _tp.z - _v.z, dl = Math.hypot(dx, dz);
-      if (dl > 0.5) { const e = (dl + this.camLa) / dl, bx = _v.x + dx * e, bz = _v.z + dz * e, w = 0.95 * (1 - 2 * lk); _look.x += (bx - _look.x) * w; _look.z += (bz - _look.z) * w; }
+      if (dl > 0.5) { const e = (dl + this.camLa) / dl, bx = _v.x + dx * e, bz = _v.z + dz * e, w = 0.85 * (1 - 2 * lk); _look.x += (bx - _look.x) * w; _look.z += (bz - _look.z) * w; }
     }
     if (lk > 0.001) _look.lerp(this.ctx.ball.group.position, lk);
     if (dying) {
@@ -4451,12 +4451,6 @@ export class Runner {
     cam.position.copy(this.camPos);
     cam.up.copy(this.camUp);
     cam.lookAt(this.camLook);
-    if (!dying && playing) {      // the ball stays in the middle 40% of the width (centre 30-70%, so a big ball is never cropped): a tight turn or a speed burst used to push it to the screen edge
-      cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
-      _v2.copy(this.ctx.ball.group.position).project(cam);
-      const ex = _v2.x > 0.4 ? _v2.x - 0.4 : _v2.x < -0.4 ? _v2.x + 0.4 : 0;
-      if (ex) cam.rotateY(-Math.atan(ex * Math.tan(cam.fov * 0.00872665) * cam.aspect));
-    }
 
     // Lean into lane changes a touch (≤ 3°) and into a committed turn.
     if (this.jnLeanT > 0) this.jnLeanT -= dt;

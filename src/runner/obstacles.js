@@ -1698,7 +1698,7 @@ Object.assign(Obstacles.prototype, {
    */
   _rows(plan, sA, sB, o = {}) {
     const { rng, piece } = plan, T = this.track, hk = this.hk();
-    const dens = (o.dens || 1) * (plan.chap && plan.chap.def.dens || 1), allowed = o.allowed || ALLL.slice(), only = o.only || null, okAt = o.okAt || null, clear = o.clear || null, dense = !!o.dense;
+    const dens = (o.dens || 1) * Math.max(1, plan.chap && plan.chap.def.dens || 1) /* chapters add hazards, never thin the rows */, allowed = o.allowed || ALLL.slice(), only = o.only || null, okAt = o.okAt || null, clear = o.clear || null, dense = !!o.dense;
     // hardEnd: nothing may outlive sB (the junction approach; the piece before a junction): no trains / critter parades / volleys run on into the corner window
     const hardEnd = !!o.hardEnd || (!!T._juncDue && piece.kind !== 'junction' && T._juncDue(piece.s1));
     const rows = plan.rows, persist = [], carry = this._carry, F = T.features || {};
@@ -1729,7 +1729,7 @@ Object.assign(Obstacles.prototype, {
         if (j) { ph = null; continue; }
       }
       if (okAt && !okAt(s)) { s += 2.5; ph = null; continue; }
-      const sgC = T.level || !T.chapterAt ? null : T.chapterAt(s), sgP = sgC && sgC.def.sig, sigAt = SIG_AT[sgP] ?? 30, sigDue = !!sgP && s - sgC.s0 >= sigAt && s - sgC.s0 < 70 && this._sigS !== sgC.s0;      // a new chapter's signature hazard is the first thing after the name strip appears, sigAt-70 m in (in view while the banner is up; no breather, no phrase first)
+      const sgC = T.level || !T.chapterAt ? null : T.chapterAt(s), sgP = sgC && sgC.def.sig, sigAt = SIG_AT[sgP] ?? 30, sigDue = !!sgP && s - sgC.s0 >= sigAt && s - sgC.s0 < 100 && this._sigS !== sgC.s0;      // a new chapter's signature hazard is the first thing after the name strip appears, sigAt-100 m in (~4 s at Rush pace; in view while the banner is up; no breather, no phrase first)
       let tn = 1;
       if (cyc) {
         const phs = (((T.timeAt(s) - cycT0) % CYCLE_T) + CYCLE_T) % CYCLE_T;     // the first cycle starts where the teaching rows end: calm -> build -> breather

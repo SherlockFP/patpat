@@ -732,7 +732,7 @@ async function newChapters(ctx) {
     if (process.env.VERBOSE) console.log('  s22 ' + id + ' pieces ' + await ev(`cig.runner.track.pieces.filter(p=>p.s1>510&&p.s0<670).map(p=>p.kind+':'+Math.round(p.s0)+'-'+Math.round(p.s1)).join(' ')`) + ' | obs ' + await ev(`cig.runner.obstacles.obs.filter(o=>(o.cs??o.s)>550&&(o.cs??o.s)<670).map(o=>o.kind+'@'+Math.round(o.cs??o.s)).join(' ')`));
     if (kind && kind !== 'boulder' && kind !== 'icebridge') {   // the chapter's signature hazard must land within 40 m of the chapter start (560 m), the banner and the hazard arrive together
       const f = await ev(`(()=>{let m=1e9;for(const ob of cig.runner.obstacles.obs){const x=ob.s;if(ob.kind===${JSON.stringify(kind)}&&x>=548&&x<m)m=x}return m<1e9?Math.round(m-560):-1})()`);
-      if (f >= 6 && f <= 70) ctx.pass(`chapter ${id}: first ${kind} ${f} m after the chapter start`); else ctx.fail(`chapter ${id}: first ${kind} ${f < 0 ? 'not spawned' : f + ' m'} after the chapter start (want 6-70 m: in view under the name strip)`);
+      if (f >= 6 && f <= 100) ctx.pass(`chapter ${id}: first ${kind} ${f} m after the chapter start`); else ctx.fail(`chapter ${id}: first ${kind} ${f < 0 ? 'not spawned' : f + ' m'} after the chapter start (want 6-100 m: in view under the name strip)`);
     }
     const hunt = await ev(`(()=>{const r=cig.runner,o=r.obstacles,K=${JSON.stringify(kind)};r.invulnT=1e9;r.yetiHoldT=99;let ds=null;
       for(let i=0;i<60*70&&r.state!=='over';i++){if(r.pickT>0){const c=document.getElementById('perk-cards').firstElementChild;if(c)c.click();else r.pickPerk('kalin');document.getElementById('perks').classList.add('hidden')}r.invulnT=1e9;cig.simEndless(1/60);if(r.b.s<530)continue;
