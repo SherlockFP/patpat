@@ -4,7 +4,8 @@ const UP = (s) => { const x = t(s); return x.toLocaleUpperCase(getLang() === 'en
 const NUM = (n) => Math.round(n).toLocaleString(getLang() === 'en' ? 'en-US' : 'tr-TR');
 import { Track, flightDist, LANES, setLanes } from './track.js';
 import { Obstacles } from './obstacles.js';
-import { ABILITIES, SKINS } from '../skins.js';
+import { ABILITIES, SKINS, trailStyle } from '../skins.js';
+import { fxOf, hopGeometry, Glyphs } from '../cosmetics.js';
 import { Environment, biomeAt, trackPalette, musicStyleAt } from './biomes.js';
 import * as Biomes from './biomes.js';
 import { BuffSet, BUFFS, rollBuff, BUFF_LEN, DESTRUCTION, destructionTier, RUN_PERK_BY_ID, rollPerks, synergyFor } from './perks.js';
@@ -148,6 +149,8 @@ const _ax = new THREE.Vector3();
 const _upC = new THREE.Vector3();
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
+const _qs = new THREE.Quaternion();
+const _bc = new THREE.Color();
 const _tp = new THREE.Vector3();
 const _yp = new THREE.Vector3();
 const _lc = new THREE.Vector3(), _ls = new THREE.Vector3();      // Sonic ring camera: ring centre (target / smoothed) and the side it is seen from
@@ -298,7 +301,7 @@ export class Runner {
     }
     this.track.ensure(320);
     this.env = new Environment(scene, this.track, { lib: this.ctx.lib });
-    this.yeti = makeYeti(scene, this.ctx.lib);
+    this.yeti = makeYeti(scene, this.ctx.lib, this.ctx.save);
     this.avalanche = makeAvalanche(scene);
 
     // ---- size / hunger ----
@@ -533,6 +536,12 @@ export class Runner {
     this.makeShadow();
     this.obstacles.markSmashable?.(this.sizeNow() - 1);
     this.markedSize = this.sizeNow();
+    // wardrobe: hop ring / stomp burst / BLAST aura / death effect + the shaped-trail particles of the equipped trail
+    { const sv = this.ctx.save, ts = trailStyle(sv.selected?.('trail'));
+      this.cosHop = fxOf(sv, 'hop'); this.cosStomp = fxOf(sv, 'stomp'); this.cosBlast = fxOf(sv, 'blast'); this.cosDeath = fxOf(sv, 'death');
+      this._jag = ts.jag || 0; this._dxHide = false; this._dxStars = null;
+      if (ts.emit && !this.glyphs) this.glyphs = new Glyphs(this.ctx.scene);
+      if (this.glyphs) this.glyphs.setEmit(ts.emit); }
     // KARAKTER ability (endless Rush only)
     { let id = null; try { id = this.level ? null : this.ctx.save.selected?.('skin'); } catch (e) { id = null; }
       this.abil = ABILITIES[id] ? id : null; this.simitUsed = false; this.simitN = 0; this.gapBonus = 0; this._gemNext = 0;
@@ -3633,7 +3642,7 @@ export class Runner {
       if (dive) { this.mistBurst(10, 0xffffff, 5, 1.2); this.hitStop = Math.max(this.hitStop, 0.03); this.fovPunch(2 + Math.min(4, this.diveN)); if (this.diveN >= 2) this.skillTag('ÇAK x' + this.diveN, '', Math.min(3, this.diveN - 1), 5); else this.firstTag(4, 'ÇAK!', 2); }
       platform.haptic('light');
       ui.stompCombo?.(n);              // (the HUD counts the 'stomp' mission event itself; endless_end carries the run total)
-      this.burst(10 + Math.min(2, n), 0xfff2b0, 3 + Math.min(3, n * 0.5));
+      this.stompFx(n);
       this.mistBurst(5, 0xffffff, 2.5, 0.8);
       this.fovPunch(2 + Math.min(4, n));        // a longer stomp chain hits harder (and from the 2nd on gets a tiny hit-pause)
       if (n >= 2 && this.time - this.lastSmashStop > 0.3) { this.hitStop = Math.max(this.hitStop, 0.02); this.lastSmashStop = this.time; }
@@ -3754,6 +3763,22 @@ export class Runner {
     audio.lose();
     platform.haptic('warning');
     this.trauma = Math.min(1, this.trauma + 0.5);
+    this.deathFx();
+  }
+
+  // the equipped DEATH effect: a colourful pop (the ball vanishes at once) or an orbit of stars; the plain death stays untouched
+  deathFx() {
+    const D = this.cosDeath;
+    if (!D || D.t === 'none') return;
+    this._dxStars = D.t === 'stars' ? D.cols : null;
+    if (D.t === 'smoke') { this.mistBurst(14, D.cols[0], 3, 1.6); this.mistBurst(8, D.cols[1], 2, 1.2); return; }
+    if (D.t === 'pop') {
+      for (const c of D.cols) this.burst(Math.ceil((D.big ? 12 : 8) / D.cols.length) + 1, c, D.big ? 8 : 6);
+      for (const c of D.cols) this.mistBurst(3, c, D.up ? 3 : 5, 1.3);      // big coloured puffs: the chunk bursts alone read tiny from the death camera
+      this.mistBurst(D.big ? 10 : 6, 0xffffff, D.up ? 2 : 4, 1);
+      this.ctx.audio.pop?.(0.8, 6);
+      if (D.hide) this._dxHide = true;
+    }
   }
 
   // Death read-out: cause icon + text + big distance, through the shared announcement scheduler.
@@ -3773,6 +3798,11 @@ export class Runner {
     const inp = this.ctx.input;
     if (this.deadT > 0.4 && inp && inp.swipe && inp.swipe.t > this._dieAt + 350) { this._skipRecap = true; this.finishOver(); return; }
     if (this.deadT < 0.6) this.deathZoom = Math.min(1, this.deadT / 0.4);
+    if (this._dxHide && this.deadT > 0.04) this.ctx.ball.group.visible = false;
+    if (this._dxStars && this.deadT < 1) {      // three stars circle the dazed ball
+      const p = this.ctx.ball.group.position, c = this._dxStars;
+      for (let i = 0; i < 3; i++) { const a = this.deadT * 7 + i * 2.094; this.ctx.fx.puff(p.x + Math.cos(a) * this.rShown * 1.3, p.y + this.rShown * 1.1, p.z + Math.sin(a) * this.rShown * 1.3, 0, 0.2, 0, 0.5, 0.25, c[i % c.length], 0.95); }
+    }
     let T = 0.75;            // the read-out lands in ~0.7 s (was 1.15 / 1.4 / 1.8): death -> result in 0.75 s untouched, 0.4 s with a tap
     if (this.cause === 'fall') {
       b.vh -= RCFG.gravity * dt;
@@ -4104,6 +4134,7 @@ export class Runner {
     }
     // Ribbon trail pressed into the snow (uses the equipped trail's material).
     this.updateTrail(f, pos);
+    if (this.glyphs) { _tp.copy(pos).addScaledVector(f.tan, -this.rShown * 1.1); this.glyphs.tick(dt, _tp.x, _tp.y - this.rShown * 0.4, _tp.z, this.rShown, playing); }
     this.ctx.ui.speedLines?.(playing && this.camLoopK < 0.2 && !ROUND_KINDS.has(this.track.pieceAt(b.s)?.kind) ? Math.min(1.4, Math.pow(Math.max(0, speedK - 0.2) / 0.8, 1.3) + (this.rocketT > 0 ? 0.5 : 0) + (b.vs > RCFG.maxSpeed ? 0.3 : 0) + 0.3 * this.flowK + 0.5 * this.mom + (this.gearT > 0 ? this.gearT * 0.67 : 0)) : 0);
   }
 
@@ -4153,13 +4184,23 @@ export class Runner {
       const o = i * 7;
       const fade = Math.min(1, n / 10);
       const w = P[o + 6] * fade;
-      arr[n * 6] = P[o] - P[o + 3] * w; arr[n * 6 + 1] = P[o + 1] - P[o + 4] * w; arr[n * 6 + 2] = P[o + 2] - P[o + 5] * w;
-      arr[n * 6 + 3] = P[o] + P[o + 3] * w; arr[n * 6 + 4] = P[o + 1] + P[o + 4] * w; arr[n * 6 + 5] = P[o + 2] + P[o + 5] * w;
+      const jg = this._jag ? Math.sin(i * 2.4 + this.time * 25) * this._jag * this.rShown : 0;      // lightning trail: the ribbon zig-zags sideways
+      arr[n * 6] = P[o] + P[o + 3] * (jg - w); arr[n * 6 + 1] = P[o + 1] + P[o + 4] * (jg - w); arr[n * 6 + 2] = P[o + 2] + P[o + 5] * (jg - w);
+      arr[n * 6 + 3] = P[o] + P[o + 3] * (jg + w); arr[n * 6 + 4] = P[o + 1] + P[o + 4] * (jg + w); arr[n * 6 + 5] = P[o + 2] + P[o + 5] * (jg + w);
       n++;
     }
     this.trail.geometry.attributes.position.needsUpdate = true;
     this.trail.geometry.setDrawRange(0, Math.max(0, (n - 1) * 6));
     this.trail.visible = this.state !== 'idle';
+  }
+
+  // the equipped STOMP look: coloured chunk bursts (fx.burst caps a call at 12), puff rings, a little extra shake
+  stompFx(n) {
+    const S = this.cosStomp || { cols: [0xfff2b0], n: 10, sp: 3 };
+    for (let i = 0; i < S.cols.length; i++) this.burst(Math.max(3, Math.round((S.n + Math.min(2, n)) / S.cols.length)), S.cols[i], S.sp + Math.min(3, n * 0.5));
+    if (S.mist) this.mistBurst(S.mist, S.mcol || S.cols[0], 3, 0.8);
+    if (S.ring) for (let i = 0; i < S.ring; i++) { const a = (i / S.ring) * 6.283, p = this.ctx.ball.group.position; this.ctx.fx.puff(p.x, p.y - this.rShown * 0.6, p.z, Math.cos(a) * 6, 1.5, Math.sin(a) * 6, 0.5, 0.6, S.cols[i % S.cols.length], 0.9); }
+    if (S.shake) this.trauma = Math.min(1, this.trauma + S.shake);
   }
 
   mistBurst(n, color, speed, size) {
@@ -4474,18 +4515,23 @@ export class Runner {
 
   // BLAST look beyond the HUD: a gold ribbon trail and a soft additive halo round the ball (one sprite, made on the first BLAST)
   blastLook(dt) {
-    const on = this.blastT > 0;
+    const on = this.blastT > 0, B = this.cosBlast || { col: 0xffc850 };
     if (this.trail && this._trailBl !== on) {
       this._trailBl = on;
-      const ca = this.trail.geometry.attributes.color, A = ca.array;
+      // the equipped trail stays itself: BLAST boosts its colour and leans it toward the aura colour (never a flat gold override)
+      const ca = this.trail.geometry.attributes.color, A = ca.array, m = this.ctx.fx.trail.material, T = _bc.setHex(B.hue ? 0xffd0ff : B.col);
       if (!this.trailCol0) this.trailCol0 = A.slice();
-      if (on) for (let i = 0; i < A.length; i += 3) { A[i] = 1; A[i + 1] = 0.82; A[i + 2] = 0.3; } else A.set(this.trailCol0);
+      if (on) {
+        if (!this._tc0) this._tc0 = m.color.clone();
+        m.color.copy(this._tc0).lerp(T, 0.35).multiplyScalar(1.3);
+        for (let i = 0; i < A.length; i += 3) { A[i] = Math.min(1, this.trailCol0[i] * 1.25 + T.r * 0.25); A[i + 1] = Math.min(1, this.trailCol0[i + 1] * 1.25 + T.g * 0.25); A[i + 2] = Math.min(1, this.trailCol0[i + 2] * 1.25 + T.b * 0.25); }
+      } else { A.set(this.trailCol0); if (this._tc0) { m.color.copy(this._tc0); this._tc0 = null; } }
       ca.needsUpdate = true;
     }
     if (!this.halo && on) {
       const c = document.createElement('canvas'); c.width = c.height = 64;
       const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 4, 32, 32, 32);
-      g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,200,80,0.7)'); g.addColorStop(1, 'rgba(255,160,40,0)');
+      g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.7)'); g.addColorStop(1, 'rgba(255,255,255,0)');
       x.fillStyle = g; x.fillRect(0, 0, 64, 64);
       this.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
       this.halo.renderOrder = 3; this.ctx.scene.add(this.halo);
@@ -4493,9 +4539,21 @@ export class Runner {
     const h = this.halo;
     if (!h) return;
     const m = h.material;
+    if (B.hue) m.color.setHSL((this.time * 1.1) % 1, 0.9, 0.62); else m.color.setHex(B.col);
     m.opacity += ((on ? 0.6 + 0.25 * Math.sin(this.time * 18) : 0) - m.opacity) * Math.min(1, dt * 10);
     h.visible = m.opacity > 0.01;
-    if (h.visible) { h.position.copy(this.ctx.ball.group.position); h.scale.setScalar(this.rShown * 5.4); }
+    if (h.visible) {
+      h.position.copy(this.ctx.ball.group.position); h.scale.setScalar(this.rShown * 5.4 * (B.big || 1));
+      if (B.spark && on && Math.random() < dt * 22) this.mistBurst(1, B.spark, 2.4, 0.5);      // aura sparks fly off the ball
+    }
+  }
+
+  // run over / left: hand the shared trail material its own colour back, free the shaped-trail particles
+  cosRestore() {
+    if (this._tc0) { this.ctx.fx.trail.material.color.copy(this._tc0); this._tc0 = null; }
+    if (this.trail && this.trailCol0 && this._trailBl) { this.trail.geometry.attributes.color.array.set(this.trailCol0); this.trail.geometry.attributes.color.needsUpdate = true; }
+    this._trailBl = false;
+    if (this.glyphs) { this.glyphs.dispose(); this.glyphs = null; }
   }
 
   // HOP TIMING: a ring on the snow under the falling ball closes onto the landing spot; it turns gold for the last hopPre seconds (jump NOW = a perfect hop).
@@ -4515,13 +4573,21 @@ export class Runner {
       }
     }
     if (!k && this.ringT > 0 && this.ringPos) { this.ringT -= dt; const f = Math.max(0, this.ringT / 0.3); k = 0.9 * f; rad = this.rShown * (1.15 + 2.4 * (1 - f)); hot = this.ringGold; }
+    const HS = this.cosHop || { shape: 'ring', hot: 0xffe066, cool: 0xe8f6ff };
     if (k > 0 && !this.ring) {
-      this.ring = new THREE.Mesh(new THREE.RingGeometry(0.82, 1, 40), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      this.ring = new THREE.Mesh(hopGeometry(HS.shape), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, fog: false }));
       this.ring.renderOrder = 3; this.ring.frustumCulled = false; this.ctx.scene.add(this.ring);
     }
     if (this.ring) {
+      const rg = hopGeometry(HS.shape);      // (cached per shape: the wardrobe pick can change between runs)
+      if (this.ring.geometry !== rg) this.ring.geometry = rg;
       this.ring.visible = k > 0.01;
-      if (k > 0.01) { this.ring.material.opacity = k; this.ring.material.color.setHex(hot ? 0xffe066 : 0xe8f6ff); this.ring.position.copy(this.ringPos); this.ring.quaternion.copy(this.ringQ); this.ring.scale.setScalar(rad); }
+      if (k > 0.01) {
+        this.ring.material.opacity = k; this.ring.material.color.setHex(hot ? HS.hot : HS.cool); this.ring.position.copy(this.ringPos);
+        if (HS.spin) this.ring.quaternion.copy(this.ringQ).multiply(_qs.setFromAxisAngle(Z_AXIS, this.time * HS.spin));
+        else this.ring.quaternion.copy(this.ringQ);
+        this.ring.scale.setScalar(rad);
+      }
     }
     // chain chip
     const n = play ? this.hopN : 0;
@@ -4668,6 +4734,7 @@ export class Runner {
     if (ik > 0) { fit += (1.25 - fit) * ik * ik; uT += (b.u - uT) * Math.sqrt(ik); }      // front shot: the whole Yeti at full size, centred in the ball's lane
     y.u += (uT - y.u) * (ik > 0 || this.time < 0.3 ? 1 : Math.min(1, dt * 2.5));   // (it starts already on its side of the track)
     if (y.mixer) { y.runA.timeScale = 1 + 0.5 * y.spr; y.mixer.update(dt); }
+    if (y.mat.userData.pulse) y.mat.emissiveIntensity = 1 + y.mat.userData.pulse * Math.sin(this.time * 3.5);      // (YETI skins with a glow breathe)
     const hz = 7 + 4 * y.spr, run = Math.abs(Math.sin(y.t * hz)) * (1 - eat) * (1 + 0.5 * y.spr);
     const sf = tr.surfaceAt(gs, y.u);
     tr.toWorld(Math.max(0, gs), y.u, Math.max(0, sf === -Infinity ? 0 : sf) + run * 0.8, _v);
@@ -4991,10 +5058,11 @@ export class Runner {
     music.stop();
     Biomes.setBiomeOverride?.(null); Biomes.setBiomeMap?.(null);
     this.state = 'idle';
+    this.cosRestore();
   }
 }
 
-function makeYeti(scene, lib) {
+function makeYeti(scene, lib, save) {
   const group = new THREE.Group();
   const gl = cloneYeti();   // our own skinned Blender yeti (run / roar clips); the capsule only stands in when the file is missing
   const def = !gl && lib.yeti;
@@ -5004,7 +5072,8 @@ function makeYeti(scene, lib) {
   const mat = nearFade(new THREE.MeshLambertMaterial({ vertexColors: !!(gl || def), color: gl ? 0xffffff : 0x30508c, emissive: 0x0a1630, flatShading: true, side: THREE.DoubleSide }), 0.6, 1.4, { r: 0.12, w: 0.08, a: 1 });   // (near fade only when it is nearly inside the lens: no screen-door ghost on the Yeti)
   let mesh, mixer = null, runA = null, roarA = null, eg = null, em = null, eyes = null;
   if (gl) {
-    mat.color.setRGB(2, 1.95, 2);      // the baked fur is a mid tan: lift it to a pale icy cream so it reads as a Yeti, not a brown blob (colour channels may exceed 1)
+    { const y = fxOf(save, 'yeti'); mat.color.setRGB(y.tint[0], y.tint[1], y.tint[2]); if (y.em) mat.emissive.setHex(y.em); mat.userData.pulse = y.pulse || 0; mat.userData.em0 = mat.emissive.getHex(); }
+    // (the baked fur is a mid tan: lift it to a pale icy cream so it reads as a Yeti, not a brown blob (colour channels may exceed 1)
     mesh = gl.model;
     mesh.traverse((o) => { if (o.isMesh) { o.material = mat; o.frustumCulled = false; } });
     mixer = new THREE.AnimationMixer(mesh);

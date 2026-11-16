@@ -8,6 +8,8 @@
 // hidden ("GİZLİ", name and look concealed) until save.isOwned(kind, id) becomes true.
 import { getLang } from './i18n.js';
 import { SKINS, ABILITIES, TRAILS, RARITY, sortCatalog } from './skins.js';
+import { KINDS, BUNDLES as SETS, catalog, itemOf } from './cosmetics.js';
+import { createView } from './shopview.js';
 import { meta, ACHIEVEMENTS, UPGRADES as POWER_UPGRADES, SLED_PACK } from './meta.js';
 import * as Perks from './runner/perks.js';
 
@@ -32,12 +34,26 @@ function starsOf(sv) {
 
 // The next thing coins can buy: the cheapest unowned skin / trail / upgrade that costs more than you have ("1.250 ❄️ → Kızıl Kaos").
 // Items gated by stars or secrets are never coin goals. Returns { kind, id, name, icon, price, have, frac, ready } or null.
+// every sellable, unowned, ungated item of every wardrobe kind: [[kind, item], ...]
+function buyables(sv) {
+  const out = [];
+  for (const kd of KINDS) for (const it of catalog(kd.k)) if (it.price > 0 && !(it.unlock && (it.unlock.stars || it.unlock.secret || it.unlock.challenge)) && !sv.isOwned(kd.k, it.id)) out.push([kd, it]);
+  return out;
+}
+/** the priciest wardrobe item the wallet can pay right now (Rush result 'you can buy it' pill): { kind, id, name, icon, price } or null */
+export function affordItem(sv) {
+  try {
+    const have = sv && Number.isFinite(sv.coins) ? sv.coins : 0;
+    let best = null;
+    for (const [kd, it] of buyables(sv)) if (it.price <= have && (!best || it.price > best.price)) best = { kind: kd.k, id: it.id, name: it.name, icon: kd.k === 'skin' ? '👕' : kd.ic, price: it.price };
+    return best;
+  } catch { return null; }
+}
 export function nextGoal(sv) {
   const have = sv && Number.isFinite(sv.coins) ? sv.coins : 0;
   const c = [];
   try {
-    for (const it of SKINS) if (it.price > 0 && !(it.unlock && (it.unlock.stars || it.unlock.secret)) && !sv.isOwned('skin', it.id)) c.push({ kind: 'skin', id: it.id, name: it.name, icon: '👕', price: it.price });
-    for (const it of TRAILS) if (it.price > 0 && !(it.unlock && (it.unlock.stars || it.unlock.secret)) && !sv.isOwned('trail', it.id)) c.push({ kind: 'trail', id: it.id, name: it.name.toLocaleLowerCase('tr-TR').includes('izi') ? it.name : it.name + ' izi', icon: '✨', price: it.price });
+    for (const [kd, it] of buyables(sv)) c.push({ kind: kd.k, id: it.id, name: kd.k === 'trail' && !it.name.toLocaleLowerCase('tr-TR').includes('izi') ? it.name + ' izi' : it.name, icon: kd.k === 'skin' ? '👕' : kd.ic, price: it.price });
     const perm = sv.perm ? sv.perm() : {};
     for (const u of permList()) {
       const cost = sv.permCost ? sv.permCost(u.id) : null;
@@ -93,7 +109,7 @@ function weeklyOffers(sv, wk) {
 const pzKey = (wk) => 'patpat.pazar.' + wk.key;
 function pzBought(wk) { try { return JSON.parse(localStorage.getItem(pzKey(wk)) || '[]'); } catch { return []; } }
 function pzMark(wk, id) { try { const a = pzBought(wk); if (!a.includes(id)) a.push(id); localStorage.setItem(pzKey(wk), JSON.stringify(a)); } catch { /* ignore */ } }
-const fmtLeft = (ms) => { const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60), mm = m % 60; return d > 0 ? d + 'g ' + hh + 'sa' : hh + 'sa ' + String(mm).padStart(2, '0') + 'dk'; };
+const fmtLeft = (ms) => { const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60), mm = m % 60, en = getLang() === 'en'; return d > 0 ? d + (en ? 'd ' : 'g ') + hh + (en ? 'h' : 'sa') : hh + (en ? 'h ' : 'sa ') + String(mm).padStart(2, '0') + (en ? 'm' : 'dk'); };
 
 const STYLE_ID = 'cig-shop-style';
 
@@ -142,12 +158,16 @@ const CSS = `
 .cs-close:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
 
 /* ---- tabs ---- */
-.cs-tabs { display: flex; gap: 10px; width: 100%; max-width: 520px; margin: 14px auto 12px; padding: 0 16px; flex: none; }
+.cs-tabs { display: flex; gap: 8px; width: 100%; margin: 10px 0 8px; padding: 2px 16px 6px; flex: none; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; box-sizing: border-box; }
+.cs-tabs::-webkit-scrollbar { display: none; }
 .cs-tab {
-  flex: 1; cursor: pointer; padding: 10px 0 9px; border-radius: 16px; border: 3px solid var(--ink);
-  background: rgba(255, 255, 255, 0.62); color: var(--ink); font-size: 16px; font-weight: 900; letter-spacing: 0.06em;
+  position: relative; flex: none; display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 8px 12px 7px; border-radius: 15px; border: 3px solid var(--ink);
+  background: rgba(255, 255, 255, 0.78); color: var(--ink); font-size: 13px; font-weight: 900; letter-spacing: 0.04em; white-space: nowrap;
   box-shadow: 0 4px 0 var(--ink); transition: transform 0.06s, box-shadow 0.06s;
 }
+.cs-tab .ti { font-size: 15px; line-height: 1; }
+.cs-tab .cs-dot { display: none; position: absolute; top: -5px; right: -4px; width: 12px; height: 12px; border-radius: 50%; background: #ff3d6e; border: 2px solid #fff; box-shadow: 0 1px 0 var(--ink); }
+.cs-tab.dot .cs-dot { display: block; }
 .cs-tab.on {
   background: linear-gradient(180deg, #ff9a52, var(--orange)); color: #fff; text-shadow: 0 2px 0 var(--orange-dark);
   transform: translateY(2px); box-shadow: 0 2px 0 var(--ink);
@@ -177,8 +197,8 @@ const CSS = `
 @keyframes csShake { 0%, 100% { transform: none; } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
 @keyframes csPop { 0% { transform: scale(0.82) rotate(-4deg); } 40% { transform: scale(1.14) rotate(2.5deg); } 70% { transform: scale(0.97) rotate(-1deg); } 100% { transform: none; } }
 @keyframes csPing { 0% { transform: scale(1); } 40% { transform: scale(1.05); } 100% { transform: scale(1); } }
-.cs-name { font-size: 16px; line-height: 1.15; text-align: center; letter-spacing: 0.01em; min-height: 18px; }
-.cs-note { margin-top: -4px; font-size: 12px; font-weight: 800; color: #5a7196; }
+.cs-name { font-size: 15px; line-height: 1.15; text-align: center; letter-spacing: 0.01em; min-height: 34px; display: flex; align-items: center; justify-content: center; overflow-wrap: anywhere; }
+.cs-note { margin-top: -4px; font-size: 12px; font-weight: 800; color: #3f5a85; text-align: center; overflow-wrap: anywhere; }
 .cs-lockbadge { position: absolute; top: 8px; right: 10px; font-size: 18px; filter: drop-shadow(0 2px 0 rgba(23, 52, 92, 0.4)); }
 .cs-flake {
   position: absolute; left: 50%; top: 38%; font-size: 17px; pointer-events: none; z-index: 3;
@@ -196,14 +216,14 @@ const CSS = `
 .cs-card.r-legendary { --rc: #ffb400; --rg: rgba(255, 180, 0, 0.62); }
 .cs-card.sel { box-shadow: 0 5px 0 var(--ink), 0 0 0 4px var(--gold), 0 0 20px 4px rgba(255, 207, 58, 0.55); }
 .cs-abilbox { display:flex; flex-direction:column; align-items:center; gap:2px; text-align:center; flex:none; max-width:100%; }
-.cs-abil-b { display:inline-block; font-size:10px; font-weight:900; letter-spacing:.08em; padding:2px 8px; border-radius:7px; background:linear-gradient(180deg,#ffe27a,#ffb400); color:#2a1a00; border:2px solid var(--ink,#17345c); }
+.cs-abil-b { display:inline-block; font-size:11px; font-weight:900; letter-spacing:.04em; padding:2px 8px; border-radius:7px; background:linear-gradient(180deg,#ffe27a,#ffb400); color:#2a1a00; border:2px solid var(--ink,#17345c); }
 .cs-abil { font-size:11px; font-weight:800; line-height:1.2; color:#5a3a00; }
-.cs-abil-lv { display:flex; align-items:center; gap:5px; font-size:10px; font-weight:900; color:#5a3a00; white-space:nowrap; }
+.cs-abil-lv { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:900; color:#5a3a00; white-space:nowrap; }
 .cs-abil-bar { display:inline-block; width:34px; height:6px; border-radius:4px; background:rgba(0,0,0,.18); overflow:hidden; }
 .cs-abil-bar i { display:block; height:100%; background:linear-gradient(90deg,#ffb300,#ff7a1a); }
 .cs-rar {
-  position: absolute; top: 6px; left: 7px; z-index: 2; padding: 3px 6px 2px; border-radius: 8px; pointer-events: none;
-  font-size: 9px; line-height: 1; letter-spacing: 0.06em; color: #fff; background: var(--rc);
+  position: absolute; top: 6px; left: 7px; z-index: 2; padding: 3px 7px 3px; border-radius: 8px; pointer-events: none;
+  font-size: 11px; line-height: 1; letter-spacing: 0.03em; white-space: nowrap; color: #fff; background: var(--rc);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.28); box-shadow: 0 2px 0 rgba(23, 52, 92, 0.5);
 }
 .cs-card.r-legendary .cs-rar {
@@ -271,7 +291,7 @@ const CSS = `
     radial-gradient(ellipse 6px 6px at 50% 50%, var(--b) 0 96%, transparent 100%),
     var(--a);
 }
-.cs-newtag { position: absolute; top: 6px; right: 7px; z-index: 3; padding: 3px 6px 2px; border-radius: 8px; pointer-events: none; font-size: 9px; line-height: 1; letter-spacing: 0.06em; color: #fff; background: #ff3d6e; box-shadow: 0 2px 0 rgba(23, 52, 92, 0.5); }
+.cs-newtag { position: absolute; top: 6px; right: 7px; z-index: 3; padding: 3px 7px 3px; border-radius: 8px; pointer-events: none; font-size: 11px; line-height: 1; letter-spacing: 0.03em; white-space: nowrap; color: #fff; background: #ff3d6e; box-shadow: 0 2px 0 rgba(23, 52, 92, 0.5); }
 .p-swirl {
   background:
     radial-gradient(circle, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 62%),
@@ -627,6 +647,54 @@ const CSS = `
 .cs-up .up i { width: 18px; height: 8px; border-radius: 4px; background: rgba(23, 52, 92, 0.18); border: 2px solid var(--ink); }
 .cs-up .up i.on { background: linear-gradient(180deg, #8dff9a, #2fc13f); }
 .cs-up .cs-btn { width: auto; min-width: 84px; margin-top: 0; flex: none; padding: 9px 10px 8px; }
+
+/* ---- wardrobe v2: 3D stage, collection line, filters, equal cards, effect-kind previews, daily offer / bundles ---- */
+.cs-grid { grid-auto-rows: 1fr; }
+.cs-card { min-height: 190px; }
+.cs-card.pv { outline: 3px dashed var(--ink); outline-offset: 2px; }
+.cs-empty { grid-column: 1 / -1; text-align: center; color: var(--ink); font-size: 15px; padding: 24px 0; }
+.cs-view { position: relative; width: calc(100% - 32px); max-width: 488px; height: 178px; margin: 0 auto 6px; flex: none; border-radius: 22px; border: 3px solid var(--ink); overflow: hidden;
+  background: radial-gradient(ellipse at 50% 78%, #9fcdff 0%, #4a86d8 62%, #1f4f9a 100%); box-shadow: 0 4px 0 var(--ink); }
+.cs-view.hidden, .cs-coll.hidden, .cs-filt.hidden, .cs-goal.hidden { display: none; }
+.cs-stagecv { position: absolute; inset: 0; }
+.cs-cv { display: block; width: 100% !important; height: 100% !important; }
+.cs-view.nogl .cs-stagecv::after { content: "🎈"; position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); font-size: 54px; }
+.cs-vinfo { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 10px 8px; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; pointer-events: none; }
+.cs-vtop { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.cs-vabil { max-width: 190px; padding: 4px 7px; border-radius: 9px; background: rgba(255, 244, 200, 0.94); color: #5a3a00; font-size: 12px; font-weight: 800; line-height: 1.25; }
+.cs-vabil:empty { display: none; }
+.cs-abil-star { position: absolute; top: 6px; right: 8px; z-index: 2; font-size: 17px; color: #ffb400; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 -1px 0 var(--ink); }
+.cs-vname { max-width: 190px; font-size: 17px; line-height: 1.1; color: #fff; overflow-wrap: anywhere; text-shadow: 0 2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink); }
+.cs-vrar { padding: 3px 8px; border-radius: 8px; font-size: 11px; line-height: 1; color: #fff; background: #8e9db3; box-shadow: 0 2px 0 rgba(23, 52, 92, 0.5); }
+.cs-vrar.r-rare { background: #2f7dff; } .cs-vrar.r-epic { background: #a855f7; } .cs-vrar.r-legendary { background: #ffb400; color: #4a2f00; }
+.cs-vbtns { display: flex; gap: 6px; pointer-events: auto; }
+.cs-vb { cursor: pointer; padding: 8px 12px 7px; border-radius: 14px; border: 3px solid var(--ink); font-size: 14px; font-weight: 900; color: #fff; white-space: nowrap; box-shadow: 0 3px 0 var(--ink);
+  background: linear-gradient(180deg, #ff9a52, var(--orange)); text-shadow: 0 2px 0 var(--orange-dark); }
+.cs-vb:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.cs-vb.dene { background: linear-gradient(180deg, #7be07b, #2fb04a); text-shadow: 0 2px 0 #1b7a2f; min-width: 52px; }
+.cs-vb.dene.busy { background: linear-gradient(180deg, #bcc7d6, #98a7bb); text-shadow: none; color: var(--ink); }
+.cs-vb.buy.pick { background: linear-gradient(180deg, #5aa0ff, var(--blue)); text-shadow: 0 2px 0 var(--blue-dark); }
+.cs-vb.buy.poor, .cs-vb.buy.lock { background: linear-gradient(180deg, #bcc7d6, #98a7bb); text-shadow: 0 2px 0 #6d7c92; }
+.cs-vb.buy.on { background: linear-gradient(180deg, #ffe27a, var(--gold)); color: var(--ink); text-shadow: none; }
+.cs-coll { width: 100%; max-width: 520px; margin: 0 auto; padding: 2px 16px 0; flex: none; box-sizing: border-box; }
+.cs-collt { font-size: 13px; letter-spacing: 0.03em; color: var(--ink); }
+.cs-collb { height: 7px; margin-top: 3px; border-radius: 4px; background: rgba(23, 52, 92, 0.2); overflow: hidden; }
+.cs-collb i { display: block; height: 100%; background: linear-gradient(90deg, #ffe066, #ff9a3a); }
+.cs-filt { display: flex; gap: 6px; width: 100%; max-width: 520px; margin: 6px auto 4px; padding: 0 16px; flex: none; box-sizing: border-box; overflow-x: auto; scrollbar-width: none; }
+.cs-chip { flex: none; cursor: pointer; padding: 6px 11px 5px; border-radius: 12px; border: 2px solid var(--ink); background: rgba(255, 255, 255, 0.75); color: var(--ink); font-size: 12px; font-weight: 900; letter-spacing: 0.03em; white-space: nowrap; }
+.cs-chip.on { background: var(--ink); color: #fff; }
+.cs-prev.fxp { width: 84px; height: 84px; border-radius: 24px; border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink); display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 34% 28%, var(--a), var(--b) 96%); }
+.cs-prev.fxp.glow { box-shadow: 0 4px 0 var(--ink), 0 0 16px 3px var(--b); }
+.cs-prev.fxp .fg { font-style: normal; font-size: 40px; line-height: 1; color: #fff; text-shadow: 0 2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink); }
+.cs-up .ui.mini { position: relative; width: 48px; height: 48px; flex: none; font-size: 0; }
+.cs-up .ui.mini .cs-prev { position: absolute; left: 0; top: 0; transform: scale(0.55); transform-origin: top left; }
+.cs-up .ui.set { display: flex; flex-wrap: wrap; gap: 2px; width: 100px; font-size: 0; flex: none; }
+.cs-up .ui.set .ui.mini { width: 24px; height: 24px; }
+.cs-up .ui.set .ui.mini .cs-prev { transform: scale(0.27); }
+.cs-sec .cs-left { margin-left: 8px; font-size: 13px; color: var(--ink); white-space: nowrap; }
+/* result-screen emote preview inside the stage */
+.cs-stagecv .rx-emote { top: 12px; right: 14px; }
 @media (prefers-reduced-motion: reduce) {
   .cs-root *, .cs-root *::before, .cs-root *::after, .cs-root { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
@@ -743,11 +811,15 @@ function makePart(spec) {
   return e;
 }
 
-// new content: the three blotch skins (cow / mushroom / leopard) get a NEW tag until the Dolap was opened once
+// the three blotch skins (cow / mushroom / leopard) draw with the 'blotch' preview pattern
 const BLOTCH = new Set(['inek', 'mantar', 'leopar']);
-const NEW_KEY = 'patpat.newSkinSeen';
-const newSeen = () => { try { return localStorage.getItem(NEW_KEY) === '1'; } catch { return true; } };
-export function shopNewCount(save) { try { return newSeen() ? 0 : [...BLOTCH].filter((id) => !save.isOwned('skin', id)).length; } catch { return 0; } }
+// NEW badge = data: an item flagged `new: true` that is not owned and whose id was never shown in the shop yet ('patpat.shopSeen')
+const SEEN_KEY = 'patpat.shopSeen';
+const seenSet = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); } catch { return new Set(); } };
+const markSeen = (k) => { try { const z = seenSet(); for (const it of catalog(k)) z.add(k + ':' + it.id); localStorage.setItem(SEEN_KEY, JSON.stringify([...z])); } catch { /* ignore */ } };
+export function shopNewCount(save) {
+  try { const z = seenSet(); let n = 0; for (const kd of KINDS) for (const it of catalog(kd.k)) if (it.new && !save.isOwned(kd.k, it.id) && !z.has(kd.k + ':' + it.id)) n++; return n; } catch { return 0; }
+}
 const HIDDEN = { a: '#3f4f72', b: '#141c30', pattern: 'solid' };
 
 function buildPreview(kind, pv, secret) {
@@ -777,7 +849,53 @@ function buildPreview(kind, pv, secret) {
   return wrap;
 }
 
+// flat card icon for the effect kinds (a rotating 3D preview of the selected one sits on top of the list)
+const HOP_GLYPH = { star: '★', heart: '♥', diamond: '◆', flower: '✿', dash: '◌', double: '◎', ring: '○' };
+const KIND_GLYPH = { stomp: '💥', blast: '🔥', yeti: '👹', death: '💀' };
+function buildFxPreview(kind, it, secret) {
+  const pv = secret ? HIDDEN : it.preview;
+  const wrap = h('div', `cs-prev fxp${pv.glow ? ' glow' : ''}`);
+  setVars(wrap, pv);
+  wrap.appendChild(h('i', 'fg', secret ? '?' : kind === 'hop' ? HOP_GLYPH[it.fx.shape] || '○' : kind === 'emote' ? it.fx.e || '😶' : KIND_GLYPH[kind] || '✨'));
+  return wrap;
+}
+const previewFor = (kind, it, secret) => (kind === 'skin' || kind === 'trail'
+  ? buildPreview(kind, secret ? HIDDEN : kind === 'skin' && BLOTCH.has(it.id) ? { ...it.preview, pattern: 'blotch' } : it.preview, secret)
+  : buildFxPreview(kind, it, secret));
+
+// ---- DAILY OFFER (3 items, 20/30/40% off, same for everyone, new at local midnight) and THEME BUNDLES ----
+const dayKey = (d = new Date()) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+const dayLeft = () => { const d = new Date(); return Math.max(0, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1) - d); };
+const buyable = (kd, it) => it.price > 0 && !(it.unlock && (it.unlock.stars || it.unlock.secret || it.unlock.challenge));
+export function dailyOffers(sv) {
+  let seed = dayKey();
+  const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+  const all = [];
+  for (const kd of KINDS) for (const it of catalog(kd.k)) if (buyable(kd, it)) all.push({ kind: kd.k, it });
+  const fresh = all.filter((x) => !sv.isOwned(x.kind, x.it.id));
+  const src = fresh.length >= 6 ? fresh : all;
+  const out = [], kinds = new Set();
+  for (let i = 0; out.length < 3 && i < 60; i++) {
+    const p = src[Math.floor(rnd() * src.length)];
+    if (out.includes(p) || (kinds.has(p.kind) && i < 40)) continue;
+    kinds.add(p.kind); out.push(p);
+  }
+  const pcts = [20, 30, 40];
+  return out.map((p, i) => ({ id: 'd' + i, kind: p.kind, item: p.it, pct: pcts[i], was: p.it.price, price: Math.max(1, Math.round((p.it.price * (100 - pcts[i])) / 100)) }));
+}
+const dailyKey = () => 'patpat.daily.' + dayKey();
+function dailyBought() { try { return JSON.parse(localStorage.getItem(dailyKey()) || '[]'); } catch { return []; } }
+function dailyMark(id) { try { const a = dailyBought(); if (!a.includes(id)) a.push(id); localStorage.setItem(dailyKey(), JSON.stringify(a)); } catch { /* ignore */ } }
+const BUNDLE_OFF = 25;
+export function bundleInfo(sv, b) {
+  const pcs = b.pcs.map(([k, id]) => ({ kind: k, it: itemOf(k, id) })).filter((p) => p.it);
+  const miss = pcs.filter((p) => !sv.isOwned(p.kind, p.it.id));
+  const sum = miss.reduce((a, p) => a + p.it.price, 0);
+  return { pcs, miss, have: pcs.length - miss.length, was: sum, price: Math.max(10, Math.round((sum * (100 - BUNDLE_OFF)) / 1000) * 10) };
+}
+
 let activeClose = null;
+const DENE_SEC = 5;
 
 export function openShop({ save, onClose, onSelect } = {}) {
   if (activeClose) activeClose();
@@ -785,9 +903,15 @@ export function openShop({ save, onClose, onSelect } = {}) {
 
   const host = document.getElementById('app') || document.body;
   let kind = 'skin';
+  let filt = 'all';
   let closed = false;
   let shownCoins = save.coins;
   let raf = 0;
+  let pv = null;          // the item shown in the 3D preview
+  let pvKey = '';
+  let view = null;
+  let deneTm = 0;
+  const seen0 = seenSet();   // items that were NEW when the shop opened keep their badge until it is closed
 
   // ---- skeleton ----
   const root = h('div', 'cs-root');
@@ -811,20 +935,61 @@ export function openShop({ save, onClose, onSelect } = {}) {
   head.appendChild(closeBtn);
 
   const tabs = h('div', 'cs-tabs');
-  const tabSkin = h('button', 'cs-tab on', 'TOPLAR');
-  const tabTrail = h('button', 'cs-tab', 'İZLER');
-  const tabPower = h('button', 'cs-tab', 'GÜÇLER');
-  const tabPazar = h('button', 'cs-tab', 'PAZAR');
-  tabPazar.setAttribute('type', 'button');
-  tabSkin.setAttribute('type', 'button');
-  tabTrail.setAttribute('type', 'button');
-  tabPower.setAttribute('type', 'button');
-  tabs.appendChild(tabSkin);
-  tabs.appendChild(tabTrail);
-  tabs.appendChild(tabPower);
-  tabs.appendChild(tabPazar);
+  tabs.setAttribute('role', 'tablist');
+  const TABS = [...KINDS.map((k) => ({ k: k.k, n: k.n, ic: k.ic })), { k: 'power', n: 'GÜÇLER', ic: '💪' }, { k: 'pazar', n: 'PAZAR', ic: '🛒' }];
+  const tabEl = {};
+  for (const tb of TABS) {
+    const b = h('button', 'cs-tab');
+    b.setAttribute('type', 'button');
+    b.setAttribute('role', 'tab');
+    b.appendChild(h('span', 'ti', tb.ic));
+    b.appendChild(h('span', 'tn', tb.n));
+    b.appendChild(h('i', 'cs-dot'));
+    b.addEventListener('click', () => setTab(tb.k));
+    tabEl[tb.k] = b;
+    tabs.appendChild(b);
+  }
 
   const goalBox = h('div', 'cs-goal');
+  // 3D stage: canvas + name / rarity + DENE (try 5 s) + the buy/equip button
+  const stage = h('div', 'cs-view');
+  const stageCv = h('div', 'cs-stagecv');
+  const stageInfo = h('div', 'cs-vinfo');
+  const stName = h('div', 'cs-vname');
+  const stRar = h('span', 'cs-vrar');
+  const stAbil = h('div', 'cs-vabil');
+  const stBtns = h('div', 'cs-vbtns');
+  const deneBtn = h('button', 'cs-vb dene', 'DENE');
+  deneBtn.setAttribute('type', 'button');
+  const stBuy = h('button', 'cs-vb buy');
+  stBuy.setAttribute('type', 'button');
+  stBtns.appendChild(deneBtn);
+  stBtns.appendChild(stBuy);
+  const stTop = h('div', 'cs-vtop');
+  stTop.appendChild(stAbil);
+  stTop.appendChild(stName);
+  stTop.appendChild(stRar);
+  stageInfo.appendChild(stTop);
+  stageInfo.appendChild(stBtns);
+  stage.appendChild(stageCv);
+  stage.appendChild(stageInfo);
+  const coll = h('div', 'cs-coll');
+  const collT = h('div', 'cs-collt');
+  const collB = h('div', 'cs-collb');
+  const collI = h('i');
+  collB.appendChild(collI);
+  coll.appendChild(collT);
+  coll.appendChild(collB);
+  const filtBar = h('div', 'cs-filt');
+  const FILTS = [['all', 'HEPSİ'], ['own', 'SENDE'], ['buy', 'ALINABİLİR'], ['new', 'YENİ']];
+  const filtEl = {};
+  for (const [k, n] of FILTS) {
+    const b = h('button', 'cs-chip' + (k === 'all' ? ' on' : ''), n);
+    b.setAttribute('type', 'button');
+    b.addEventListener('click', () => { filt = k; for (const f of FILTS) filtEl[f[0]].classList.toggle('on', f[0] === k); scroll.scrollTop = 0; sfx(); render(); });
+    filtEl[k] = b;
+    filtBar.appendChild(b);
+  }
   const scroll = h('div', 'cs-scroll');
   const grid = h('div', 'cs-grid');
   const plist = h('div', 'cs-list');
@@ -833,11 +998,15 @@ export function openShop({ save, onClose, onSelect } = {}) {
   root.appendChild(head);
   root.appendChild(tabs);
   root.appendChild(goalBox);
+  root.appendChild(stage);
+  root.appendChild(coll);
+  root.appendChild(filtBar);
   root.appendChild(scroll);
 
   // The game blocks document-level touchmove with preventDefault (to kill iOS rubber-band / zoom);
   // keep it from ever seeing drags that start inside the scroller so native scrolling survives.
   scroll.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+  tabs.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
 
   // ---- coins ----
   function renderGoal() {
@@ -849,7 +1018,7 @@ export function openShop({ save, onClose, onSelect } = {}) {
     goalBox.classList.toggle('ready', g.ready);
     const gi = h('div', 'gi');
     const gt = h('div', 'gt');
-    gt.appendChild(h('span', '', `${g.icon} SIRADAKİ HEDEF: ${g.name}`));
+    gt.appendChild(h('span', '', `🎯 ${g.name}`));
     gt.appendChild(h('b', '', g.ready ? 'HAZIR!' : `${fmt(g.have)} / ${fmt(g.price)} ❄️`));
     const gb = h('div', 'gb');
     const bi = h('i');
@@ -884,6 +1053,8 @@ export function openShop({ save, onClose, onSelect } = {}) {
   }
 
   // ---- item state ----
+  const list0 = () => catalog(kind);
+  const curId = () => save.selected(kind) || (list0()[0] && list0()[0].id);
   function vitOf(it) { if (kind !== 'skin') return null; const v = vitrinInfo(save); return v && v.id === it.id ? v : null; }
   function basePriceOf(it) { const v = vitOf(it); return v ? v.price : it.price; }
   function priceOf(it) { return save.shopPrice ? save.shopPrice(basePriceOf(it)) : basePriceOf(it); }  // ŞANS ÇARKI coupon applied
@@ -892,7 +1063,7 @@ export function openShop({ save, onClose, onSelect } = {}) {
     const need = (it.unlock && it.unlock.stars) || 0;
     const secretGate = !!(it.unlock && it.unlock.secret);
     const ch = it.unlock && it.unlock.challenge ? challengeOf(it.unlock.challenge) : null; // GÖREVLER gate (özel ödül)
-    const selected = save.selected(kind) === it.id;
+    const selected = curId() === it.id;
     const owned = selected || save.isOwned(kind, it.id);
     const secret = !owned && secretGate; // hidden until the meta module grants it
     const locked = !owned && (secret || !!ch || need > stars);
@@ -905,7 +1076,7 @@ export function openShop({ save, onClose, onSelect } = {}) {
   function challengeOf(id) {
     const d = ACHIEVEMENTS.find((x) => x.id === id);
     const pr = meta.progress(id);
-    return { id, name: d ? d.name : id, desc: d ? d.desc : '', value: pr.value, goal: pr.goal, done: pr.done };
+    return { id, name: d ? d.name : id, desc: d ? d.desc.replace(/\s*\[özel\]/, '') : '', value: pr.value, goal: pr.goal, done: pr.done };
   }
 
   function flakes(card) {
@@ -945,59 +1116,56 @@ export function openShop({ save, onClose, onSelect } = {}) {
     }
     save.select(kind, it.id);
     sfx();
+    pv = it;
     render(it.id, bought);
     showCoins(save.coins, bought);
     if (onSelect) onSelect(kind, it.id);
   }
 
+  // label + style of the buy / equip button of an item (cards and the 3D stage share it)
+  function btnSpec(it, st) {
+    if (st.selected) return { label: 'SEÇİLİ ✓', cls: 'on' };
+    if (st.owned) return { label: 'SEÇ', cls: 'pick' };
+    if (st.secret) return { label: 'GİZLİ', cls: 'lock' };
+    if (st.ch) return { label: st.ch.done ? '🏆 Ödülü Başarımlardan al' : '🏆 Görev gerekli', cls: 'lock' };
+    if (st.locked) return { label: `⭐ ${st.need} gerekli`, cls: 'lock' };
+    if (st.needsBuy) return { label: `❄️ ${fmt(priceOf(it))}` + (priceOf(it) < basePriceOf(it) ? ' · %50' : ''), cls: st.canAfford ? '' : 'poor' };
+    return { label: 'SEÇ', cls: 'pick' };
+  }
+
+  const isNew = (it, st) => !!it.new && !st.owned && !seen0.has(kind + ':' + it.id);
+
   function makeCard(it, pop, bought) {
     const st = stateOf(it);
     const rar = RARITY[it.rarity] ? it.rarity : 'common';
-    const card = h('div', `cs-card r-${rar}${st.selected ? ' sel' : ''}${st.locked ? ' locked' : ''}${st.secret ? ' secret' : ''}`);
-    card.appendChild(buildPreview(kind, st.secret ? HIDDEN : kind === 'skin' && BLOTCH.has(it.id) ? { ...it.preview, pattern: 'blotch' } : it.preview, st.secret));
-    if (kind === 'skin' && BLOTCH.has(it.id) && !st.owned && !newSeen()) card.appendChild(h('span', 'cs-newtag', 'YENİ'));
+    const card = h('div', `cs-card r-${rar}${st.selected ? ' sel' : ''}${st.locked ? ' locked' : ''}${st.secret ? ' secret' : ''}${pv && pv.id === it.id ? ' pv' : ''}`);
+    card.dataset.id = it.id;
+    card.appendChild(previewFor(kind, it, st.secret));
+    if (isNew(it, st)) card.appendChild(h('span', 'cs-newtag', 'YENİ'));
     card.appendChild(h('span', 'cs-rar', RARITY[rar].label));
     card.appendChild(h('div', 'cs-name', st.secret ? '???' : it.name));
-    const ab = kind === 'skin' ? ABILITIES[it.id] : null;
-    if (ab) {
-      const w = h('div', 'cs-abilbox'); w.appendChild(h('span', 'cs-abil-b', '★ ABİLİTE'));
-      const ad = h('div', 'cs-abil'); ad.appendChild(h('span', '', ab.icon)); ad.appendChild(document.createTextNode(' ')); ad.appendChild(h('span', '', ab.text)); w.appendChild(ad); // separate nodes: the English translator cannot read "icon + text (x1)" as one string
-      try { // KARAKTER level 1-5 from shards (chests, act rewards, town conquests)
-        const si = meta.shardInfo(it.id);
-        if (si) {
-          const l = h('div', 'cs-abil-lv');
-          l.appendChild(h('span', '', si.max ? `★ Sv ${si.level}/5 · MAKS` : `★ Sv ${si.level}/5 · 🧩 ${si.shards}/${si.next}`));
-          const bar = h('span', 'cs-abil-bar'); const f = h('i'); f.style.width = (si.max ? 100 : Math.round(((si.shards - si.from) / Math.max(1, si.next - si.from)) * 100)) + '%'; bar.appendChild(f); l.appendChild(bar);
-          w.appendChild(l);
-        }
-      } catch { /* ignore */ }
-      card.appendChild(w);
-    }
+    if (kind === 'skin' && ABILITIES[it.id]) card.appendChild(h('span', 'cs-abil-star', '★'));      // the ability text + level live in the 3D stage (equal card heights)
     if (st.locked) {
       const nd = h('div', 'cs-note');
-      if (st.ch) { // one node per sentence so the English translator reads each (name, goal text, counter) on its own
+      if (st.ch) { // short: the quest name and its counter (the long sentence lives in the title); one node each so the English translator reads them alone
         nd.appendChild(h('b', '', st.ch.name)); nd.appendChild(document.createTextNode(' 🏆 '));
-        nd.appendChild(h('span', '', st.ch.desc)); nd.appendChild(document.createTextNode(` ${fmt(Math.min(st.ch.value, st.ch.goal))}/${fmt(st.ch.goal)}`));
-      } else nd.textContent = st.secret ? 'Gizli ödül' : `⭐ ${Math.min(st.stars, st.need)}/${st.need}`;
+        nd.appendChild(document.createTextNode(`${fmt(Math.min(st.ch.value, st.ch.goal))}/${fmt(st.ch.goal)}`));
+        nd.title = st.ch.desc;
+      } else if (st.secret) nd.appendChild(h('span', '', 'Gizli ödül'));
+      else nd.textContent = `⭐ ${Math.min(st.stars, st.need)}/${st.need}`;
       card.appendChild(nd);
       card.appendChild(h('span', 'cs-lockbadge', '🔒'));
     }
 
     const vt = !st.owned && !st.locked ? vitOf(it) : null;
     if (vt) card.appendChild(h('div', 'cs-note cs-vit', `⭐ VİTRİN -%15 · ⏳ ${fmtLeft(vt.msLeft)}`));
-    let label, cls;
-    if (st.selected) { label = 'SEÇİLİ ✓'; cls = 'on'; }
-    else if (st.owned) { label = 'SEÇ'; cls = 'pick'; }
-    else if (st.secret) { label = 'GİZLİ'; cls = 'lock'; }
-    else if (st.ch) { label = st.ch.done ? '🏆 Ödülü Başarımlardan al' : '🏆 Görev gerekli'; cls = 'lock'; }
-    else if (st.locked) { label = `⭐ ${st.need} gerekli`; cls = 'lock'; }
-    else if (st.needsBuy) { label = `❄️ ${fmt(priceOf(it))}` + (priceOf(it) < basePriceOf(it) ? ' · %50' : ''); cls = st.canAfford ? '' : 'poor'; }
-    else { label = 'SEÇ'; cls = 'pick'; }
-    const btn = h('button', `cs-btn ${cls}`.trim(), label);
+    const sp = btnSpec(it, st);
+    const btn = h('button', `cs-btn ${sp.cls}`.trim(), sp.label);
     btn.setAttribute('type', 'button');
-    if (st.selected || st.locked || cls === 'poor') btn.setAttribute('aria-disabled', 'true');
+    if (st.selected || st.locked || sp.cls === 'poor') btn.setAttribute('aria-disabled', 'true');
     btn.addEventListener('click', () => act(it, card));
     card.appendChild(btn);
+    card.addEventListener('click', (e) => { if (!e.target.closest('.cs-btn')) selectPv(it); });
 
     if (pop) {
       card.classList.add(bought ? 'pop' : 'ping');
@@ -1006,20 +1174,111 @@ export function openShop({ save, onClose, onSelect } = {}) {
     return card;
   }
 
+  // ---- 3D stage ----
+  function ensureView() {
+    if (view || closed) return;
+    try { view = createView(stageCv, save.selected('skin') || 'classic'); } catch { view = null; }
+    stage.classList.toggle('nogl', !view);
+  }
+  let emoteEl = null;
+  function emoteDemo() {
+    if (emoteEl) emoteEl.remove();
+    emoteEl = null;
+    if (!pv || kind !== 'emote' || !pv.fx.e) return;
+    emoteEl = h('div', `rx-emote ${pv.fx.css}`, pv.fx.e);
+    stageCv.appendChild(emoteEl);
+  }
+  function showPv() {
+    ensureView();
+    const st = pv ? stateOf(pv) : null;
+    const key = kind + ':' + (pv ? pv.id : '') + (st && st.secret ? 's' : '');
+    if (view && key !== pvKey) { pvKey = key; view.show(!pv || st.secret ? 'none' : kind, pv); stopDene(); }
+    emoteDemo();
+    updateStage();
+  }
+  function updateStage() {
+    if (!pv) return;
+    const st = stateOf(pv);
+    stName.textContent = st.secret ? '???' : pv.name;
+    const rar = RARITY[pv.rarity] ? pv.rarity : 'common';
+    stRar.textContent = RARITY[rar].label;
+    stRar.className = 'cs-vrar r-' + rar;
+    stAbil.textContent = '';
+    const ab = kind === 'skin' && !st.secret ? ABILITIES[pv.id] : null;
+    if (ab) {
+      stAbil.appendChild(h('span', 'cs-abil-b', '★ ABİLİTE'));
+      stAbil.appendChild(document.createTextNode(' '));
+      stAbil.appendChild(h('span', '', ab.icon));
+      stAbil.appendChild(document.createTextNode(' '));
+      stAbil.appendChild(h('span', '', ab.text));
+      try { const si = meta.shardInfo(pv.id); if (si) { stAbil.appendChild(document.createTextNode(' · ')); stAbil.appendChild(h('span', '', si.max ? `★ Sv ${si.level}/5 · MAKS` : `★ Sv ${si.level}/5 · 🧩 ${si.shards}/${si.next}`)); } } catch { /* ignore */ }
+    }
+    const sp = btnSpec(pv, st);
+    stBuy.textContent = sp.label;
+    stBuy.className = `cs-vb buy ${sp.cls}`.trim();
+    stBuy.setAttribute('aria-disabled', st.selected || st.locked || sp.cls === 'poor' ? 'true' : 'false');
+  }
+  function selectPv(it) {
+    if (pv && pv.id === it.id) return;
+    pv = it;
+    for (const c of grid.children) c.classList.toggle('pv', c.dataset.id === it.id);
+    sfx();
+    showPv();
+  }
+  function stopDene() { clearInterval(deneTm); deneBtn.textContent = 'DENE'; deneBtn.classList.remove('busy'); }
+  deneBtn.addEventListener('click', () => {
+    if (!pv || deneBtn.classList.contains('busy')) return;
+    sfx();
+    let n = DENE_SEC;
+    deneBtn.classList.add('busy');
+    deneBtn.textContent = String(n);
+    if (view) view.dene(true);
+    emoteDemo();
+    deneTm = setInterval(() => { n--; if (n <= 0 || closed) stopDene(); else deneBtn.textContent = String(n); }, 1000);
+  });
+  stBuy.addEventListener('click', () => { if (pv) act(pv, stage); });
+
   function render(popId, bought) {
     renderGoal();
+    for (const tb of TABS) tabEl[tb.k].classList.toggle('on', tb.k === kind);
+    const itemTab = kind !== 'pazar' && kind !== 'power';
+    stage.classList.toggle('hidden', !itemTab);
+    coll.classList.toggle('hidden', !itemTab);
+    filtBar.classList.toggle('hidden', !itemTab);
+    refreshDots();
     if (kind === 'pazar') { renderPazar(); return; }
     if (kind === 'power') { renderPower(); return; }
     if (plist.parentNode) { plist.remove(); scroll.appendChild(grid); }
-    const list = sortCatalog(kind === 'skin' ? SKINS : TRAILS);
+    const all = sortCatalog(catalog(kind));
+    const own = (it) => { const st = stateOf(it); return st.owned; };
+    const n0 = all.filter(own).length;
+    collT.textContent = `KOLEKSİYON ${n0}/${all.length} · %${Math.round((n0 / Math.max(1, all.length)) * 100)}`;
+    collI.style.width = `${Math.round((n0 / Math.max(1, all.length)) * 100)}%`;
+    const list = all.filter((it) => {
+      if (filt === 'all') return true;
+      const st = stateOf(it);
+      return filt === 'own' ? st.owned : filt === 'buy' ? st.needsBuy && st.canAfford : isNew(it, st);
+    });
+    if (!pv || !all.includes(pv)) pv = all.find((it) => it.id === curId()) || all[0];
     grid.innerHTML = '';
     for (const it of list) grid.appendChild(makeCard(it, it.id === popId, bought));
+    if (!list.length) grid.appendChild(h('div', 'cs-empty', 'Burada henüz bir şey yok.'));
+    showPv();
+  }
+
+  // red dot on a tab while it still holds items that are new to the player (data: item.new, not owned, not seen)
+  function refreshDots() {
+    const live = seenSet();
+    for (const kd of KINDS) {
+      const any = catalog(kd.k).some((it) => it.new && !save.isOwned(kd.k, it.id) && !live.has(kd.k + ':' + it.id));
+      tabEl[kd.k].classList.toggle('dot', any && kd.k !== kind);
+    }
   }
 
   // ---- GÜÇLER: what coins are for. Permanent run upgrades + power-up durations + sled pack. ----
   function upRow(icon, name, desc, lv, cost, onBuy) {
     const row = h('div', 'cs-up');
-    row.appendChild(h('div', 'ui', icon));
+    row.appendChild(typeof icon === 'string' ? h('div', 'ui', icon) : icon);
     const mid = h('div', 'um');
     mid.appendChild(h('div', 'un', name));
     mid.appendChild(h('div', 'ud', desc));
@@ -1071,46 +1330,68 @@ export function openShop({ save, onClose, onSelect } = {}) {
     scroll.scrollTop = keep;
   }
 
-  // ---- YETI PAZARI ----
+  // ---- PAZAR: daily offer, theme bundles, weekly offers ----
   let pzTimer = 0;
+  const miniOf = (k, it) => { const w = h('div', 'ui mini'); w.appendChild(previewFor(k, it, false)); return w; };
+  function offerRow(prev, name, desc, price, cur, done, doneLabel, onBuy) {
+    const afford = cur === 'crystals' ? save.crystals() >= save.shopPrice(price) : save.coins >= (save.shopPrice ? save.shopPrice(price) : price);
+    const op = save.shopPrice ? save.shopPrice(price) : price;
+    const row = h('div', 'cs-up');
+    row.appendChild(prev);
+    const mid = h('div', 'um');
+    mid.appendChild(h('div', 'un', name));
+    mid.appendChild(h('div', 'ud', desc));
+    row.appendChild(mid);
+    const btn = h('button', done ? 'cs-btn on' : 'cs-btn' + (afford ? '' : ' poor'), done ? doneLabel : (cur === 'crystals' ? '💎 ' + op : '❄️ ' + fmt(op)) + (op < price ? ' · %50' : ''));
+    btn.setAttribute('type', 'button');
+    if (!done) btn.addEventListener('click', () => {
+      let ok = false;
+      try { ok = afford && (save.shopCharge ? save.shopCharge(price, cur === 'crystals' ? 'crystals' : 'coins') : (cur === 'crystals' ? save.spendCrystals(price) : save.spend(price))); if (ok) onBuy(); } catch { ok = false; }
+      if (!ok) { anim(row, 'shake', 340); sfx(); return; }
+      sfx();
+      showCoins(save.coins, true);
+      renderPazar();
+    });
+    row.appendChild(btn);
+    return row;
+  }
   function renderPazar() {
     if (grid.parentNode) { grid.remove(); scroll.appendChild(plist); }
     const keep = scroll.scrollTop;
     plist.innerHTML = '';
     const wk = isoWeekInfo();
     const bought = pzBought(wk);
+    clearInterval(pzTimer);
+    // daily offer
+    const dh = h('div', 'cs-sec', 'GÜNÜN FIRSATI');
+    const dl = h('span', 'cs-left', '⏳ ' + fmtLeft(dayLeft()));
+    dh.appendChild(dl);
+    plist.appendChild(dh);
+    const db = dailyBought();
+    for (const o of dailyOffers(save)) {
+      const done = db.includes(o.id) || save.isOwned(o.kind, o.item.id);
+      plist.appendChild(offerRow(miniOf(o.kind, o.item), o.item.name, `%${o.pct} İNDİRİM · eski fiyat ❄️ ${fmt(o.was)}`, o.price, 'coins', done, 'SENDE ✓', () => { save.own(o.kind, o.item.id); dailyMark(o.id); }));
+    }
+    // theme bundles
+    plist.appendChild(h('div', 'cs-sec', 'SETLER'));
+    for (const b of SETS) {
+      const bi = bundleInfo(save, b);
+      const prev = h('div', 'ui set');
+      for (const p of bi.pcs) prev.appendChild(miniOf(p.kind, p.it));
+      const done = bi.miss.length === 0;
+      plist.appendChild(offerRow(prev, b.name, `${bi.have}/${bi.pcs.length} parça · %${BUNDLE_OFF} SET İNDİRİMİ`, bi.price, 'coins', done, 'TAMAM ✓', () => { for (const p of bi.miss) save.own(p.kind, p.it.id); }));
+    }
+    // weekly offers
     const hd = h('div', 'cs-sec', 'YETİ PAZARI');
-    const left = h('span', '', '  ⏳ ' + fmtLeft(wk.msLeft));
+    const left = h('span', 'cs-left', '⏳ ' + fmtLeft(wk.msLeft));
     hd.appendChild(left);
     plist.appendChild(hd);
-    clearInterval(pzTimer);
-    pzTimer = setInterval(() => { if (closed || kind !== 'pazar') { clearInterval(pzTimer); return; } const w = isoWeekInfo(); left.textContent = '  ⏳ ' + fmtLeft(w.msLeft); if (w.key !== wk.key) renderPazar(); }, 30000);
+    pzTimer = setInterval(() => { if (closed || kind !== 'pazar') { clearInterval(pzTimer); return; } const w = isoWeekInfo(); left.textContent = '⏳ ' + fmtLeft(w.msLeft); dl.textContent = '⏳ ' + fmtLeft(dayLeft()); if (w.key !== wk.key) renderPazar(); }, 30000);
     for (const o of weeklyOffers(save, wk)) {
       const done = bought.includes(o.id) || (o.kind !== 'bundle' && save.isOwned(o.kind, o.item.id));
-      const op = save.shopPrice ? save.shopPrice(o.price) : o.price;
-      const afford = o.cur === 'crystals' ? save.crystals() >= op : save.coins >= op;
       const desc = o.kind === 'bundle' ? o.tag + ' · 💎 ' + o.price + ' karşılığı' : o.tag + ' · eski fiyat ❄️ ' + fmt(o.was);
-      const row = h('div', 'cs-up');
-      row.appendChild(h('div', 'ui', o.icon));
-      const mid = h('div', 'um');
-      mid.appendChild(h('div', 'un', o.name));
-      mid.appendChild(h('div', 'ud', desc));
-      row.appendChild(mid);
-      const btn = h('button', done ? 'cs-btn on' : 'cs-btn' + (afford ? '' : ' poor'), done ? (o.kind === 'bundle' ? 'ALINDI ✓' : 'SENDE ✓') : (o.cur === 'crystals' ? '💎 ' + op : '❄️ ' + fmt(op)) + (op < o.price ? ' · %50' : ''));
-      btn.setAttribute('type', 'button');
-      if (!done) btn.addEventListener('click', () => {
-        let ok = false;
-        try {
-          ok = afford && (save.shopCharge ? save.shopCharge(o.price, o.cur === 'crystals' ? 'crystals' : 'coins') : (o.cur === 'crystals' ? save.spendCrystals(o.price) : save.spend(o.price)));
-          if (ok) { if (o.kind === 'bundle') save.addCoins(o.coins); else save.own(o.kind, o.item.id); pzMark(wk, o.id); }
-        } catch { ok = false; }
-        if (!ok) { anim(row, 'shake', 340); sfx(); return; }
-        sfx();
-        showCoins(save.coins, true);
-        renderPazar();
-      });
-      row.appendChild(btn);
-      plist.appendChild(row);
+      plist.appendChild(offerRow(o.kind === 'bundle' ? h('div', 'ui', o.icon) : miniOf(o.kind, o.item), o.name, desc, o.price, o.cur, done, o.kind === 'bundle' ? 'ALINDI ✓' : 'SENDE ✓',
+        () => { if (o.kind === 'bundle') save.addCoins(o.coins); else save.own(o.kind, o.item.id); pzMark(wk, o.id); }));
     }
     plist.appendChild(h('div', 'cs-sec', 'Her pazartesi yeni teklifler gelir.'));
     scroll.scrollTop = keep;
@@ -1118,20 +1399,17 @@ export function openShop({ save, onClose, onSelect } = {}) {
 
   function setTab(k) {
     if (k === kind) return;
+    stopDene();
+    markSeen(kind);
     kind = k;
-    tabSkin.classList.toggle('on', k === 'skin');
-    tabTrail.classList.toggle('on', k === 'trail');
-    tabPower.classList.toggle('on', k === 'power');
-    tabPazar.classList.toggle('on', k === 'pazar');
+    filt = 'all';
+    for (const f of FILTS) filtEl[f[0]].classList.toggle('on', f[0] === 'all');
+    pv = null; pvKey = '';
     scroll.scrollTop = 0;
     sfx();
     render();
+    try { tabEl[k].scrollIntoView({ inline: 'center', block: 'nearest' }); } catch { /* ignore */ }
   }
-
-  tabSkin.addEventListener('click', () => setTab('skin'));
-  tabTrail.addEventListener('click', () => setTab('trail'));
-  tabPower.addEventListener('click', () => setTab('power'));
-  tabPazar.addEventListener('click', () => setTab('pazar'));
 
   // ---- close ----
   const onKey = (e) => { if (e.key === 'Escape') close(); };
@@ -1142,16 +1420,34 @@ export function openShop({ save, onClose, onSelect } = {}) {
     document.removeEventListener('keydown', onKey);
     if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
     clearInterval(pzTimer);
-    try { localStorage.setItem(NEW_KEY, '1'); } catch { /* ignore */ }
+    clearInterval(deneTm);
+    if (kind !== 'pazar' && kind !== 'power') markSeen(kind);
+    if (view) { view.dispose(); view = null; }
     root.remove();
     if (onClose) onClose();
   }
   closeBtn.addEventListener('click', () => { sfx(); close(); });
   document.addEventListener('keydown', onKey);
 
-  render();
   host.appendChild(root);
+  render();
   activeClose = close;
-  try { const want = localStorage.getItem('patpat.shopTab'); if (want) { localStorage.removeItem('patpat.shopTab'); if (want === 'pazar' || want === 'trail' || want === 'skin') setTab(want); } } catch { /* ignore */ }
+  try {
+    const want = localStorage.getItem('patpat.shopTab'); // menu chips: 'pazar' | 'skin' | ... ; the result screen sends 'kind:id' through patpat.shopItem
+    if (want) { localStorage.removeItem('patpat.shopTab'); if (TABS.some((x) => x.k === want)) setTab(want); }
+    const wi = localStorage.getItem('patpat.shopItem');
+    if (wi) {
+      localStorage.removeItem('patpat.shopItem');
+      const [wk2, wid] = wi.split(':');
+      const it = itemOf(wk2, wid);
+      if (it && TABS.some((x) => x.k === wk2)) {
+        if (wk2 !== kind) setTab(wk2);
+        pv = it; pvKey = '';
+        render(wid);
+        const c = grid.querySelector(`[data-id="${wid}"]`);
+        if (c && c.scrollIntoView) c.scrollIntoView({ block: 'center' });
+      }
+    }
+  } catch { /* ignore */ }
   return close;
 }

@@ -166,5 +166,57 @@ const pairs = [
 const bad = pairs.filter(([tr, en]) => { const r = t(tr); return en === null ? false : (en.length < 12 && ['TO RECORD', 'BEST'].includes(en)) ? !r.includes(en) : r !== en; }).map(([tr, en]) => tr + ' => ' + t(tr) + ' (want ' + en + ')');
 ok('new UI strings have English entries and are not swallowed by catch-alls', bad.length === 0, JSON.stringify(bad));
 
+// ---- wardrobe v2: every kind has a free default, ids are unique, prices follow rarity and the measured pace, nothing is unobtainable, no Turkish-only names
+{
+  const { KINDS, catalog, BUNDLES } = await import('../src/cosmetics.js');
+  const { RARITY } = await import('../src/skins.js');
+  const { dailyOffers, bundleInfo } = await import('../src/shop.js');
+  const { ACHIEVEMENTS } = await import('../src/meta.js');
+  const SESSION = 250;      // flakes per session in the model above (5 runs, ~50 each)
+  const CAP = { common: 700, rare: 1300, epic: 2700, legendary: 7000 };      // highest price of a rarity (a legendary must stay within ~28 sessions of income)
+  const MAX_STARS = 200;
+  const seenIds = [], bad = [], unobt = [], capBad = [], names = new Set();
+  let total = 0, nNew = 0;
+  const cheap = [];
+  for (const kd of KINDS) {
+    const L = catalog(kd.k), ids = new Set();
+    if (!(L.length >= 5 && L[0].price === 0 && !L[0].unlock)) bad.push(kd.k + ': needs >= 5 items and a free default first');
+    for (const it of L) {
+      if (ids.has(it.id)) bad.push('duplicate id ' + kd.k + ':' + it.id);
+      ids.add(it.id); seenIds.push(kd.k + ':' + it.id);
+      if (!RARITY[it.rarity] || !it.preview || !it.name) bad.push('bad item ' + kd.k + ':' + it.id);
+      if (it.new) nNew++;
+      const u = it.unlock || {};
+      const ach = u.challenge ? ACHIEVEMENTS.find((a) => a.id === u.challenge) : null;
+      const ok2 = it.price > 0 || (u.stars > 0 && u.stars <= MAX_STARS) || (u.challenge && ach && ach.reward && ach.reward[kd.k] === it.id) || u.secret || u.act || (it === L[0]);
+      if (!ok2) unobt.push(kd.k + ':' + it.id);
+      if (it.price > (CAP[it.rarity] || 0)) capBad.push(`${kd.k}:${it.id} ${it.price} > ${CAP[it.rarity]}`);
+      if (it.price > 0) { total += it.price; if (!u.stars && !u.secret) cheap.push(it.price); }
+    }
+  }
+  ok('wardrobe: unique ids, a free default per kind, valid rarity / preview', bad.length === 0, JSON.stringify(bad));
+  ok('wardrobe: nothing is unobtainable (price, stars <= 200, matching challenge, secret or act)', unobt.length === 0, JSON.stringify(unobt));
+  ok('wardrobe: price caps per rarity (no legendary priced above 7000: kristal / güneş tacı were 7500 / 9000)', capBad.length === 0, JSON.stringify(capBad));
+  const kindsWithItems = KINDS.filter((kd) => catalog(kd.k).length >= 5).length;
+  ok('wardrobe: 8 sellable kinds, at least 40 new sellable items', kindsWithItems === 8 && nNew >= 40, `${kindsWithItems} kinds, ${nNew} new items`);
+  cheap.sort((a, b) => a - b);
+  ok('wardrobe pace: the 3 cheapest items cost at most 4 sessions of income', cheap[0] + cheap[1] + cheap[2] <= 4 * SESSION, cheap.slice(0, 3).join('+'));
+  console.log(`wardrobe: ${seenIds.length} items, ${nNew} new, whole shop = ${Math.round(total / SESSION)} sessions of modelled income, cheapest 5 = ${cheap.slice(0, 5).join('/')}`);
+  // save is generic by kind string: an old save without the new kinds still works
+  const svw = mkSave();
+  ok('old save: new kinds read as not owned, own + select work without a migration', !svw.isOwned('hop', 'hop_yildiz') && (svw.own('hop', 'hop_yildiz'), svw.isOwned('hop', 'hop_yildiz')) && svw.selected('hop') === null);
+  // daily offer: 3 items of different kinds, discounted, the same on a second call; bundles are cheaper than their pieces
+  const d1 = dailyOffers(mkSave()), d2 = dailyOffers(mkSave());
+  ok('daily offer: 3 buyable items, 20/30/40% off, stable within a day', d1.length === 3 && d1.every((o, i) => o.price < o.was && o.pct === [20, 30, 40][i]) && JSON.stringify(d1.map((o) => o.item.id)) === JSON.stringify(d2.map((o) => o.item.id)), d1.map((o) => o.kind + ':' + o.item.id + ' ' + o.price).join(' | '));
+  const bi = BUNDLES.map((b) => bundleInfo(mkSave(), b));
+  ok('bundles: every piece exists and the set is cheaper than its pieces', bi.every((b, i) => b.pcs.length === BUNDLES[i].pcs.length && b.price < b.was), bi.map((b) => `${b.pcs.length}pc ${b.was}->${b.price}`).join(', '));
+  // English: every new item name and tab label has a dictionary entry
+  const dict = new Set();
+  for (const m of ['en_shop', 'en_ui', 'en_menus', 'en_runner', 'en_agar']) { const mod = await import(`../src/i18n/${m}.js`); for (const k of Object.keys(mod.words || {})) dict.add(k.trim()); }
+  for (const kd of KINDS) { names.add(kd.n); for (const it of catalog(kd.k)) if (it.new) names.add(it.name); }
+  const miss = [...names].filter((n) => !dict.has(n));
+  ok('wardrobe: every new item name and tab label has an English entry', miss.length === 0, JSON.stringify(miss));
+}
+
 if (fails) { console.log(`\n${fails} check(s) failed`); process.exit(1); }
 console.log('\nall economy checks passed');

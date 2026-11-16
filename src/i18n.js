@@ -3,6 +3,7 @@ import * as menus from './i18n/en_menus.js';
 import * as ui from './i18n/en_ui.js';
 import * as runner from './i18n/en_runner.js';
 import * as agar from './i18n/en_agar.js';
+import * as shop from './i18n/en_shop.js';
 
 const KEY = 'patpat_lang';
 const sysLang = () => (String((typeof navigator !== 'undefined' && navigator.language) || '').toLowerCase().startsWith('tr') ? 'tr' : 'en');
@@ -21,7 +22,7 @@ export function setLang(l) {
 
 const WORDS = new Map();
 const PATTERNS = [];
-for (const m of [menus, ui, runner, agar]) {
+for (const m of [menus, ui, runner, agar, shop]) {
   if (m.words) for (const k in m.words) WORDS.set(k.trim(), m.words[k]);
   if (m.patterns) for (const p of m.patterns) PATTERNS.push(p);
 }

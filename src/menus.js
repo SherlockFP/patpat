@@ -104,7 +104,7 @@ const CSS = `
 .fm-avt { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .fm-nm { font-size: 17px; line-height: 1; text-shadow: var(--ol); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fm-xp { position: relative; width: 78px; max-width: 100%; height: 15px; border-radius: 6px; border: 2.5px solid var(--ink); background: rgba(10, 25, 55, 0.6); overflow: hidden; }
-.fm-xp b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; line-height: 1; font-weight: 900; color: #fff; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }
+.fm-xp b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; line-height: 1; font-weight: 900; color: #fff; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }
 .fm-xp i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--p, 0%); background: linear-gradient(180deg, #8dff9a, #2fc13f); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45); }
 .fm-cur {
   position: relative; flex: none; display: flex; align-items: center; gap: 5px; height: 38px; padding: 0 4px 0 9px; border-radius: 19px; border: 3px solid var(--ink);
@@ -285,7 +285,7 @@ const CSS = `
 .fm-bot .fm-sgoal { height: 26px; margin: -6px 0 0; padding: 0 10px; gap: 7px; border-width: 2px; border-radius: 13px; font-size: 12px; box-shadow: none; width: min(calc(100% - 40px), 340px); }
 .fm-bot .fm-sgoal .sg-b { width: 44px; height: 8px; }
 .fm-sgoal { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; margin: 0 auto 8px; width: min(calc(100% - 24px), 380px); box-sizing: border-box; border-radius: 14px; border: 2.5px solid var(--ink); background: #fff; color: var(--ink); font-size: 13px; font-weight: 800; cursor: pointer; text-align: left; text-shadow: none; flex: none; }
-.fm-sgoal .sg-t { flex: none; font-size: 11px; letter-spacing: 0.06em; opacity: 0.85; }
+.fm-sgoal .sg-t { flex: none; font-size: 11px; letter-spacing: 0.06em; opacity: 1; }
 .fm-sgoal .sg-n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fm-sgoal .sg-b { flex: none; width: 56px; height: 9px; border-radius: 5px; background: rgba(0, 0, 0, 0.15); overflow: hidden; }
 .fm-sgoal .sg-b i { display: block; height: 100%; background: linear-gradient(90deg, #ffb300, #ff7a1a); }
@@ -520,7 +520,7 @@ const CSS = `
 .fm-skip { flex: none; min-height: 46px; min-width: 54px; padding: 4px 8px; cursor: pointer; border-radius: 14px; border: 3px solid var(--ink); background: linear-gradient(180deg, #fff, #d7e8fb); color: var(--ink); font-size: 11px; line-height: 1.15; text-shadow: none; box-shadow: 0 4px 0 var(--ink); }
 .fm-skip b { display: block; font-size: 19px; }
 .fm-skip:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
-.fm-note { text-align: center; color: var(--ink); font-size: 13px; line-height: 1.4; padding: 0 6px; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55); }
+.fm-note { text-align: center; color: var(--ink); font-size: 13px; line-height: 1.4; padding: 0 6px calc(var(--sab, 0px) + 12px); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55); }
 
 /* ---- upgrades ---- */
 .fm-pips { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
@@ -657,7 +657,7 @@ const CSS = `
 .fm-seacard.claimed { background: #cfe9d4; opacity: 0.8; }
 .fm-seacard.lk { background: #dbe4f3; }
 .fm-seacard .si { font-size: 26px; line-height: 1.1; }
-.fm-seacard .sn { font-size: 11px; opacity: 0.8; }
+.fm-seacard .sn { font-size: 11px; opacity: 1; }
 .fm-seacard .sb { min-height: 26px; padding: 0 8px; border-radius: 12px; border: 2px solid var(--ink); background: #3ecf6a; color: #fff; font-size: 11px; font-weight: 900; cursor: pointer; }
 .fm-seabar { height: 12px; margin: 6px 4px; border-radius: 8px; border: 2.5px solid var(--ink); background: rgba(255,255,255,.6); overflow: hidden; }
 .fm-seabar i { display: block; height: 100%; background: #ff7a3a; }
@@ -1091,9 +1091,9 @@ const CSS = `
 @media (max-width: 360px) { .fm-rc { width: 54px; } .fm-rc .ri { width: 42px; height: 42px; font-size: 20px; } .fm-rc .rl { max-width: 54px; } }
 /* label fit @375px: bottom bar + rail chips wrap to 2 lines, fluid font, readable lock badge */
 .fm-main .fm-secrow { gap: 4px; }
-.fm-main .fm-secrow .fm-sb .lb { height: auto; min-height: 14px; max-width: 100%; padding: 0; box-sizing: border-box; font-size: clamp(8.5px, 2.75vw, 11px); line-height: 1.2; letter-spacing: 0; white-space: nowrap; overflow: hidden; hyphens: none; display: flex; align-items: flex-start; justify-content: center; }
-.fm-rc .rl { width: max-content; max-width: 76px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: normal; word-break: normal; hyphens: none; font-size: 10.5px; line-height: 1.1; text-align: center; padding: 2px 4px; }
-.fm-rails .fm-globe .glt { font-size: 10px; letter-spacing: 0; }
+.fm-main .fm-secrow .fm-sb .lb { height: auto; min-height: 14px; max-width: 100%; padding: 0 4px; box-sizing: border-box; background: rgba(8, 22, 48, 0.5); border-radius: 8px; font-size: 11px; line-height: 1.2; letter-spacing: 0; white-space: nowrap; overflow: hidden; hyphens: none; display: flex; align-items: flex-start; justify-content: center; }
+.fm-rc .rl { width: max-content; max-width: 76px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: normal; word-break: normal; hyphens: none; font-size: 11px; line-height: 1.1; text-align: center; padding: 2px 5px; background: rgba(8, 22, 48, 0.5); border-radius: 8px; }
+.fm-rails .fm-globe .glt { font-size: 11px; letter-spacing: 0; background: rgba(8, 22, 48, 0.55); border-radius: 8px; padding: 1px 5px; }
 .fm-sb.fm-lock { filter: none; opacity: 1; }
 .fm-sb.fm-lock .ic, .fm-sb.fm-lock .lb { filter: grayscale(1) brightness(0.85); opacity: 0.55; }
 .fm-sb.fm-lock[data-lock]::after { left: 50%; right: auto; top: 12px; transform: translateX(-50%); font-size: 11px; line-height: 1.1; padding: 3px 7px; border-width: 1.5px; background: #0d1630; color: #fff; z-index: 6; }

@@ -506,7 +506,7 @@ body:has(.perk-pick:not(.out)) #hint, body:has(.perk-pick:not(.out)) .rtag, body
 #toast-soft.res .ts.long { font-size: 15px; animation-name: tsInRes; animation-duration: 6s; background: linear-gradient(180deg, #ffe27a, var(--gold)); color: var(--ink); text-shadow: none; }   /* quest chip: bright gold, 6 s, readable on the blurred card */
 #toast-soft .ts {
   display: flex; align-items: center; gap: 7px; max-width: 86vw; padding: 6px 14px 7px 10px; border-radius: 999px; border: 2.5px solid var(--ink); background: rgba(23, 52, 92, 0.9); color: #fff; font-weight: 900; font-size: 14px; letter-spacing: 0.02em;
-  box-shadow: 0 3px 0 rgba(10, 25, 55, 0.7); animation: tsIn 1.45s ease forwards; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  box-shadow: 0 3px 0 rgba(10, 25, 55, 0.7); animation: tsIn 2.2s ease forwards; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 }
 #toast-soft .ts .ti { font-size: 18px; line-height: 1; }
 #toast-soft .ts.long { animation-duration: 3s; background: rgba(10, 25, 55, 0.96); font-size: 16px; }   /* a milestone / why-you-grow line stays 3 s and reads on snow */
@@ -606,7 +606,7 @@ body:has(.perk-pick:not(.out)) #hint, body:has(.perk-pick:not(.out)) .rtag, body
 .ag-tr { position: absolute; right: 10px; top: calc(var(--sat) + 8px); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .ag-lb { width: 124px; background: rgba(12, 32, 66, 0.55); border: 2px solid var(--ink); border-radius: 12px; padding: 3px 6px; }
 .ag-lb .t { font-size: 11px; letter-spacing: 0.12em; text-align: center; color: #ffe066; margin-bottom: 2px; }
-.ag-lb .row { display: flex; justify-content: space-between; gap: 6px; font-size: 10px; line-height: 1.35; }
+.ag-lb .row { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; line-height: 1.35; }
 .ag-lb .row .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-lb .row .v { flex: none; opacity: 0.85; }
 .ag-lb .row.me { color: #ffe066; }
@@ -788,6 +788,23 @@ body:has(.perk-pick:not(.out)) #hint, body:has(.perk-pick:not(.out)) .rtag, body
 #cig-lv .gc.r2 { background: rgba(20, 110, 54, 0.84); border-color: #2fd36b; }
 #cig-lv .cgl.ch { position: absolute; left: 14px; top: 38px; min-height: 0; flex-direction: row; font-size: 13px; color: #ffe066; border-color: #ffc83a; animation: cglChain 0.5s ease-in-out infinite alternate; }
 @keyframes cglChain { from { transform: scale(1); } to { transform: scale(1.08); } }
+/* ÇIĞ: the avalanche behind you (dust + gap pill), the size ladder, the town-crush counter */
+#cig-wave { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
+#cig-wave.on { opacity: 1; }
+#cig-wave .cw-dust { position: absolute; left: 0; right: 0; bottom: 0; height: 30%; opacity: 0; transition: opacity 0.3s; background: radial-gradient(120% 100% at 50% 110%, rgba(250, 253, 255, 0.95) 0%, rgba(235, 244, 255, 0.7) 35%, rgba(235, 244, 255, 0) 80%); }
+#cig-wave .cw-pill { position: absolute; left: 50%; bottom: calc(var(--sab, 0px) + 14px); transform: translateX(-50%); display: flex; align-items: center; gap: 7px; padding: 3px 11px 4px; border-radius: 12px; white-space: nowrap; background: rgba(8, 22, 48, 0.72); font-weight: 900; font-size: 13px; letter-spacing: 0.06em; color: #fff; }
+#cig-wave .cw-pill b { color: #bfe0ff; }
+#cig-wave .cw-bar { width: 70px; height: 8px; border-radius: 5px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
+#cig-wave .cw-bar i { display: block; height: 100%; transform-origin: left center; transform: scaleX(var(--f, 0)); background: linear-gradient(90deg, #ffb36b, #ff4a3a); }
+#cig-wave.near .cw-pill { background: rgba(150, 20, 20, 0.85); animation: chaseNear 0.5s ease-in-out infinite alternate; }
+#cig-ladder:not(.show) { display: none; }
+#cig-ladder { position: absolute; left: 50%; bottom: calc(var(--sab, 0px) + 46px); transform: translateX(-50%); display: flex; gap: 4px; pointer-events: none; }
+#cig-ladder i { font-style: normal; font-weight: 900; font-size: 10px; letter-spacing: 0.04em; padding: 2px 6px 3px; border-radius: 8px; color: rgba(255, 255, 255, 0.55); background: rgba(8, 22, 48, 0.4); }
+#cig-ladder i.on { color: #fff; background: rgba(8, 22, 48, 0.72); }
+#cig-ladder i.new { color: #2a1a00; background: var(--gold, #ffd45a); animation: ladderPop 0.5s ease-in-out infinite alternate; }
+@keyframes ladderPop { from { transform: scale(1); } to { transform: scale(1.22); } }
+#cig-crush { position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%) scale(0.8); opacity: 0; transition: opacity 0.25s, transform 0.25s; font-weight: 900; font-size: 46px; color: var(--gold, #ffd45a); text-shadow: 0 3px 0 var(--ink, #0a1a37), 2px 2px 0 var(--ink, #0a1a37), -2px 2px 0 var(--ink, #0a1a37); white-space: nowrap; }
+#cig-crush.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 #hud.chase-near::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 70px rgba(255, 60, 50, 0.55); animation: chaseNear 0.7s ease-in-out infinite alternate; pointer-events: none; }
 @keyframes chaseNear { from { opacity: 0.45; } to { opacity: 1; } }
 .hud-progress .pt.gate { top: -15px; font-size: 11px; }
@@ -1333,7 +1350,7 @@ body:has(.fm-ov) #result { visibility: hidden; }   /* a panel (GÜÇ ...) over t
 .hud-goal .chap-bar i, .hud-goal .chap-bar::after, .hud-goal .chap-bar b { border-radius: 0; }
 .hud-goal .chap-bar::after, .hud-goal .chap-bar b { display: none; }
 .hud-goal .chap-bar.near i { box-shadow: 0 0 8px #fff; }
-.hud-goal[data-ch]::after { content: attr(data-ch); position: absolute; right: 4px; top: 3px; padding: 0 5px; border-radius: 8px; background: #08162f; font-size: 10px; line-height: 14px; z-index: 2; font-weight: 900; letter-spacing: 0.04em; color: #b8f5c8; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }
+.hud-goal[data-ch]::after { content: attr(data-ch); position: absolute; right: 4px; top: 3px; padding: 0 5px; border-radius: 8px; background: #08162f; font-size: 11px; line-height: 14px; z-index: 2; font-weight: 900; letter-spacing: 0.04em; color: #b8f5c8; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }
 .hud-goal:has(.chap-bar[hidden])::after { display: none; }
 #result.rr { justify-content: flex-start; }   /* Rush result: the score block floats in the free space, the card hugs RETRY (no empty gap between them) */
 #result.rr .res-top { margin: auto 0; }
@@ -1341,7 +1358,7 @@ body:has(.fm-ov) #result { visibility: hidden; }   /* a panel (GÜÇ ...) over t
 #hud.cig-endless .hud-tons { text-shadow: 0 3px 0 var(--ink), 0 0 10px rgba(8, 22, 48, 0.9), 0 0 24px rgba(8, 22, 48, 0.6); }   /* QA: pale tons readout on a pale sky: a dark halo behind the outline */
 @keyframes secOn { 0% { opacity: 0; } 10% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }   /* set-piece name: solid for ~1.2 s on a change, then gone */
 .sec-strip { background: rgb(8, 22, 48); }
-.rx-up .ru-d { display: block; font-size: 12.5px; font-weight: 800; opacity: 0.85; margin-top: 1px; }   /* what the next upgrade gives */
+.rx-up .ru-d, .rx-aff .ru-d { display: block; font-size: 12.5px; font-weight: 800; opacity: 0.85; margin-top: 1px; }   /* what the next upgrade gives */
 
 /* ---- AI UI icons (src/uiicons.js): em-sized, crisp, never catch taps ---- */
 .uim { width: 1.15em; height: 1.15em; object-fit: contain; vertical-align: -0.22em; pointer-events: none; user-select: none; -webkit-user-drag: none; }
@@ -1375,3 +1392,27 @@ body:has(.fm-ov) #result { visibility: hidden; }   /* a panel (GÜÇ ...) over t
 @keyframes agGoalOut { to { opacity: 0; visibility: hidden; } }
 .fm-main .fm-wm { filter: drop-shadow(0 3px 8px rgba(8, 18, 52, 0.7)); }   /* the wordmark keeps its contrast on the dusk fog */
 #cig-introchip b.mod:not(.town) { padding: 2px 10px; font-size: 12px; }   /* beside the town goal: a small tag, not a second pill */
+/* wardrobe: Rush result "you can buy it" pill + the equipped result emote */
+.res-extra .rx-aff { display: block; width: 100%; box-sizing: border-box; font-family: inherit; margin: 0 auto 6px; padding: 8px 12px; border-radius: 12px; background: linear-gradient(180deg, #ffd45a, #ff9a1a); border: 2px solid var(--ink); color: #3a1c00; font-weight: 900; font-size: 15px; line-height: 1.25; text-align: center; cursor: pointer; text-shadow: none; animation: pwPulse 1s ease-in-out infinite; }
+.rx-emote { position: absolute; left: 14px; top: calc(var(--sat, 0px) + 12px); z-index: 6; font-size: 54px; line-height: 1; pointer-events: none; transform-origin: 50% 90%; filter: drop-shadow(0 3px 0 rgba(23, 52, 92, 0.6)); }
+.rx-emote.dance { animation: emDance 0.8s ease-in-out infinite; }
+.rx-emote.bow { animation: emBow 1.4s ease-in-out infinite; }
+.rx-emote.beat { animation: emBeat 0.7s ease-in-out infinite; }
+.rx-emote.jump { animation: emJump 0.9s cubic-bezier(.3, 0, .4, 1) infinite; }
+.rx-emote.rocket { animation: emRocket 1.8s ease-in infinite; }
+.rx-emote.drop { animation: emDrop 1.6s cubic-bezier(.2, 1.4, .4, 1) both; }
+@keyframes emDance { 0%, 100% { transform: translateY(0) rotate(-14deg); } 50% { transform: translateY(-14px) rotate(14deg); } }
+@keyframes emBow { 0%, 100% { transform: rotate(0); } 40%, 60% { transform: rotate(-38deg) translateY(6px); } }
+@keyframes emBeat { 0%, 100% { transform: scale(1); } 30% { transform: scale(1.3); } 55% { transform: scale(1.05); } }
+@keyframes emJump { 0%, 100% { transform: translateY(0) scale(1.1, 0.85); } 45% { transform: translateY(-34px) scale(0.95, 1.12); } }
+@keyframes emRocket { 0% { transform: translate(0, 24px) rotate(45deg); opacity: 0; } 25% { opacity: 1; } 100% { transform: translate(18px, -60px) rotate(45deg); opacity: 0; } }
+@keyframes emDrop { 0% { transform: translateY(-120px) rotate(-20deg); opacity: 0; } 55% { transform: translateY(0) rotate(6deg); opacity: 1; } 75% { transform: translateY(-12px); } 100% { transform: translateY(0) rotate(0); } }
+@media (prefers-reduced-motion: reduce) { .rx-emote, .res-extra .rx-aff { animation: none; } }
+/* readable text (menu audit): the Rush goal strip wraps to two lines instead of an ellipsis, plated hint + right HUD cluster, 11 px floor */
+#hud.rush.rush.rush .hud-goal { height: auto; min-height: 28px; }
+#hud.rush.rush.rush .hud-goal .goal-lbl { white-space: normal; overflow: visible; text-overflow: clip; font-size: 13px; line-height: 16px; padding: 5px 34px 8px 8px; }
+#hud.rush.rush.rush .hud-goal:not([data-ch]) .goal-lbl { padding-right: 8px; }
+#hint > div:last-child { display: inline-block; margin: 0 auto; padding: 6px 16px 7px; border-radius: 14px; background: rgba(10, 25, 55, 0.9); border: 2px solid #fff; color: #fff; font-size: 18px; }
+#hud.rush.rush.rush .hud-coins { background: rgba(8, 22, 48, 0.55); border-radius: 10px; padding: 3px 8px; }
+.res-extra .rx-dim { font-size: 13px; color: #e2eeff; }
+.res-extra .rx-goal .rg-h { font-size: 12px; }

@@ -103,6 +103,21 @@ export const THEMES = [
 const THEME_BY_ID = {};
 for (const t of THEMES) THEME_BY_ID[t.id] = t;
 
+// Every 5 mountains a new place (palette, sky, snow colour, a tint on every prop): dawn village, canyon, night city, volcano ash, sakura, neon, space.
+// (Mountains 1-5 keep the old cycle below. `pt` = prop tint [r,g,b] multiplied into every prop; not part of THEMES, so the daily pick does not change.)
+const D = THEMES[0];
+export const BAND_THEMES = [
+  null,
+  { ...D, id: 'dawn', name: 'Şafak Köyü', skyTop: 0x6a74c9, skyMid: 0xf0a8b8, horizon: 0xffe1c4, fog: 0xf7d5c0, hemiSky: 0xfff0e2, hemiGround: 0xb9a4d0, sunColor: 0xffd2a8, sunDir: [0.55, 0.6, 0.5], discColor: 0xffe0b0, discGlow: 0xffb78a, glow: 0.7, cloudColor: 0xffd4c4, rock: 0x9a8aa8, snow: 0xfff4ec, pt: [1.06, 1, 0.94] },
+  { ...D, id: 'canyon', name: 'Kanyon', skyTop: 0x3e7fd0, skyMid: 0xf0b585, horizon: 0xffd9b0, fog: 0xf2c9a0, hemiSky: 0xffe6c8, hemiGround: 0xc08a68, sunColor: 0xffc890, sunDir: [0.6, 0.55, 0.4], discColor: 0xffd9a0, discGlow: 0xff9a50, glow: 0.6, cloudColor: 0xffd8b8, rock: 0xb4623e, snow: 0xfff1e0, pt: [1.08, 0.98, 0.88] },
+  { ...THEMES[2], id: 'nightcity', name: 'Gece Şehri', skyTop: 0x0a0a30, skyMid: 0x2c2a78, horizon: 0x5a58b8, fog: 0x4a4a98, hemiSky: 0xb8b8ff, hemiGround: 0x4a4a90, rock: 0x4a4a88, snow: 0xe2e0ff, pt: [0.92, 0.92, 1.1] },
+  { ...D, id: 'volcano', name: 'Yanardağ Külü', skyTop: 0x3a2a30, skyMid: 0xa8483a, horizon: 0xf2a070, fog: 0xc98060, hemiSky: 0xffc9a8, hemiGround: 0x6a4640, sunColor: 0xff9060, sunIntensity: 1.7, sunDir: [0.5, 0.45, 0.5], discColor: 0xffb070, discGlow: 0xff5a30, glow: 0.8, snowfall: 0.35, clouds: 0.8, cloudColor: 0x8a6a64, rock: 0x4a3a3a, snow: 0xe6dcd8, birds: false, fogScale: 0.8, pt: [1.05, 0.9, 0.84] },
+  { ...THEMES[4], id: 'sakura', name: 'Sakura', skyTop: 0x7a86d8, skyMid: 0xf8b8d8, horizon: 0xffe8f0, fog: 0xfbd9e6, rock: 0x9a84b4, snow: 0xfff2f8, pt: [1.06, 0.94, 1.02] },
+  { ...D, id: 'neon', name: 'Neon', skyTop: 0x1a0a50, skyMid: 0x7a2aa8, horizon: 0x30d8e8, fog: 0x5a3ab0, hemiSky: 0xd8b8ff, hemiGround: 0x3a2a8a, sunColor: 0xd8a8ff, sunIntensity: 1.5, sunDir: [-0.4, 0.8, 0.5], disc: 'moon', discColor: 0xff9aeb, discGlow: 0x30e8ff, glow: 0.6, stars: true, aurora: true, snowfall: 0.2, birds: false, clouds: 0.3, cloudColor: 0xb89aff, rock: 0x5a3aa0, snow: 0xe8dcff, pt: [0.98, 0.94, 1.14] },
+  { ...THEMES[2], id: 'space', name: 'Uzay', skyTop: 0x02030c, skyMid: 0x0a1030, horizon: 0x203a78, fog: 0x1a2c68, hemiSky: 0x9ab0ff, hemiGround: 0x2a3a78, disc: 'moon', discSize: 260, rock: 0x3a4a88, snow: 0xd8e4ff, snowfall: 0.12, clouds: 0.1, ufo: false, pt: [0.94, 0.98, 1.12] },
+];
+for (const t of BAND_THEMES) if (t) THEME_BY_ID[t.id] = t;
+
 // Level 1 day, 2 crystal day, 3 sunset, 4 day, 5 night, 6 blizzard, 7 pink dawn, 8 sunset, 9 night, ... then repeats.
 const LEVEL_CYCLE = ['day', 'crystal', 'sunset', 'day', 'night', 'blizzard', 'pink', 'sunset', 'night', 'crystal', 'pink', 'blizzard', 'sunset', 'day', 'night'];
 
@@ -113,7 +128,9 @@ function dayOfYear(date) {
 
 export function themeForLevel(level, daily, date = new Date()) {
   if (daily) return THEMES[dayOfYear(date) % THEMES.length];
-  const i = (Math.max(1, level | 0) - 1) % LEVEL_CYCLE.length;
+  const n = Math.max(1, level | 0), band = Math.min(BAND_THEMES.length - 1, Math.floor((n - 1) / 5));
+  if (BAND_THEMES[band]) return BAND_THEMES[band];
+  const i = (n - 1) % LEVEL_CYCLE.length;
   return THEME_BY_ID[LEVEL_CYCLE[i]];
 }
 

@@ -9,6 +9,7 @@ import { meta } from './meta.js';
 import { t as tr, getLang } from './i18n.js';
 import { save } from './save.js';
 import { nextGoal } from './shop.js';
+import { fxOf } from './cosmetics.js';
 import { isScoreRecord } from './runner/goals.js';
 import { shareCard } from './sharecard.js';
 import { setIcon, uiImg } from './uiicons.js';
@@ -492,6 +493,9 @@ export class UI {
     try { nup = this.hooks?.nextPower?.() || null; } catch { nup = null; }
     this._nupAfford = !!(nup && nup.afford);
     this._nupOn = !!(nup && nup.name);   // the Next bar opens GÜÇ itself: no second GÜÇ button then
+    let ai = null;      // wardrobe: the priciest thing the wallet can pay right now, one tap opens it
+    try { ai = this.hooks?.affordItem?.() || null; } catch { ai = null; }
+    if (ai && coins > 0) html = `<button type="button" class="rx-aff"><div>${ai.icon} <b>${tr(ai.name)}</b></div><small class="ru-d">${tr('ALABİLİRSİN!')} ❄️ ${fmtN(ai.price)} ▶</small></button>` + html;
     if (nup && nup.name) {   // ONE next target, one number: "Next: Magnet · 120 ❄️ left" + a fill bar; amber and pulsing once it is affordable
       const left = Math.max(0, nup.price - nup.have), fr = Math.round(clamp01(nup.have / Math.max(1, nup.price)) * 100);
       html = `<button type="button" class="rx-up${nup.afford ? ' ok' : ''}"><div>${nup.icon} ${tr('Sıradaki:')} <b>${tr(nup.name)}</b> · ${nup.afford ? tr('ALABİLİRSİN!') + ' ▶' : fmtN(left) + ' ❄️ ' + tr('kaldı')}</div>${nup.desc ? `<small class="ru-d">${tr(nup.desc)}</small>` : ""}<div class="ru-b"><i style="width:${nup.afford ? 100 : fr}%"></i></div></button>` + html;
@@ -526,6 +530,8 @@ export class UI {
     if (mChip && !this._nupAfford) html = `<div class="rx-ms" style="--f:${Math.round(clamp01(nf) * 100)}%">${tr(rl.goal)}<span class="rx-pips">${qRows.map((m) => (m.done ? '●' : '○')).join('')}</span></div>` + html;
     ex.innerHTML = html;
     const qt = ex.querySelector('.rx-qtoggle');
+    const afEl = ex.querySelector('.rx-aff');
+    if (afEl && ai) afEl.onclick = () => { try { this.hooks?.shopItem?.(ai.kind, ai.id); } catch { /* optional */ } };
     const upEl = ex.querySelector('.rx-up');
     if (upEl) upEl.onclick = () => { try { this.hooks?.power?.(nup && nup.id); } catch { /* optional */ } };      // opens GÜÇ at that upgrade's row
     if (qt) qt.onclick = () => { const l = ex.querySelector('.rx-qlist'); const open = l.classList.toggle('hidden'); qt.textContent = qt.textContent.replace(/^[▸▾]/, open ? '▸' : '▾'); };
@@ -571,10 +577,25 @@ export class UI {
     this.el.menuBtn.classList.remove('hidden');
 
     this.powerBtn();
+    this.resultEmote(anyRec);
     this.resultFx(anyRec);
     this.goalAnimate();
     this.countUp(score, (v) => { this.el.resPct.textContent = fmtN(v); }, 600, { tick: true, done: () => this.resultScoreDone(anyRec) });
     this.flushNotices(mrep.notices);
+  }
+
+  // the equipped result EMOTE (wardrobe): an emoji acts out in the corner of the result card; the celebrating ones add confetti on a record
+  resultEmote(rec) {
+    if (this._emEl) { this._emEl.remove(); this._emEl = null; }
+    let fx = null;
+    try { fx = fxOf(save, 'emote'); } catch { fx = null; }
+    if (!fx || !fx.e || !this.el.result) return;
+    const el = document.createElement('div');
+    el.className = 'rx-emote ' + fx.css;
+    el.textContent = fx.e;
+    this.el.result.appendChild(el);
+    this._emEl = el;
+    if (fx.conf && rec && !reduceMotion()) this.timers.push(setTimeout(() => this.confetti(), 600));
   }
 
   // GÜÇ entry on the Rush result (the permanent upgrades): a small amber button under PAYLAŞ, pulsing when the cheapest upgrade is affordable.
@@ -1540,11 +1561,71 @@ export class UI {
     // the ladder is the goal: "sıradaki: MEGA ÇIĞ · 12 t" (next tier and the snow tons still missing); nothing on the last tier
     let nx = this.el.cgNext;
     if (!nx) { nx = this.el.cgNext = document.createElement('span'); nx.className = 'cg-nx'; this.el.cgFill.parentNode.appendChild(nx); }   // (inside the tier bar: the bar says what the next tier is and how far)
-    const nk = d.nextName ? 'sıradaki: ' + UP(d.nextName) + ' · ' + fmtTons(Math.ceil(d.nextTons || 0)) : '';
+    const nk = d.nextWord ? 'sıradaki: ' + UP(d.nextWord) + ' · ' + Math.round(d.nextD * 10) / 10 + ' m' : d.nextName ? 'sıradaki: ' + UP(d.nextName) + ' · ' + fmtTons(Math.ceil(d.nextTons || 0)) : '';   // the ladder is the target: "next: BUS · 6 m" (the ball size that swallows it)
     if (nk !== c.nx) { c.nx = nk; nx.textContent = nk; }
   }
 
+  // ---- the avalanche you cannot see yet: dust at the bottom edge that thickens as the gap closes + a gap pill (gap >= 900 = no avalanche)
+  cigWave(gap, max) {
+    let w = this._cw2;
+    const on = gap > 0 && gap < 900;
+    if (!w) {
+      if (!on) return;
+      const root = document.createElement('div');
+      root.id = 'cig-wave';
+      root.innerHTML = '<div class="cw-dust"></div><div class="cw-pill"><b>ÇIĞ</b><span class="cw-bar"><i></i></span><em></em></div>';
+      this.el.hud.appendChild(root);
+      w = this._cw2 = { root, dust: root.firstChild, bar: root.querySelector('i'), txt: root.querySelector('em'), g: -1, on: false };
+    }
+    if (on !== w.on) { w.on = on; w.root.classList.toggle('on', on); }
+    if (!on) return;
+    const g = Math.round(gap);
+    if (g === w.g) return;
+    w.g = g;
+    w.dust.style.opacity = String(Math.round(clamp01((130 - gap) / 115) * 90) / 100);
+    w.bar.style.setProperty('--f', String(Math.round(100 * clamp01(1 - gap / Math.max(60, max || 150))) / 100));
+    w.txt.textContent = g + ' m';
+    w.root.classList.toggle('near', gap < 45);
+  }
+
+  // ---- the size ladder: PENGUEN > ARABA > OTOBÜS > EV > KULE > KASABA; every rung up to your tier is lit, the newest pulses for 3 s
+  cigLadder(tier, age) {
+    let l = this._cl2;
+    if (!l) {
+      const root = document.createElement('div');
+      root.id = 'cig-ladder';
+      root.innerHTML = ['PENGUEN', 'ARABA', 'OTOBÜS', 'EV', 'KULE', 'KASABA'].map((s) => '<i>' + s + '</i>').join('');
+      this.el.hud.appendChild(root);
+      l = this._cl2 = { root, kids: root.children, t: -1, nw: false };
+    }
+    const T = Math.min(Math.max(0, tier | 0), l.kids.length - 1), nw = age < 3;
+    if (T === l.t && nw === l.nw) return;
+    l.root.classList.add('show');
+    l.t = T; l.nw = nw;
+    for (let i = 0; i < l.kids.length; i++) { const c = l.kids[i].classList; c.toggle('on', i <= T); c.toggle('new', nw && i === T); }
+  }
+
+  // ---- the town-crush counter: a big ton number while the town falls (tons < 0 hides it)
+  cigCrush(tons) {
+    let c = this._cc2;
+    if (!c) {
+      if (tons < 0) return;
+      const el = document.createElement('div');
+      el.id = 'cig-crush';
+      this.el.hud.appendChild(el);
+      c = this._cc2 = { el, v: -2 };
+    }
+    const v = tons < 0 ? -1 : Math.round(tons * 10);
+    if (v === c.v) return;
+    c.v = v;
+    c.el.classList.toggle('on', v >= 0);
+    if (v >= 0) c.el.textContent = '+' + fmtTons(tons);
+  }
+
   cigReset() {
+    this.cigWave?.(999);
+    if (this._cl2) { this._cl2.t = -1; this._cl2.root.classList.remove('show'); }
+    this.cigCrush?.(-1);
     this.el.cigHud.classList.add('hidden');
     this.el.hud.classList.remove('cig-endless');
     this._cg = { kg: -1, tnRaw: null, fill: -1, dm: -1, bk: -1, nx: null };
@@ -1665,7 +1746,7 @@ export class UI {
     const hot = this.el.hud && this._cmN > 3 && this.el.hud.classList.contains('rush');
     if (prio < 2 && hot) return;   // no info toasts while a combo runs
     if (opts && opts.info && this._mOn) return;   // one goal at a time: postcard / chapter tips wait for a moment without a mission pill
-    this._say('t', { text: String(text), prio, ms: opts && opts.long ? 3000 : 1500, drop: !!(opts && opts.drop), show: () => this._toastNow(text, opts) });
+    this._say('t', { text: String(text), prio, ms: opts && opts.long ? 3000 : 2200, drop: !!(opts && opts.drop), show: () => this._toastNow(text, opts) });
   }
   _toastNow(text, opts) {
     const box = this.el.toastSoft;

@@ -12,7 +12,7 @@
 //
 // Coordinates follow world.js: downhill distance `d` grows forward, world z = -d.
 import * as THREE from 'three';
-import { CFG, tierOf, bandAt, bandRel, LABEL } from './config.js';
+import { CFG, tierOf, bandAt, bandRel, LABEL, LADDER } from './config.js';
 import { makeRng } from './rng.js';
 import { patchMaterial } from './shaders.js';
 
@@ -1387,13 +1387,14 @@ export class CigGame {
       // ÇIĞ DAĞLAR
       mom: 0, momT: 0, hitT: 0, hitPending: false, dn: 0, momMsg: false, hazFloor: 0, hazMsg: null, hazSeen: {}, chain: 0, chainT: 0, chainMul: 1, stripT: 0, stripNew: false, surgeT: 0, knockT: 0, knockV: 0, gateIdx: 0, tersDone: false, finalBroken: false, finalR: 0, bossFail: null, win: false, lastBounce: null, gateLog: [],
     });
-    this._startR = r0;
+    this._startR = r0; this._stepR = r0 * 1.3;
     b.reset(r0);
     b.y = w.groundY(0, 0) + b.r * 0.92;
     b.speed = CFG.startSpeed * (this.L ? this.L.speedK * 1.2 : 1);
     this._afkAcc = 0; this._next = null; this._snowT = [];
     this.progT = 0; this.progD = 0;
-    this.wave.on = false; this.wave.warned = false; this.wave.calm = 0; this.wave.n = 0;
+    this.wave.on = false; this.wave.warned = false; this.wave.calm = 0; this.wave.n = 0; this.wave.vis = 0; this.wave.timedOn = false; this._unlockT = -99;
+    G.crushT = 0; G.crushDone = 0; G.crushTons = 0;
     this.stats = newStats();
     this.powerT = 0; this.feverT = 0; this.fevAt = 40; this.fevCd = 0;
     this.bot.queue.length = 0; this.bot.tick = 0;
@@ -1456,7 +1457,17 @@ export class CigGame {
   _eff() { return this.ball.r * (this.G.stripT > 0 ? 1 + CFG.lvl.stripRam : 1); }   // effective size at a barrier (a strip = a harder hit)
   _band() { return this.L ? bandRel(this.world.expectAt(this.ball.d), this.ball.r) : bandAt(this.ball.r, this.ball.d); }
   // all growth goes through here: a mountain has a hard size cap (rCap)
-  _grow(r3) { this.ball.setRadius(Math.min(Math.cbrt(r3), this.L ? this.L.rCap : Infinity)); }
+  _grow(r3) {
+    const b = this.ball;
+    b.setRadius(Math.min(Math.cbrt(r3), this.L ? this.L.rCap : Infinity));
+    if (b.r >= this._stepR) {   // growth you can see: a size pop every x1.3 of radius
+      this._stepR = b.r * 1.3;
+      b.punch(0.14); b.squash(0.1);
+      this._h('kick', 0.1, 3);
+      this._h('haptic', 'light');
+      this._h('burst', b.x, b.y + b.r * 0.4, b.d, 10, 0xffffff, 5 + b.r, 0.25 + b.r * 0.05, 5);
+    }
+  }
   _cm() { return this.L ? this.G.chainMul || 1 : 1; }   // chain multiplier for the ton score
   _inArena() { const L = this.L; return !!(L && L.finale.kind === 'boss' && !this.G.finalBroken && this.ball.d > L.dF - 170); }
   _readyOf(g) {
@@ -1510,6 +1521,7 @@ export class CigGame {
   update(dt, steerM = 0) {
     const G = this.G, b = this.ball, w = this.world, M = this.plus.mods;
     G.t += dt;
+    if (G.crushT > 0) { G.crushT -= dt / Math.max(0.3, G.timeScale); if (G.crushT > 0.6) G.timeScale = Math.min(G.timeScale, 0.55); }
     G.bumpCd -= dt; G.recoverT -= dt; G.momentumT -= dt;
     G.comboT -= dt; G.gateSlow = (G.gateSlow || 0) - dt;
     if (this.feverT > 0) { this.feverT -= dt; if (this.feverT <= 0) this.feverT = 0; }
@@ -1718,7 +1730,10 @@ export class CigGame {
     const gain = CFG.growK * q.r ** 3 * (chunk ? CFG.chunkGain : this._band()) * (this.feverT > 0 ? 1.15 : 1);
     const rb = b.r;
     this._grow(b.r ** 3 + gain);
-    b.punch(Math.min(0.09, 0.45 * q.r / Math.max(0.2, rb)));
+    const rel = clamp(q.r / Math.max(0.3, rb), 0, 1);
+    b.punch(Math.min(0.16, 0.45 * q.r / Math.max(0.2, rb)));
+    if (rel > 0.5) b.squash(0.06 + 0.14 * rel);   // a big bite has weight: a squash, and above 0.7 a beat of hit-stop (0.5 made the BOWLİNG bot take more hits: hit-stop eats the dodge window)
+    if (rel > 0.7) this._h('hitStop', 0.03);
     if (!chunk) {
       _stickPos.set(q.x, q.y, -q.d);
       if (b.stuck[q.def.name] || stuckTypes(b) < STUCK_MAX) b.stick(q.def, _stickPos, q.s0, 0.6);   // every stuck type is a draw call: only the first STUCK_MAX types show on the ball
@@ -1734,7 +1749,7 @@ export class CigGame {
     this.stats.eats++;
     this._comboUi(G.combo);
     const nowT = G.t;
-    if (!this.L && !chunk && q.r > b.r * 0.3 && nowT - (this._kgT || 0) > 0.4) { this._kgT = nowT; this._call('text', '+' + Math.max(1, Math.round(q.mass * M.tonMul * 1000)) + ' kg', q, ''); }   // endless: the weight you just gained pops at the bite
+    if (!this.L && !chunk && q.r > b.r * 0.3 && nowT - (this._kgT || 0) > 0.4) { this._kgT = nowT; this._h('text', '+' + Math.max(1, Math.round(q.mass * M.tonMul * 1000)) + ' kg', q, ''); }   // endless: the weight you just gained pops at the bite
     if (nowT - this.lastPopT > 0.03) {
       this.lastPopT = nowT;
       this._h('sfx', 'pop', clamp(q.r / Math.max(0.3, b.r) * 0.9, 0, 1), G.combo);
@@ -1744,7 +1759,8 @@ export class CigGame {
       this.lastPopHapT = nowT;
       this._h('haptic', q.r > b.r * 0.5 ? 'medium' : 'light');
     }
-    this._h('burst', q.x, q.y, q.d, 2 + Math.min(4, Math.round(q.r / Math.max(0.3, b.r) * 6)), 0xffffff, 1.5 + Math.min(4, q.r), 0.08 + Math.min(0.2, q.r * 0.06), 3);
+    this._h('burst', q.x, q.y, q.d, 3 + Math.round(rel * 9), 0xffffff, 1.5 + Math.min(4, q.r), 0.08 + Math.min(0.2, q.r * 0.06), 3);
+    if (G.combo === 10 || G.combo === 20) this._h('flash', 'gold');   // the chain is on fire: a gold edge flash
     if (!chunk) this._h('track', 'swallow', { type: q.type });
     const label = LABEL[q.type];
     if (label && q.r > b.r * 0.8) { const seen = this._seen || (this._seen = new Set()); if (!seen.has(q.type)) { seen.add(q.type); this._text(`${label}!`, q, ''); } }
@@ -1776,9 +1792,12 @@ export class CigGame {
     const G = this.G, L = this.L, b = this.ball, tv = this.world.townVol;
     if (!L || !L.town || !tv) return;
     G.townGot += p.r * p.r;
+    G.crushTons += p.mass * this.plus.mods.tonMul * this._cm();
+    if (!G.crushDone) { G.crushDone = 1; G.crushT = 2.6; }   // the town-crush shot: slow-mo, a low camera, a big ton counter (main.js)
+    if (G.t - (this._debT || 0) > 0.12 && p.r > 0.25 * b.r) { this._debT = G.t; this._h('debris', p.x, p.y, p.d, 4 + Math.round(8 * Math.min(1, p.r / b.r))); }
     const pct = this.stats.townPct = Math.min(1, G.townGot / tv);
     G.townPct = 100 * pct;   // 0..100, the town gauge (only changes when a town prop is swallowed / smashed, so it is always current)
-    if (p.r > 0.8 * b.r) { this._h('hitStop', 0.05); this._h('kick', 0.3, 8); }   // (the tower / big houses: a beat of weight)
+    if (p.r > 0.8 * b.r) { this._h('hitStop', 0.06); this._h('kick', 0.5, 10); } else if (p.r > 0.4 * b.r) this._h('hitStop', 0.03);   // (the tower / big houses: a beat of weight)
     if (!G.town70 && pct >= L.town.need) {
       G.town70 = 1;
       this._msg(2, '⭐ KASABANIN %' + Math.round(100 * L.town.need) + ' YIKILDI!');
@@ -2855,8 +2874,19 @@ export class CigGame {
     const maxGap = C.gap0 * C.clamp;
     if (b.d - W.d > maxGap) W.d = b.d - maxGap;
     const gap = b.d - W.d;
-    if (gap < CFG.lvl.chaseNear && (W.t | 0) !== (W._lt | 0)) { W._lt = W.t; G.shake += 0.12; this._h('haptic', 'light'); if (gap < CFG.lvl.chaseNear * 0.7) this._h('flash', 'hit'); }
+    this._waveFx(dt, gap);
+    if (gap < CFG.lvl.chaseNear && (W.t | 0) !== (W._lt | 0)) { W._lt = W.t; this._h('haptic', 'light'); if (gap < CFG.lvl.chaseRed * 0.7) this._h('flash', 'hit'); }
     if (W.d >= b.d - b.r * 0.3) this.end('wave');
+  }
+
+  // The wall you cannot see yet: W.vis (0..1, "the wall is close") drives rumble and shake; the HUD draws dust at the screen edge and the gap bar from the gap.
+  _waveFx(dt, gap) {
+    const G = this.G, W = this.wave;
+    W.vis = clamp((CFG.lvl.chaseNear - gap) / (CFG.lvl.chaseNear - 15), 0, 1);
+    if (W.vis <= 0) return;
+    G.shake = Math.max(G.shake, 0.12 + 0.5 * W.vis);
+    W.rumT = (W.rumT || 0) - dt;
+    if (W.rumT <= 0) { W.rumT = 1.3 - 0.8 * W.vis; this._h('sfx', 'rumble'); if (W.vis > 0.5) this._h('haptic', 'light'); }
   }
 
   // TERS ÇIĞ: the avalanche runs AHEAD and leaves snow behind it; eat the trail, catch up and break into it for a bonus.
@@ -2895,8 +2925,10 @@ export class CigGame {
     const slow = G.t > 6 && b.speed < target * CFG.waveSlow;
     G.slowT = slow ? G.slowT + dt : Math.max(0, G.slowT - dt * 1.5);
     if (!W.on) {
-      if (G.slowT > CFG.waveT) {
-        W.on = true; W.d = b.d - CFG.waveGap; W.v = 0; W.t = 0; W.calm = 0; W.warnT = 0.8; W.n++;
+      const timed = G.t > 40 && !W.timedOn;   // endless: from 40 s on the avalanche chases you whatever you do, and it keeps getting faster
+      if (G.slowT > CFG.waveT || timed) {
+        W.on = true; W.d = b.d - (timed ? 110 : CFG.waveGap); W.v = timed ? target * 0.78 : 0; W.t = 0; W.calm = 0; W.warnT = timed ? 6 : 0.8; W.n++;
+        if (timed) W.timedOn = true;
         this.stats.waves++;
         this._msg(3, '⚠ ÇIĞ GELİYOR!');
         this._h('sfx', 'rumble');
@@ -2910,18 +2942,20 @@ export class CigGame {
     const ok = b.speed >= target * 0.85;
     W.calm = ok ? W.calm + dt : Math.max(0, W.calm - dt);
     // the wave runs at about the speed you SHOULD have; once you recover it falls back
-    const wv = W.calm > 1.5 ? target * 0.45 : Math.max(target * 0.9, b.speed * 1.02);
+    const wv = W.timedOn ? target * clamp(0.78 + 0.0027 * (G.t - 40), 0.78, 1.06) : W.calm > 1.5 ? target * 0.45 : Math.max(target * 0.9, b.speed * 1.02);   // (rising pressure: 0.78 x at 40 s, 1.06 x at 143 s)
     W.v += (wv - W.v) * Math.min(1, dt * 2);
     W.d += W.v * dt;
+    if (W.timedOn && b.d - W.d > 150) W.d = b.d - 150;
     const gap = b.d - W.d;
-    if (gap > CFG.waveGap * 1.5 && W.calm > 1.5) { W.on = false; return; }
+    if (!W.timedOn && gap > CFG.waveGap * 1.5 && W.calm > 1.5) { W.on = false; W.vis = 0; return; }
+    this._waveFx(dt, gap);
     W.warnT -= dt;
-    if (W.warnT <= 0 && gap < 80) {
-      W.warnT = 2.6;
+    if (W.warnT <= 0 && gap < (W.timedOn ? 45 : 80)) {
+      W.warnT = W.timedOn ? 6 : 2.6;
       this._msg(3, '⚠ ÇIĞ YAKLAŞIYOR: hızlan, yemeye devam et!');
       if (gap < 35) this._h('flash', 'hit');
     }
-    if ((W.t | 0) !== (W._lt | 0) && gap < 40) { W._lt = W.t; G.shake += 0.15; this._h('haptic', 'light'); }
+    if ((W.t | 0) !== (W._lt | 0) && gap < 40) { W._lt = W.t; this._h('haptic', 'light'); }
     if (W.d >= b.d - b.r * 0.3) { this.end('wave'); }
   }
 
@@ -2993,6 +3027,11 @@ export class CigGame {
       G.shake += 0.5 + G.tier * 0.15;
       this._h('burst', b.x, b.y, b.d, 24, 0xffffff, 10 + b.r, 0.3 + b.r * 0.06, 6);
       b.punch(0.12);
+      // size ladder: the class that is edible now (ARABA, OTOBÜS, EV, KULE, KASABA) gets a bright feast ahead, a one-word call-out and a lit rung in the HUD
+      const lad = LADDER[Math.min(G.tier, LADDER.length - 1)];
+      this.world.feast(b.d + 24, b.d + 110, b.r, lad[1]);
+      this._unlockT = G.t;
+      this._h('text', lad[0] + '!', b, '');
     }
   }
 
@@ -3074,7 +3113,10 @@ export class CigGame {
     I.tons = this.totalTons(); I.dist = b.d; I.tierName = CFG.tierNames[T]; I.frac = frac; I.best = this.bestTons || 0;
     I.size = b.r * 2; I.tier = T + 1; I.speed = b.speed; I.hunger = hf; I.wave = this.wave.on && !(this.L && this.L.ters);
     const e = CFG.tierEdges[T];   // ÇIĞ SONSUZ: the ladder is the goal (next tier's name and the snow tons still missing)
-    I.nextName = e ? CFG.tierNames[T + 1] : ''; I.nextTons = e ? Math.max(0, 4.18879 * (e ** 3 - b.r ** 3) * CFG.snowDensity) : 0;
+    I.nextName = e ? CFG.tierNames[T + 1] : ''; I.nextWord = e && LADDER[T + 1] ? LADDER[T + 1][0] : ''; I.nextD = e ? 2 * e : 0; I.nextTons = e ? Math.max(0, 4.18879 * (e ** 3 - b.r ** 3) * CFG.snowDensity) : 0;
+    I.ladder = G.tier; I.ladderNew = G.t - this._unlockT;   // size ladder: the rung that just lit up pulses for 3 s
+    I.waveGap = this.wave.on && !(this.L && this.L.ters) ? b.d - this.wave.d : 999;
+    I.waveMax = this.L && this.L.chase ? this.L.chase.gap0 * this.L.chase.clamp : 150;
     I.townPct = this.G.townPct || 0;   // destroyed share of the finale town, 0..100 (mountains; 0 elsewhere)
     if (this.L) this._fillLv(I);
     this._h('hud', I);
@@ -3268,7 +3310,7 @@ export class CigGame {
   }
 }
 
-const STUCK_MAX = 5;
+const STUCK_MAX = 8;
 function stuckTypes(b) { let n = 0; for (const k in b.stuck) n++; return n; }
 
 function newStats() {

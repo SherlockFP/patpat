@@ -4,7 +4,7 @@
 // 390x844 @ dpr 1, nothing online (every non-localhost request is blocked), only our own PIDs are killed, never the owner's Chrome.
 // Machine lock: os.tmpdir()/patpat-smoke.lock holds the PID of the running smoke test; a second run waits up to 8 min, a lock whose PID is dead is taken over.
 // Timeouts: every scenario has a hard timeout (30 s default, 90 s Rush playtest; a few say otherwise below). On expiry it FAILs and the run moves on;
-// the stuck scenario can no longer touch the browser (its next CDP call is rejected). Whole run is capped at ~7 min (later scenarios are skipped with WARN).
+// the stuck scenario can no longer touch the browser (its next CDP call is rejected). Whole run is capped at ~8 min (later scenarios are skipped with WARN).
 // Frames for humans/critics are shot without the ?debug overlay: s1-s4, s13, s14, s15 load without ?debug. Scenarios that need the cig.* hooks (s5-s9, s11) load with
 // ?debug but an injected style (#debug{display:none}) keeps the overlay out of every frame; only s16 shows it. Draw calls / triangles come from a WebGL draw hook
 // injected into every document (all passes of a frame summed), so they work without ?debug.
@@ -18,7 +18,8 @@
 //   12 frame pacing (Rush, rAF deltas)                        13 first-run frames first_00..03.png at 0.5/2/5/10 s (fresh save)
 //   14 cig mountain 1 start/mid/town/end (cig_1_*.png)             15 cig mountain 12 start/mid/end (cig_12_*.png)
 //   29 borrowed mechanics: mech_burst/dash/board/drift/chase/crowd_0..1.png + rush_ch_halka/gp/gokyuzu/magara.png (needs ?debug hooks)
-//   28 Sonic ring: loop_0..5.png (entry / 3 o'clock / top / 9 o'clock / exit / chase back), loopb_* (2nd run), cork_0..1, helix_0..1, dloop_0..6 (double loop) (ball visible, ring in frame)   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   21 rush camera sweep (flat frames)   22 new chapters ekspres/ay/lazer/kopru/fuze/hareket/heyelan/turbo/volkan/sakura/neon/uzay: rush_ch_<id>.png (name strip + one-word label) and mech_<id>.png (the mechanic in view, needs ?debug hooks)   24 menu text: after every bottom-nav panel and after a Rush death -> MENU no toast / hint / float / banner / HUD text is left on screen   25 AI UI icons: icons_rush_buff.png, icons_perk.png, icons_cig.png (images decoded, not emoji)   10 is the final blank-frame check (always printed)
+//   31 wardrobe v2: shop_<en|tr>_<skin|trail|hop|stomp|blast|yeti|death|emote|power|pazar>.png, shop_*_3d_trail / _dene / _3d_yeti, text audit   32 equipped cosmetics in play: cos_*.png
+//   28 Sonic ring: loop_0..5.png (entry / 3 o'clock / top / 9 o'clock / exit / chase back), loopb_* (2nd run), cork_0..1, helix_0..1, dloop_0..6 (double loop) (ball visible, ring in frame)   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   21 rush camera sweep (flat frames)   22 new chapters ekspres/ay/lazer/kopru/fuze/hareket/heyelan/turbo/volkan/sakura/neon/uzay: rush_ch_<id>.png (name strip + one-word label) and mech_<id>.png (the mechanic in view, needs ?debug hooks)   24 menu text: after every bottom-nav panel and after a Rush death -> MENU no toast / hint / float / banner / HUD text is left on screen   30 cig polish (needs ?debug hooks): cig_wave / cig_unlock / cig_crush_0..1 / cig_theme_6..36.png   25 AI UI icons: icons_rush_buff.png, icons_perk.png, icons_cig.png (images decoded, not emoji)   10 is the final blank-frame check (always printed)
 import { spawn, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -30,7 +31,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = process.env.CHROME_PATH || 'C:/Users/Admin/AppData/Local/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-win64/chrome-headless-shell.exe';
-const BUDGET_MS = 440_000;                     // whole run (browser time) must stay under ~7 min; later scenarios are skipped past this
+const BUDGET_MS = 480_000;                     // whole run (browser time) must stay under ~8 min; later scenarios are skipped past this
 let T0 = Date.now();                           // reset after the lock is taken, so waiting for another run does not count
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => Date.now() - T0;
@@ -323,7 +324,8 @@ async function firstRun(ctx, lang) {
   const d0 = await waitFor(`(${hudDist})>=0&&(${hudDist})`, 12000, 'first distance>0').catch(() => 0);
   await sleep(3000);
   const d1 = await ev(hudDist);
-  await shot(lang === 'tr' ? 's2_play_tr' : 's1_play', ctx);   // (s2 is the deliberate Turkish run: its HUD is Turkish on purpose)
+  await shot(lang === 'tr' ? 's2_play_tr' : 's1_play', ctx);
+  await auditText(ctx, '#hud', (lang === 'tr' ? 'TR' : 'EN') + ' Rush HUD text');   // (s2 is the deliberate Turkish run: its HUD is Turkish on purpose)
   if (d1 > d0) ctx.pass(`playing Rush, distance ${d0} -> ${d1} m, load ${ms} ms`); else ctx.fail(`distance not increasing (${d0} -> ${d1})`);
   if (!lang) {   // the English HUD (quest chip, hints, goal strip) must not carry a Turkish letter
     const hud = await ev(`document.getElementById('hud').innerText`), tr = hud.match(/[ğüşıöçİĞÜŞÖÇ]/g);
@@ -365,6 +367,7 @@ async function returning(ctx) {
   const txt = await ev(`document.querySelector('.fm-play')?.textContent||''`);
   if (/PLAY|OYNA/i.test(txt)) ctx.pass(`main menu settled, play button "${txt.trim().replace(/\s+/g, ' ')}"`); else ctx.fail('play button text ' + txt);
   await shot('s3_menu', ctx);
+  await auditText(ctx, '.fm-main', 'main menu text');
   const labels = await ev(`[...document.querySelectorAll('.fm-secrow .fm-sb')].map(b=>b.getAttribute('aria-label')||b.textContent.trim())`);
   if (!labels.length) { ctx.fail('no bottom-nav buttons (.fm-secrow .fm-sb)'); return; }
   for (let i = 0; i < labels.length; i++) {
@@ -376,6 +379,7 @@ async function returning(ctx) {
       await waitFor(`(!${FIND('.fm-secrow .fm-sb')}) || !!document.querySelector('.fm-ov,[role=dialog]')`, 6000, 'opens');
       await sleep(400);
       if (i === 0) await shot('s3_nav_' + i, ctx);
+      await auditText(ctx, '.fm-ov, .cs-root', `panel "${lb}" text`);
       await key('Escape');
       await waitFor(`!!${FIND('.fm-secrow .fm-sb')} && !document.querySelector('.fm-ov')`, 6000, 'closes');
       ctx.pass(`nav "${lb}" opens and closes`);
@@ -577,6 +581,38 @@ async function resultLayouts(ctx) {
   await ev(`(()=>{const P=cig.plan(12);cig.menus.showLevelComplete({level:{id:P.n,name:P.name,boss:P.boss,act:1,length:P.length,goals:P.stars.map(s=>({text:s.text}))},stars:3,goalsMet:[true,true,true],rewards:{coins:60,crystals:2,chest:{coins:200},perfect:true,justUnlockedEndless:true},hasNext:true,labels:{banner:'KASABA %100 YIKILDI',next:'SONRAKİ DAĞ ▶',map:'DAĞLAR',retry:'↻ TEKRAR'},chips:['🏘️ 100%','⚪ 12.4 m','⚖️ 3.2 kt','⏱ 0:41','❄️ 60']},{})})()`);
   await sleep(2300); await shot('res_full3', ctx);
   await fitCheck(ctx, 'mountain result, 3 stars + chest + perfect + Rush unlock');
+}
+
+// ÇIĞ polish (needs ?debug hooks): the avalanche behind you (dust + gap pill), a size-ladder unlock, the town-crush shot, one frame per mountain theme band
+async function cigPolish(ctx) {
+  const sv = save(); sv.cig.lv.cleared = 39;
+  const start = async (n) => { await load('?debug&cig=' + n, seedOf(sv)); await waitFor(`window.cig&&cig.G.mode==='cig'&&cig.G.state==='play'`, 25000, 'mountain ' + n + ' playing'); await ev('cig.game.auto=true;cig.game.bot.noise=0;cig.game.bot.latency=0.1;window.__simF=(s)=>{cig.sim(s);window.__gl?.flush?.()}'); };
+  await start(12);
+  await ev('__simF(9)');   // the avalanche starts after 6 s
+  await ev('(()=>{const g=cig.game;g.wave.d=cig.ball.d-52})()');
+  await ev('__simF(0.6)');
+  const w = await ev('(()=>{const W=cig.game.wave,e=document.getElementById("cig-wave");return {on:W.on,vis:+W.vis.toFixed(2),pill:!!e&&e.classList.contains("on"),txt:e?e.innerText.replace(/\s+/g," "):""}})()');
+  await shot('cig_wave', ctx);
+  if (w.on && w.vis > 0 && w.pill) ctx.pass(`avalanche wall visible state: vis ${w.vis}, gap pill "${w.txt}"`); else ctx.fail('avalanche wall not visible: ' + JSON.stringify(w));
+  const g0 = await ev('cig.game.G.tier');
+  await ev('cig.setR(cig.CFG.tierEdges[Math.min(6,cig.game.G.tier)]*1.03);cig.game._tierCheck();__simF(0.7)');
+  const lad = await ev('(()=>({tier:cig.game.G.tier,hi:cig.world.statics.filter((p)=>p.hi&&p.alive).length,rung:[...document.querySelectorAll("#cig-ladder i.on")].length}))()');
+  await shot('cig_unlock', ctx);
+  if (lad.tier > g0 && lad.hi >= 1 && lad.rung >= 1) ctx.pass(`size ladder unlock: tier ${g0}->${lad.tier}, ${lad.hi} lit props ahead, ${lad.rung} rungs lit`); else ctx.fail('ladder unlock: ' + JSON.stringify(lad));
+  await start(12);
+  await ev('(()=>{const P=cig.game.L;cig.setR(P.finale.minR*1.15);cig.warp(P.dF-30)})()');
+  const cr = await ev('(()=>{for(let i=0;i<400&&!cig.game.G.crushT;i++)__simF(0.05);return cig.game.G.crushT})()');
+  await ev('__simF(0.5)'); await shot('cig_crush_0', ctx);
+  await ev('__simF(0.5)'); await shot('cig_crush_1', ctx);
+  const ts = await ev('(({G})=>({ts:+G.timeScale.toFixed(2),t:+G.crushT.toFixed(2),tons:+G.crushTons.toFixed(1),el:!!document.querySelector("#cig-crush.on")}))(cig)');
+  if (cr > 0 && ts.el) ctx.pass(`town-crush shot: ${JSON.stringify(ts)}`); else ctx.fail('town crush: ' + JSON.stringify({ cr, ts }));
+  // endless: from 40 s on the avalanche chases you whatever you do, and it speeds up
+  await load('?debug&auto&cig=endless', seedOf(sv)); await waitFor(`window.cig&&cig.G.mode==='cig'&&cig.G.state==='play'`, 25000, 'endless playing');
+  await ev('window.__simF=(s)=>{cig.sim(s);window.__gl?.flush?.()}'); await ev('__simF(46)');
+  const ew = await ev('(()=>{const W=cig.game.wave;return {on:W.on,timed:!!W.timedOn,gap:+(cig.ball.d-W.d).toFixed(0),st:cig.G.state}})()');
+  await ev('cig.game.wave.d=cig.ball.d-40;__simF(0.5)'); await shot('cig_endless_wave', ctx);
+  if (ew.on && ew.timed || ew.st !== 'play') ctx.pass(`endless avalanche: ${JSON.stringify(ew)} at 46 s`); else ctx.fail('endless avalanche missing at 46 s: ' + JSON.stringify(ew));
+  for (const n of [6, 16, 26, 36]) { await start(n); await ev('__simF(3)'); await shot('cig_theme_' + n, ctx); }
 }
 
 async function endlessDaily(ctx) {
@@ -1022,6 +1058,120 @@ async function sonic(ctx) {
   if (off) ctx.pass('blast ends: meter leaves the blast look'); else ctx.fail('meter still in blast look after the blast ended');
 }
 
+// ---------------------------------------------------------------- wardrobe v2 (s31) + equipped cosmetics in play (s32)
+// text audit: inside root, no label clipped (nowrap/overflow:hidden text wider than its box, or any ellipsis) and no visible text under 11 px
+const TEXT_AUDIT = (root) => `(()=>{const R=document.querySelector(${JSON.stringify(root)});if(!R)return null;const clip=[],small=[];
+  for(const e of R.querySelectorAll('*')){const b=e.getBoundingClientRect();if(b.width<1||b.height<1)continue;const cs=getComputedStyle(e);if(cs.visibility==='hidden'||cs.display==='none'||+cs.opacity<0.05)continue;
+    if(!([...e.childNodes].some((n)=>n.nodeType===3&&/[\\p{L}\\d]/u.test(n.data))))continue;
+    const lbl=(typeof e.className==='string'?e.className:'')+':'+e.textContent.trim().replace(/\\s+/g,' ').slice(0,28);
+    const hid=cs.overflowX!=='visible'||cs.overflowY!=='visible';
+    if(hid&&(e.scrollWidth>e.clientWidth+2||e.scrollHeight>e.clientHeight+3)&&cs.overflowX!=='auto'&&cs.overflowX!=='scroll'&&cs.overflowY!=='auto'&&cs.overflowY!=='scroll')clip.push(lbl);
+    else if(cs.textOverflow==='ellipsis'&&e.scrollWidth>e.clientWidth+1)clip.push('ellipsis '+lbl);
+    if(parseFloat(cs.fontSize)<11)small.push(parseFloat(cs.fontSize)+'px '+lbl)}
+  return{clip:clip.slice(0,6),small:small.slice(0,6)}})()`;
+async function auditText(ctx, root, tag) {
+  const a = await ev(TEXT_AUDIT(root));
+  if (!a) { ctx.fail(`${tag}: ${root} not found`); return; }
+  if (a.clip.length) ctx.fail(`${tag}: clipped / ellipsised text ${JSON.stringify(a.clip)}`);
+  if (a.small.length) ctx.fail(`${tag}: text under 11 px ${JSON.stringify(a.small)}`);
+  if (!a.clip.length && !a.small.length) ctx.pass(`${tag}: no clipped label, min font 11 px`);
+}
+async function wardrobe(ctx) {
+  const d = new Date(), day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  for (const lang of ['en', 'tr']) {
+    const sv = save({ coins: lang === 'en' ? 90000 : 6000, wheel: { seen: 1, day } });
+    await load('', seedOf(sv, { patpat_lang: lang }), { waitBoot: false });
+    for (let i = 0; !(await ev(MENU_UP)); i++) { if (i > 800) throw new Error('timeout menu'); await sleep(25); }
+    const tS = Date.now();
+    while (!(await ev(MENU_SETTLED))) { if (Date.now() - tS > 12000) throw new Error('timeout menu settled'); await sleep(150); }
+    await tapSel('.fm-secrow .fm-sb', /Wardrobe|Dolap|Gardır/i, 4000);
+    await waitFor(`!!document.querySelector('.cs-root')`, 6000, 'wardrobe opens');
+    await sleep(500);
+    const tabs = await ev(`[...document.querySelectorAll('.cs-tab')].map((b)=>b.textContent.trim())`);
+    if (tabs.length >= 10) ctx.pass(`${lang}: ${tabs.length} tabs: ${tabs.join(' | ')}`); else ctx.fail(`${lang}: only ${tabs.length} wardrobe tabs`);
+    const names = ['skin', 'trail', 'hop', 'stomp', 'blast', 'yeti', 'death', 'emote', 'power', 'pazar'];
+    for (let i = 0; i < names.length; i++) {
+      if (lang === 'tr' && ![0, 1, 8, 9].includes(i)) continue;      // (TR: balls, trails, powers, market; EN shoots every tab)
+      await ev(`document.querySelectorAll('.cs-tab')[${i}].click()`);
+      await sleep(i < 8 ? 900 : 450);
+      await shot(`shop_${lang}_${names[i]}`, ctx);
+      const st = await ev(`({cards:document.querySelectorAll('.cs-card').length,h:[...new Set([...document.querySelectorAll('.cs-card')].map((c)=>Math.round(c.getBoundingClientRect().height)))],coll:document.querySelector('.cs-collt')?.textContent||'',cv:!!document.querySelector('.cs-cv'),vname:document.querySelector('.cs-vname')?.textContent||''})`);
+      if (i < 8 && !(lang === 'tr' && i > 1)) {
+        if (st.cards >= 7 && st.h.length === 1 && st.cv) ctx.pass(`${lang} ${names[i]}: ${st.cards} cards, one card height ${st.h[0]} px, 3D stage "${st.vname}", ${st.coll}`);
+        else ctx.fail(`${lang} ${names[i]}: cards ${st.cards}, heights ${JSON.stringify(st.h)}, canvas ${st.cv}`);
+      }
+      await auditText(ctx, '.cs-root', `${lang} ${names[i]} tab`);
+    }
+    // daily offer + sets + weekly rows
+    const pz = await ev(`({rows:document.querySelectorAll('.cs-up').length,sec:[...document.querySelectorAll('.cs-sec')].map((e)=>e.textContent.trim().slice(0,22))})`);
+    if (pz.rows >= 8) ctx.pass(`${lang} market: ${pz.rows} rows, sections ${pz.sec.join(' | ')}`); else ctx.fail(`${lang} market rows ${JSON.stringify(pz)}`);
+    if (lang === 'en' && /\d+g \d+sa|\dsa \d+dk/.test(await ev(`document.querySelector('.cs-root').innerText`))) ctx.fail('EN market still prints Turkish time units (g / sa / dk)');
+    // preview + DENE
+    await ev(`document.querySelectorAll('.cs-tab')[1].click()`); await sleep(500);
+    await ev(`document.querySelector('.cs-card[data-id="nota_izi"]').click()`); await sleep(1600); await shot(`shop_${lang}_3d_trail`, ctx);
+    await ev(`document.querySelector('.cs-vb.dene').click()`); await sleep(1800); await shot(`shop_${lang}_dene`, ctx);
+    const dn = await ev(`document.querySelector('.cs-vb.dene').className+'|'+document.querySelector('.cs-vb.dene').textContent`);
+    if (/busy/.test(dn)) ctx.pass(`${lang} DENE roll running: ${dn}`); else ctx.fail(`${lang} DENE did not start: ${dn}`);
+    await ev(`document.querySelectorAll('.cs-tab')[5].click()`); await sleep(500);
+    await ev(`document.querySelector('.cs-card[data-id="yeti_altin"]').click()`); await sleep(1500); await shot(`shop_${lang}_3d_yeti`, ctx);
+    if (lang === 'en') {      // every new ball: 3D frame for the odd ones, then buy + equip all of them (applySkin builds each skin on the real menu ball: no exception may fire)
+      await ev(`document.querySelectorAll('.cs-tab')[0].click()`); await sleep(500);
+      const NEWSKIN = ['piksel', 'misir', 'peynir', 'ay_topu', 'mumya', 'kaplan', 'armadillo', 'goz_kuresi', 'sabun', 'geod', 'kar_kuresi', 'hologram', 'magma', 'tesla', 'elmas'];
+      for (const id of NEWSKIN) {
+        await ev(`document.querySelector('.cs-card[data-id="${id}"]').scrollIntoView({block:'center'});document.querySelector('.cs-card[data-id="${id}"]').click()`); await sleep(600);
+        if (['kaplan', 'geod', 'elmas', 'hologram', 'tesla', 'sabun', 'magma', 'goz_kuresi'].includes(id)) await shot('skin3d_' + id, ctx);
+      }
+      for (const id of NEWSKIN) { await ev(`document.querySelector('.cs-card[data-id="${id}"] .cs-btn').click()`); await sleep(120); }
+      const own = await ev(`NEWSKIN=${JSON.stringify(NEWSKIN)},document.querySelector('.cs-collt').textContent`);
+      ctx.pass(`bought + equipped all ${NEWSKIN.length} new balls without an exception: ${own}`);
+    }
+    // buy flow on a new item: ezme_kar (300)
+    await ev(`document.querySelectorAll('.cs-tab')[3].click()`); await sleep(500);
+    const c0 = await ev(`document.querySelector('.cs-coins .num').textContent`);
+    await ev(`document.querySelector('.cs-card[data-id="ezme_kar"] .cs-btn').click()`); await sleep(700);
+    const c1 = await ev(`document.querySelector('.cs-coins .num').textContent`), sel = await ev(`document.querySelector('.cs-card[data-id="ezme_kar"] .cs-btn').textContent`);
+    if (c0 !== c1 && /✓/.test(sel)) ctx.pass(`${lang} buy + equip a stomp effect: ❄️ ${c0} -> ${c1}, button "${sel}"`); else ctx.fail(`${lang} buy flow: ${c0} -> ${c1}, button "${sel}"`);
+    await key('Escape'); await sleep(500);
+  }
+}
+async function cosPlay(ctx) {
+  const s3 = save3(); s3.coins = 9000;
+  s3.selected = { skin: 'kaplan', trail: 'nota_izi', hop: 'hop_yildiz', stomp: 'ezme_konfeti', blast: 'aura_pembe', yeti: 'yeti_buz', death: 'olum_konfeti', emote: 'em_dans' };
+  s3.owned = { skin: ['classic', 'kaplan'], trail: ['classic', 'nota_izi'] };
+  await load('?endless&notut&debug', seedOf(s3, { 'freemon.meta.v1': JSON.stringify({ st: { runs: 3, endlessRuns: 3 } }) }));
+  await waitFor(`${rushPlay}&&(${hudDist})>=0`, 30000, 'rush playing');
+  const play = (spec) => ev(`(()=>{const r=cig.runner,o=r.obstacles,b=r.b;r.invulnT=9999;r.yetiHoldT=99;r.meltK=0;r.pickDue=false;if(r.pickT>0){r.pickT=0;r.ctx.ui.runnerPerkPick?.(null)}${spec}})()`);
+  await ev('cig.endless()'); await waitFor(`!!cig.runner&&cig.runner.introK0>0`, 8000, 'fresh run');
+  await ev(`cig.runner.introPin=0.4`); await sleep(700); await shot('cos_yeti', ctx);
+  await ev(`cig.runner.introPin=undefined`); await waitFor(`cig.runner.introK===0`, 4000, 'intro over').catch(() => {});
+  await sleep(2500); await shot('cos_trail', ctx);
+  const st = await ev(`(()=>{const r=cig.runner;return{glyphs:!!r.glyphs,live:r.glyphs?r.glyphs.p.filter((q)=>q.life>0).length:0,hop:r.cosHop&&r.cosHop.shape,stomp:r.cosStomp&&r.cosStomp.cols.length,blast:r.cosBlast&&r.cosBlast.col}})()`);
+  if (st.glyphs && st.live > 0 && st.hop === 'star' && st.stomp === 4) ctx.pass('equipped trail particles are alive, hop ring = star, stomp = 4 colours: ' + JSON.stringify(st)); else ctx.fail('equipped cosmetics not read by the runner ' + JSON.stringify(st));
+  // hop ring: jump, then shoot while the ball falls toward the landing spot
+  await play(`if(r.grounded)r.jump(8.5,false)`);
+  for (let i = 0; i < 40; i++) { const f = await ev(`(()=>{const r=cig.runner;return !r.grounded&&r.b.vh<-1.5&&(r.b.h-r.groundAt(r.b.s,r.b.u))<1.4})()`); if (f) break; await sleep(30); }
+  await shot('cos_hop', ctx);
+  const ring = await ev(`(()=>{const r=cig.runner;return r.ring?{vis:r.ring.visible,verts:r.ring.geometry.attributes.position.count}:null})()`);
+  if (ring && ring.vis && ring.verts > 100) ctx.pass('star hop ring is drawn under the falling ball ' + JSON.stringify(ring)); else ctx.warn('hop ring not visible at the shot ' + JSON.stringify(ring));
+  await sleep(1200);
+  await play(`r.stompFx(2)`); await sleep(120); await shot('cos_stomp', ctx);
+  await play(`r.mom=0.95;r.addMom(0.1)`); await sleep(900); await shot('cos_blast', ctx);
+  const bl = await ev(`(()=>{const r=cig.runner;return{t:+r.blastT.toFixed(1),halo:!!r.halo&&r.halo.visible,tint:r._tc0?r.ctx.fx.trail.material.color.getHexString():null}})()`);
+  if (bl.t > 3 && bl.halo) ctx.pass('BLAST aura halo + tinted trail: ' + JSON.stringify(bl)); else ctx.fail('BLAST look missing ' + JSON.stringify(bl));
+  await ev(`cig.runner.blastT=0.01`); await sleep(300);
+  const back = await ev(`(()=>{const r=cig.runner;return r._tc0===null||r._tc0===undefined})()`);
+  if (back) ctx.pass('trail colour handed back after BLAST'); else ctx.fail('trail material still tinted after BLAST');
+  await ev(`(()=>{const r=cig.runner;r.invulnT=0;r.die('smash')})()`); await sleep(140); await shot('cos_death', ctx);
+  await waitFor(`!document.getElementById('result').classList.contains('hidden')`, 6000, 'result card');
+  await sleep(1400); await shot('cos_result', ctx);
+  const rs = await ev(`({emote:document.querySelector('#result .rx-emote')?.textContent||'',aff:document.querySelector('#result .rx-aff')?.textContent||''})`);
+  if (rs.emote === '💃') ctx.pass('result screen plays the equipped emote ' + rs.emote); else ctx.fail('result emote missing ' + JSON.stringify(rs));
+  if (rs.aff) ctx.pass('result screen shows the "you can buy it" pill: ' + rs.aff.trim().slice(0, 50)); else ctx.fail('result "you can buy it" pill missing');
+  await tapSel('.rx-aff', null, 3000); await waitFor(`!!document.querySelector('.cs-root')`, 5000, 'pill opens the wardrobe');
+  const open = await ev(`({tab:document.querySelector('.cs-tab.on')?.textContent||'',pv:document.querySelector('.cs-vname')?.textContent||''})`);
+  ctx.pass('the pill opened the wardrobe on its item: ' + JSON.stringify(open)); await sleep(1200); await shot('cos_result_shop', ctx);
+}
+
 async function main() {
   if (!existsSync(CHROME)) { console.error('Chrome headless shell not found: ' + CHROME + ' (set CHROME_PATH)'); process.exit(2); }
   await takeLock(); T0 = Date.now();
@@ -1082,6 +1232,8 @@ async function main() {
   await scenario(1, 'first-run EN', 30000, (c) => firstRun(c, null));
   await scenario(2, 'first-run TR', 30000, (c) => firstRun(c, 'tr'));
   await scenario(3, 'returning player + bottom nav', 30000, returning);
+  await scenario(31, 'wardrobe v2: tabs, 3D preview, DENE, daily offer, text audit (shop_en_*, shop_tr_*)', 110000, wardrobe);
+  await scenario(32, 'equipped cosmetics in play (cos_trail/hop/blast/yeti/stomp/death)', 70000, cosPlay);
   await scenario(4, 'rush 1-minute playtest', 115000, rushPlaytest);
   await scenario(24, 'menu: no stray text after panels / a run', 90000, menuClean);
   await scenario(22, 'new Rush chapters + mechanics (rush_ch_*, mech_*)', 170000, newChapters);
@@ -1095,6 +1247,7 @@ async function main() {
   await scenario(17, 'mountain result card (star 3 missed)', 30000, resultLayouts);
   await scenario(5, 'cig mountains 1/33/37', 30000, async (c) => { for (const n of [1, 33, 37]) await mountain(c, n, 3); });
   await scenario(6, 'cig endless + daily', 30000, endlessDaily);
+  await scenario(30, 'cig polish: avalanche wall, ladder, town crush, themes', 90000, cigPolish);
   await scenario(7, 'arena solo', 30000, arena);
   await scenario(8, 'english leak scan', 45000, leaks);
   await scenario(9, 'fullscreen', 30000, fullscreen);

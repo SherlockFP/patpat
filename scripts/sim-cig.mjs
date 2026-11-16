@@ -55,7 +55,8 @@ export function simMountain(n, opts = {}) {
   G.state = 'play'; G.paused = false; G.comboCoins = 0; G.cmTier = 0;
   plus.planTo(Math.min(world.genD, world.planEnd || Infinity) - 30);
   const dt = 1 / 60, maxT = opts.maxT || Math.max(120, plan.par * 3);
-  let minGap = 1e9;
+  let minGap = 1e9, near2 = 0, maxVis = 0, tNear = 0, near6 = 1e9;
+  const nearBuf = [];
   for (let k = 0; k < Math.round(maxT / dt) && G.state === 'play'; k++) {
     simNow += 1000 * dt;
     let gdt = dt * G.timeScale;
@@ -69,10 +70,17 @@ export function simMountain(n, opts = {}) {
     ball.tick(dt);
     ball.sync();
     world.update(gdt, ball.d, CFG.viewAhead, CFG.viewBehind + 15, ball);
-    if (game.wave.on) minGap = Math.min(minGap, ball.d - game.wave.d);
+    if (game.wave.on) { minGap = Math.min(minGap, ball.d - game.wave.d); maxVis = Math.max(maxVis, game.wave.vis || 0); }
+    if (G.t <= 2 && G.t >= tNear) {   // the opening: something edible within 6 m of the ball, sampled every 0.1 s over the first 2 s
+      tNear = G.t + 0.1;
+      world.query(ball.x, ball.d, ball.r + 10, nearBuf);   // (6 m from the ball's SURFACE: a house-sized ball is 20 m wide)
+      let c = world.pulls.length;   // (props already flying into the ball were edible and in reach: the suction takes them the moment they are)
+      for (let i = 0; i < nearBuf.length; i++) { const p = nearBuf[i]; if (p.alive && game._edible(p) && Math.hypot(p.x - ball.x, p.d - ball.d) - ball.r < 6) c++; }
+      near2 = Math.max(near2, c); near6 = Math.min(near6, c);
+    }
   }
   const end = G.state === 'play' ? 'timeout' : G.cause;
-  const out = { n: plan.n, end, win: G.cause === 'win' || !!G.win, t: +game.stats.time.toFixed(1), par: plan.par, d: Math.round(ball.d), length: plan.length, hits: game.stats.hits, bounces: game.stats.bounces, gates: game.stats.gatesBroken, firstHud, rolled, eaten: game.stats.rolls, need: plan.stars[2].kind === 'rolls' ? plan.stars[2].count : 0, minGap: +minGap.toFixed(0), r: +ball.r.toFixed(2) };
+  const out = { n: plan.n, end, win: G.cause === 'win' || !!G.win, t: +game.stats.time.toFixed(1), par: plan.par, d: Math.round(ball.d), length: plan.length, hits: game.stats.hits, bounces: game.stats.bounces, gates: game.stats.gatesBroken, firstHud, rolled, eaten: game.stats.rolls, need: plan.stars[2].kind === 'rolls' ? plan.stars[2].count : 0, minGap: +minGap.toFixed(0), r: +ball.r.toFixed(2), near2, near6, maxVis: +maxVis.toFixed(2), townPct: game.stats.townPct || 0, finalR: G.finalR || ball.r };
   game.dispose?.(); plus.dispose(); world.dispose();
   return out;
 }

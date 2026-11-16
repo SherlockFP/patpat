@@ -91,8 +91,24 @@ export const SKINS = [
   { id: 'nebula', name: 'Nebula', rarity: 'epic', price: 2000, preview: { a: '#2b0a4a', b: '#ff5ac8', c: '#7ae7ff', pattern: 'plasma', glow: true } },
   { id: 'karprens', name: 'Kar Tanesi Prensi', rarity: 'epic', price: 2300, preview: { a: '#f4fbff', b: '#9fd8ff', c: '#ffffff', pattern: 'stars' } },
   { id: 'altinkral', name: 'Altın Kral', rarity: 'legendary', price: 4000, preview: { a: '#fff3b0', b: '#d8940c', c: '#7a4a00', pattern: 'tiles', glow: true } },
-  { id: 'kristal', name: 'Kristal Ejder', rarity: 'legendary', price: 7500, preview: { a: '#ffffff', b: '#00b8e6', c: '#e8fcff', pattern: 'scales', glow: true } },
-  { id: 'gunestaci', name: 'Güneş Tacı', rarity: 'legendary', price: 9000, preview: { a: '#ffd23a', b: '#ff3a10', c: '#ffb000', pattern: 'flame', glow: true } },
+  { id: 'kristal', name: 'Kristal Ejder', rarity: 'legendary', price: 3400, preview: { a: '#ffffff', b: '#00b8e6', c: '#e8fcff', pattern: 'scales', glow: true } },
+  { id: 'gunestaci', name: 'Güneş Tacı', rarity: 'legendary', price: 3800, preview: { a: '#ffd23a', b: '#ff3a10', c: '#ffb000', pattern: 'flame', glow: true } },
+  // ---- YENİ (dalga 3): her biri kendi silüeti / malzemesiyle; new:true = NEW rozeti (shop.js, veriden)
+  { id: 'piksel', name: 'Piksel Top', rarity: 'common', price: 300, new: true, preview: { a: '#38e07a', b: '#103a2a', c: '#f4ffd0', pattern: 'tiles' } },
+  { id: 'misir', name: 'Patlamış Mısır', rarity: 'common', price: 260, new: true, preview: { a: '#fff3c8', b: '#f2c14a', pattern: 'dots' } },
+  { id: 'peynir', name: 'Peynir', rarity: 'common', price: 320, new: true, preview: { a: '#f6d34a', b: '#d9a52a', pattern: 'dots' } },
+  { id: 'ay_topu', name: 'Ay Topu', rarity: 'common', price: 240, new: true, preview: { a: '#c8c8d0', b: '#9a9aa6', pattern: 'dots' } },
+  { id: 'mumya', name: 'Mumya', rarity: 'common', price: 380, new: true, preview: { a: '#e8dcc0', b: '#c9b98f', pattern: 'stripes' } },
+  { id: 'kaplan', name: 'Kaplan', rarity: 'rare', price: 850, new: true, preview: { a: '#f08a1c', b: '#2a1608', pattern: 'stripes' } },
+  { id: 'armadillo', name: 'Armadillo', rarity: 'rare', price: 900, new: true, preview: { a: '#9a8a78', b: '#6a5a4a', pattern: 'panels' } },
+  { id: 'goz_kuresi', name: 'Göz Küresi', rarity: 'rare', price: 700, new: true, preview: { a: '#f4f4f0', b: '#3ad06a', c: '#101018', pattern: 'eye' } },
+  { id: 'sabun', name: 'Sabun Köpüğü', rarity: 'rare', price: 1000, new: true, preview: { a: '#d6f4ff', b: '#ffc6f0', pattern: 'swirl', glow: true } },
+  { id: 'geod', name: 'Kristal Geod', rarity: 'epic', price: 1700, new: true, preview: { a: '#3a3340', b: '#b070ff', c: '#e8c8ff', pattern: 'facets', glow: true } },
+  { id: 'kar_kuresi', name: 'Kar Küresi', rarity: 'epic', price: 2100, new: true, preview: { a: '#cfeaff', b: '#ffffff', pattern: 'stars', glow: true } },
+  { id: 'hologram', name: 'Hologram', rarity: 'epic', price: 2400, new: true, preview: { a: '#3ae8ff', b: '#ff5ac8', pattern: 'stripes', glow: true } },
+  { id: 'magma', name: 'Magma', rarity: 'epic', price: 2600, new: true, preview: { a: '#3a1008', b: '#ff6a10', pattern: 'cracks', glow: true } },
+  { id: 'tesla', name: 'Yıldırım Küresi', rarity: 'legendary', price: 5000, new: true, preview: { a: '#0a0a1e', b: '#b0a0ff', pattern: 'cracks', glow: true } },
+  { id: 'elmas', name: 'Elmas Top', rarity: 'legendary', price: 6500, new: true, preview: { a: '#b9f2ff', b: '#7fd8ff', c: '#ffffff', pattern: 'facets', glow: true } },
   // ---- ACT ÖDÜLÜ (PLAN_V3 §4): fiyatsız, satılmaz; unlock.act = o act'in sonundaki patron yenilince açılır (act 2, 4, 5, 6; diğer act'lerde zaten tematik skin var)
   { id: 'cam_top', name: 'Çam Topu', rarity: 'rare', price: 0, unlock: { act: 2 }, preview: { a: '#1f6b3a', b: '#0f4a28', c: '#e8f6ff', pattern: 'facets' } },
   { id: 'balon_top', name: 'Balon Topu', rarity: 'epic', price: 0, unlock: { act: 4 }, preview: { a: '#ff5a3a', b: '#ffd23a', c: '#3a8cff', pattern: 'swirl' } },
@@ -145,6 +161,19 @@ export const TRAILS = [
   { id: 'lav_izi', name: 'Lav İzi', rarity: 'epic', price: 1300, preview: { a: '#ffb000', b: '#8a1a00', pattern: 'bands', glow: true } },
   { id: 'gunes', name: 'Güneş İzi', rarity: 'epic', price: 2200, preview: { a: '#fff3a0', b: '#ff8a1a', pattern: 'swirl', glow: true } },
   { id: 'kristal_izi', name: 'Kristal İzi', rarity: 'legendary', price: 3600, preview: { a: '#e8fcff', b: '#3ac8ff', pattern: 'bands', glow: true } },
+  // ---- YENİ (dalga 3): şekilli izler (emit = nota / kalp / baloncuk... parçacıkları, cosmetics.js Glyphs)
+  { id: 'duman_izi', name: 'Duman İzi', rarity: 'common', price: 220, new: true, preview: { a: '#c8d2e0', b: '#7a8498', pattern: 'solid' } },
+  { id: 'piksel_izi', name: 'Piksel İzi', rarity: 'common', price: 300, new: true, preview: { a: '#38e07a', b: '#103a2a', pattern: 'bands' } },
+  { id: 'kivilcim', name: 'Kıvılcım İzi', rarity: 'common', price: 280, new: true, preview: { a: '#ffd23a', b: '#ff7a1a', pattern: 'solid', glow: true } },
+  { id: 'yaprak_izi', name: 'Sonbahar Yaprakları', rarity: 'common', price: 350, new: true, preview: { a: '#ff8a1a', b: '#d8402a', pattern: 'swirl' } },
+  { id: 'baloncuk_izi', name: 'Baloncuk İzi', rarity: 'rare', price: 550, new: true, preview: { a: '#7ff0ff', b: '#0a4fa0', pattern: 'solid', glow: true } },
+  { id: 'konfeti_yagmuru', name: 'Konfeti Yağmuru', rarity: 'rare', price: 600, new: true, preview: { a: '#ff5ca8', b: '#3ad0ff', pattern: 'swirl' } },
+  { id: 'nota_izi', name: 'Nota İzi', rarity: 'rare', price: 650, new: true, preview: { a: '#d6b8ff', b: '#7a5cff', pattern: 'solid', glow: true } },
+  { id: 'kalp_yagmuru', name: 'Kalp Yağmuru', rarity: 'rare', price: 750, new: true, preview: { a: '#ff9fd0', b: '#ff3f9a', pattern: 'solid', glow: true } },
+  { id: 'kuyruklu', name: 'Kuyruklu Yıldız', rarity: 'epic', price: 1600, new: true, preview: { a: '#ffffff', b: '#3a6cff', pattern: 'solid', glow: true } },
+  { id: 'simsek_zincir', name: 'Şimşek Zinciri', rarity: 'epic', price: 1800, new: true, preview: { a: '#d4f2ff', b: '#2f66ff', pattern: 'bands', glow: true } },
+  { id: 'elmas_tozu', name: 'Elmas Tozu', rarity: 'legendary', price: 3800, new: true, preview: { a: '#e8fcff', b: '#7fe3ff', pattern: 'bands', glow: true } },
+  { id: 'ejder_nefesi', name: 'Ejder Nefesi', rarity: 'legendary', price: 4500, new: true, unlock: { stars: 30 }, preview: { a: '#ffd23a', b: '#ff3a10', pattern: 'swirl', glow: true } },
   // ---- GÖREVLER ödülü (özel), bkz. SKINS
   { id: 'kart_izi', name: 'Kart İzi', rarity: 'epic', price: 0, unlock: { challenge: 'ch_buff25' }, preview: { a: '#ffd23a', b: '#3ad0ff', pattern: 'swirl' } },
   { id: 'firtina_izi', name: 'Çılgın Kar İzi', rarity: 'epic', price: 0, unlock: { challenge: 'ch_fever10' }, preview: { a: '#8ff4ff', b: '#3ac8ff', pattern: 'bands', glow: true } },
@@ -177,6 +206,18 @@ const TRAIL_STYLES = {
   kart_izi: { color: 0xffd23a, color2: 0x3ad0ff, rainbow: true, glow: false, palette: [0xffd23a, 0x3ad0ff, 0xff5ca8, 0xffffff] },
   firtina_izi: { color: 0x8ff4ff, color2: 0xffffff, rainbow: true, glow: true, palette: [0x8ff4ff, 0xffffff, 0x3ac8ff] },
   seri_izi: { color: 0xa8ffc0, rainbow: false, glow: true },
+  duman_izi: { color: 0x9aa4b4, color2: 0x5a6478, rainbow: false, glow: false, emit: { s: 'smoke', rate: 7, cols: [0xaab4c4, 0x8892a4], size: 0.9, up: 0.6, life: 1.1, grow: 1 } },
+  piksel_izi: { color: 0x38e07a, rainbow: true, glow: false, palette: [0x38e07a, 0xf4ffd0, 0x1a9e5a, 0x103a2a], emit: { s: 'pixel', rate: 6, cols: [0x38e07a, 0xf4ffd0, 0x1a9e5a], size: 0.28, up: 0.9, life: 0.8 } },
+  kivilcim: { color: 0xffd23a, color2: 0xff7a1a, rainbow: false, glow: true, emit: { s: 'spark', rate: 12, cols: [0xffd23a, 0xff9a1a, 0xffffff], size: 0.32, up: 1.6, sp: 2.5, life: 0.6, add: 1 } },
+  yaprak_izi: { color: 0xff8a1a, rainbow: true, glow: false, palette: [0xff8a1a, 0xd8402a, 0xf2c14a], emit: { s: 'leaf', rate: 6, cols: [0xff8a1a, 0xd8402a, 0xf2c14a], size: 0.5, up: 0.7, sp: 1.6, life: 1.3, spin: 1 } },
+  baloncuk_izi: { color: 0x7ff0ff, color2: 0x0a4fa0, rainbow: false, glow: true, emit: { s: 'bubble', rate: 6, cols: [0xbff8ff, 0xffffff], size: 0.5, up: 2.2, life: 1.3 } },
+  konfeti_yagmuru: { color: 0xff5ca8, rainbow: true, glow: false, palette: [0xff5ca8, 0xffd23a, 0x3ad0ff, 0x7dff4a, 0xb07aff], emit: { s: 'pixel', rate: 12, cols: [0xff5ca8, 0xffd23a, 0x3ad0ff, 0x7dff4a, 0xb07aff], size: 0.3, up: 1.8, sp: 2.4, life: 0.9, spin: 1 } },
+  nota_izi: { color: 0xd6b8ff, color2: 0x7a5cff, rainbow: false, glow: true, emit: { s: 'note', rate: 5, cols: [0xe6d4ff, 0xb08cff, 0xffffff], size: 0.65, up: 1.5, life: 1.3 } },
+  kalp_yagmuru: { color: 0xff9fd0, color2: 0xff3f9a, rainbow: false, glow: true, emit: { s: 'heart', rate: 5, cols: [0xff3f9a, 0xff9fd0, 0xffffff], size: 0.6, up: 1.3, sp: 1.8, life: 1.4 } },
+  kuyruklu: { color: 0xffffff, color2: 0x3a6cff, rainbow: false, glow: true, emit: { s: 'glint', rate: 9, cols: [0xffe27a, 0xffffff], size: 0.4, up: 0.8, sp: 2, life: 0.7, add: 1 } },
+  simsek_zincir: { color: 0xd4f2ff, color2: 0x2f66ff, rainbow: false, glow: true, jag: 0.5, emit: { s: 'bolt', rate: 4, cols: [0xd4f2ff, 0x9fb8ff], size: 0.55, up: 0.6, sp: 2, life: 0.5, add: 1 } },
+  elmas_tozu: { color: 0xe8fcff, color2: 0x7fe3ff, rainbow: false, glow: true, emit: { s: 'glint', rate: 11, cols: [0xffffff, 0x9fefff, 0xe8fcff], size: 0.5, up: 0.5, sp: 2, life: 0.9, add: 1, spin: 1 } },
+  ejder_nefesi: { color: 0xffd23a, color2: 0xff3a10, rainbow: false, glow: true, emit: { s: 'spark', rate: 16, cols: [0xffd23a, 0xff5a10, 0xff3a10], size: 0.5, up: 2.6, sp: 1.8, life: 0.7, add: 1 } },
 };
 
 export function trailStyle(id) {
@@ -2412,6 +2453,106 @@ function skinGen(kind, a, b, c, puff) {
   return { geometry, material: phong({ shininess: 46, specular: 0x555555 }), puff };
 }
 
+// ---- dalga 3 topları: her biri tek küçük paint/shape fonksiyonu; materyal ve silüet farklı (skinGen yeniden boyaması değil)
+const K = (h) => new THREE.Color(h);
+function skinCustom({ detail = 6, shape, paint, perFace = true, mat, lam, puff = 0xffffff, update }) {
+  const geometry = buildSphere({ detail, shape, paint, perFace });
+  const material = lam ? lambert(mat) : phong({ shininess: 40, specular: 0x444444, ...mat });
+  return { geometry, material, puff, update };
+}
+function skinKaplan() {
+  const A = K(0xf08a1c), B = K(0x2a1608), belly = K(0xffe0a0);
+  return skinCustom({ detail: 7, puff: 0xf5b060, shape: (x, y, z) => (noise3(x * 3, y * 3, z * 3) - 0.5) * 0.04,
+    paint: (x, y, z, c) => { const s = Math.sin(Math.atan2(z, x) * 7 + noise3(x * 3 + 2, y * 3, z * 3) * 4); c.copy(y < -0.45 ? belly : s > 0.45 ? B : A); } });
+}
+function skinMumya() {
+  const A = K(0xe8dcc0), B = K(0xc9b98f), eye = K(0xffe45a);
+  return skinCustom({ detail: 7, puff: 0xe8dcc0, shape: (x, y, z) => (Math.sin(y * 10 + x * 5) > 0.75 ? 0.035 : 0),
+    paint: (x, y, z, c) => { c.copy(Math.sin(y * 10 + x * 5) > 0 ? A : B); if (z > 0.5 && Math.abs(y - 0.18) < 0.07 && Math.abs(x) > 0.1 && Math.abs(x) < 0.38) c.copy(eye).multiplyScalar(1.6); } });
+}
+function skinArmadillo() {
+  const A = K(0x9a8a78), B = K(0x6a5a4a), ear = K(0xe8a8a0);
+  return skinCustom({ detail: 7, puff: 0xb0a090, shape: (x, y, z) => (Math.sin(y * 14) > 0 ? 0.045 : 0) + (z > 0.8 && Math.abs(x) > 0.3 && y > 0.35 ? 0.06 : 0),
+    paint: (x, y, z, c) => { c.copy(Math.sin(y * 14) > 0 ? A : B); if (z > 0.8 && Math.abs(x) > 0.3 && y > 0.35) c.copy(ear); } });
+}
+function skinGeod() {
+  const rock = K(0x3a3340), am = K(0xb070ff), hi = K(0xe8c8ff);
+  const spike = (x, y, z) => smooth(0.35, 0.6, y) * Math.pow(clamp01(noise3(x * 5 + 3, y * 5, z * 5 + 8) * 2 - 0.55), 1.2) * 0.42;
+  return skinCustom({ detail: 6, puff: 0xb070ff, shape: (x, y, z) => spike(x, y, z) + (noise3(x * 2, y * 2, z * 2) - 0.5) * 0.06,
+    paint: (x, y, z, c) => { const s = spike(x, y, z); if (y > 0.4) c.copy(am).lerp(hi, clamp01(s * 3.5)); else c.copy(rock).lerp(am, 0.25 * noise3(x * 6, y * 6, z * 6)); }, mat: { shininess: 100, specular: 0xcc99ff, emissive: 0x1a0830 } });
+}
+function skinPiksel() {
+  const pal = [K(0x38e07a), K(0x1a9e5a), K(0xf4ffd0), K(0x103a2a)];
+  return skinCustom({ detail: 2, puff: 0x7dff9a, lam: true, shape: () => 0,
+    paint: (x, y, z, c) => c.copy(pal[(Math.floor(x * 3 + 3) * 3 + Math.floor(y * 3 + 3) * 5 + Math.floor(z * 3 + 3)) % 4]) });
+}
+function skinGoz() {
+  const white = K(0xf6f6f2), vein = K(0xd03a3a), iris = K(0x3ad06a), ring = K(0x1a7a3a), pup = K(0x08080c);
+  return skinCustom({ detail: 8, puff: 0xffffff, mat: { shininess: 120, specular: 0xffffff },
+    paint: (x, y, z, c) => {
+      const a = Math.acos(clamp01(z * 0.995 + y * 0.1));
+      c.copy(white);
+      const v = 1 - Math.abs(2 * noise3(x * 5 + 1, y * 5, z * 5 + 4) - 1); if (a > 0.9) c.lerp(vein, Math.pow(v, 9) * 0.8);
+      if (a < 0.8) c.copy(a < 0.28 ? pup : a < 0.4 ? ring : iris);
+    } });
+}
+function skinPeynir() {
+  const Y = K(0xf6d34a), D = K(0xd9a52a);
+  const hole = (x, y, z) => smooth(0.64, 0.72, noise3(x * 3.2 + 1, y * 3.2 + 5, z * 3.2 + 2));
+  return skinCustom({ detail: 7, puff: 0xf6d34a, shape: (x, y, z) => -0.1 * hole(x, y, z), paint: (x, y, z, c) => c.copy(Y).lerp(D, hole(x, y, z)) });
+}
+function skinSabun() {
+  const m = skinCustom({ detail: 6, puff: 0xdff6ff, shape: (x, y, z) => (noise3(x * 2, y * 2, z * 2) - 0.5) * 0.06, perFace: false,
+    paint: (x, y, z, c) => c.setHSL((0.5 + 0.5 * x + 0.3 * y + 1) % 1, 0.55, 0.82), mat: { transparent: true, opacity: 0.6, shininess: 140, specular: 0xffffff, depthWrite: false } });
+  m.update = (dt, t) => { m.material.color.setHSL((t * 0.15) % 1, 0.3, 0.96); };
+  return m;
+}
+function skinKarKuresi() {
+  const A = K(0xcfeaff), W = K(0xffffff);
+  return skinCustom({ detail: 6, puff: 0xe6f6ff, perFace: false, shape: () => 0,
+    paint: (x, y, z, c) => c.copy(noise3(x * 9 + 2, y * 9 + 7, z * 9 + 1) > 0.7 ? W : A).lerp(W, y < -0.7 ? 0.8 : 0), mat: { transparent: true, opacity: 0.68, shininess: 150, specular: 0xffffff, emissive: 0x20304a, depthWrite: false } });
+}
+function skinMisir() {
+  const A = K(0xfff3c8), Y = K(0xf2c14a);
+  return skinCustom({ detail: 6, puff: 0xfff3c8, shape: (x, y, z) => (noise3(x * 3.4, y * 3.4, z * 3.4) - 0.4) * 0.3 + (noise3(x * 7, y * 7, z * 7) - 0.5) * 0.08,
+    paint: (x, y, z, c) => c.copy(noise3(x * 4 + 6, y * 4, z * 4 + 1) > 0.58 ? Y : A), lam: true });
+}
+function skinElmas() {
+  const A = K(0xb9f2ff), B = K(0xffffff), C = K(0x7fd8ff);
+  const m = skinCustom({ detail: 1, puff: 0xb9f2ff, shape: (x, y, z) => 0.2 * (Math.pow(Math.abs(Math.sin(x * 2.2 + 0.4) * Math.sin(y * 2.2 + 1.1) * Math.sin(z * 2.2 + 2.3)), 0.4) - 0.5),
+    paint: (x, y, z, c) => { const h = hash3(Math.floor(x * 5) + 9, Math.floor(y * 5) + 9, Math.floor(z * 5) + 9); c.copy(h < 0.4 ? A : h < 0.75 ? B : C); }, mat: { shininess: 160, specular: 0xffffff, emissive: 0x103848 } });
+  m.update = (dt, t) => { m.material.emissive.setRGB(0.05 + 0.06 * Math.sin(t * 3), 0.2 + 0.1 * Math.sin(t * 3 + 1), 0.28 + 0.1 * Math.sin(t * 3 + 2)); };
+  return m;
+}
+function skinHologram() {
+  const A = K(0x3ae8ff), B = K(0x147a98), E = K(0xff5ac8);
+  const m = skinCustom({ detail: 8, puff: 0x7ff4ff, shape: () => 0, mat: { transparent: true, opacity: 0.72, emissive: 0x0a5a6a, shininess: 10, depthWrite: false },
+    paint: (x, y, z, c) => { c.copy(Math.sin(y * 34) > 0 ? A : B); if (Math.abs(x) > 0.93 || Math.abs(z) > 0.95) c.lerp(E, 0.7); } });
+  m.update = (dt, t) => { m.material.opacity = 0.6 + 0.12 * Math.sin(t * 40) * (Math.sin(t * 7) > 0.8 ? 1 : 0.25) + 0.08 * Math.sin(t * 3); };
+  return m;
+}
+function skinMagma() {
+  const dark = K(0x1a0806), mid = K(0x6a1a0a), hot = K(0xff7a10);
+  const sp = (x, y, z) => Math.pow(clamp01(noise3(x * 3.5 + 4, y * 3.5, z * 3.5 + 9) * 2 - 0.55), 1.3);
+  const m = skinCustom({ detail: 6, puff: 0xff7a2a, shape: (x, y, z) => sp(x, y, z) * 0.3, mat: { shininess: 20, emissive: 0x240800 },
+    paint: (x, y, z, c) => { const s = sp(x, y, z); c.copy(dark).lerp(mid, clamp01(s * 2)).lerp(hot, clamp01((s - 0.55) * 3.5)); } });
+  m.update = (dt, t) => { m.material.emissive.setRGB(0.14 + 0.08 * Math.sin(t * 4), 0.03, 0); };
+  return m;
+}
+function skinTesla() {
+  const dark = K(0x0a0a1e), arc = K(0xb0a0ff), core = K(0xffffff);
+  const m = skinCustom({ detail: 7, puff: 0xb0a0ff, mat: { shininess: 140, specular: 0x8878ff, emissive: 0x20184a },
+    paint: (x, y, z, c) => { const v = Math.pow(1 - Math.abs(2 * noise3(x * 3 + 1, y * 3 + 5, z * 3 + 2) - 1), 10); c.copy(dark).lerp(arc, clamp01(v * 1.2)).lerp(core, clamp01(v - 0.7)); } });
+  m.update = (dt, t) => { const k = 0.6 + 0.4 * Math.sin(t * 22) * Math.sin(t * 5.3); m.material.emissive.setRGB(0.16 * (1 + k), 0.1 * (1 + k), 0.3 * (1 + k)); };
+  return m;
+}
+function skinAyTopu() {
+  const A = K(0xc8c8d0), D = K(0x9a9aa6), rim = K(0xe6e6ee);
+  const cr = (x, y, z) => noise3(x * 3.1 + 7, y * 3.1 + 1, z * 3.1 + 3);
+  return skinCustom({ detail: 7, puff: 0xc8c8d0, lam: true, shape: (x, y, z) => { const n = cr(x, y, z); return n > 0.64 ? -0.07 * smooth(0.64, 0.7, n) : n > 0.6 ? 0.02 : 0; },
+    paint: (x, y, z, c) => { const n = cr(x, y, z); c.copy(n > 0.64 ? D : n > 0.6 ? rim : A); } });
+}
+
 const BUILDERS = {
   lahmacun: () => skinGen('dots', 0xe9b26a, 0xb5501f, 0x6fb23c, 0xf0b070),
   kiraz: () => skinGen('dots', 0xff3b5c, 0x8a0820, 0xffe0e6, 0xff7a8a),
@@ -2437,6 +2578,8 @@ const BUILDERS = {
   inek: () => skinGen('blotch', 0xffffff, 0x20232b, 0xffb7c8, 0xffffff),
   mantar: () => skinGen('dots', 0xe8262f, 0xffffff, 0xfff1d0, 0xff8a8a),
   leopar: () => skinGen('blotch', 0xf4b53f, 0x3b2412, 0xffd877, 0xffd070),
+  kaplan: skinKaplan, mumya: skinMumya, armadillo: skinArmadillo, geod: skinGeod, piksel: skinPiksel, goz_kuresi: skinGoz, peynir: skinPeynir,
+  sabun: skinSabun, kar_kuresi: skinKarKuresi, misir: skinMisir, elmas: skinElmas, hologram: skinHologram, magma: skinMagma, tesla: skinTesla, ay_topu: skinAyTopu,
   mavikar: skinMaviKar,
   nane: skinNane,
   cilek: skinCilek,

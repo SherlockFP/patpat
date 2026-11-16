@@ -3,7 +3,7 @@ import './fullscreen.js';
 installI18n();
 import * as THREE from 'three';
 import './style.css';
-import { CFG } from './config.js';
+import { CFG, camGrowZ, camGrowFov } from './config.js';
 import { buildPropLibrary } from './props.js';
 import { World, clamp } from './world.js';
 import { Ball } from './ball.js';
@@ -23,7 +23,7 @@ import { loadGlbs } from './glb.js';
 import { meta } from './meta.js';
 import { createMenus } from './menus.js';
 import { levelById, evalGoals, countStars } from './campaign.js';
-import { openShop } from './shop.js';
+import { openShop, affordItem } from './shop.js';
 import { CigPlus, CigGame } from './cigplus.js';
 import { t as tr } from './i18n.js';
 import { dagPlan, DAG_COUNT, evalStars, validatePlan, fmtD } from './cigplan.js';
@@ -199,7 +199,8 @@ function openWardrobe() {
     save,
     onSelect: (kind, id) => {
       if (kind === 'skin') { applySkin(id); meta.track('skin_select', { id }); }
-      else { applyTrail(id); meta.track('trail_select', { id }); }
+      else if (kind === 'trail') { applyTrail(id); meta.track('trail_select', { id }); }
+      else meta.track(kind + '_select', { id });      // hop / stomp / blast / yeti / death / emote: the runner and the result screen read the pick when they need it
     },
     onClose: () => { closeShop = null; toMenu(); },
   });
@@ -278,6 +279,8 @@ function buildWorld(seed, themeIdx, daily, plan = null) {
   world = new World(scene, lib, { seed, level: plan });
   scenery?.dispose();
   scenery = new Scenery(scene, { world, lib, theme: themeForLevel(themeIdx, daily), onEgg: (id) => meta.egg(id) });
+  const pt = scenery.theme.pt;
+  world.pt0 = pt ? pt[0] : 1; world.pt1 = pt ? pt[1] : 1; world.pt2 = pt ? pt[2] : 1;
   plus = new CigPlus(scene, world, { seed, lib, ui, hud: typeof ui.buffAdd !== 'function', level: plan });
   if (!fx) { fx = new Fx(scene, world, camera); applyTrail(save.selected('trail')); }
   fx.world = world;
@@ -333,6 +336,8 @@ const cigHost = {
     else ui.banner?.(name, i);
   },
   hud(info) {
+    ui.cigWave?.(info.waveGap, info.waveMax);
+    ui.cigLadder?.(info.ladder, info.ladderNew);
     if (ui.cigHud) ui.cigHud(info);
     else { ui.setTons(info.tons); ui.setProgress(info.frac); }
     if (G.lv && info.lv) {
@@ -501,6 +506,8 @@ let prewarmed = false;
 ui.hooks = {
   power: (id) => menus.openPower(id),
   nextPower: () => { try { return menus.cheapestPower() || null; } catch { return null; } },   // { name, icon, price, have, afford } of the cheapest open upgrade
+  affordItem: () => { try { return affordItem(save); } catch { return null; } },      // the priciest wardrobe item the wallet can pay now
+  shopItem: (kind, id) => { try { localStorage.setItem('patpat.shopItem', kind + ':' + id); } catch { /* ignore */ } openWardrobe(); },
   affordPower: () => { try { return !!menus.cheapestPower()?.afford; } catch { return false; } },
   levelUp: () => { try { if (meta.pendingLevelUps().length) { fx?.levelUp?.(ball.group.position); menus.openLevelUp(); } } catch { /* optional */ } },
 };
@@ -768,7 +775,7 @@ function updateLevelHud(V) {
   if (c !== h.c) { h.c = c; h.ch.textContent = c; h.ch.style.display = c ? '' : 'none'; }
   // the avalanche is close: red edge pulse
   const cl = ui.el.hud.classList;
-  if (V.gap < CFG.lvl.chaseNear) cl.add('chase-near'); else if (V.gap > CFG.lvl.chaseNear + 10) cl.remove('chase-near');
+  if (V.gap < CFG.lvl.chaseRed) cl.add('chase-near'); else if (V.gap > CFG.lvl.chaseRed + 10) cl.remove('chase-near');
 }
 // the ball-size -> town gauge (V.gauge / notchF / townPct / townGoal from cigplus); DOM is only written when the rounded state changes
 function updateGauge(V) {
@@ -1171,7 +1178,7 @@ function cigFrame(dt) {
     if (G.state === 'play') cigPlay(gdt);
     else if (G.state === 'end') {
       game.updateEnd(gdt);
-      if (G.endT > (G.cause === 'win' ? 2.0 : 1.25)) finishCig();
+      if (G.endT > (G.cause === 'win' ? (G.crushDone ? 2.6 : 2.0) : 1.25)) finishCig();
     } else if (G.state === 'result') game.updateEnd(gdt * 0.5);
     plus.update(gdt, ball, G);
     plus.planTo(Math.min(world.genD, world.planEnd || Infinity) - 30);
@@ -1181,6 +1188,7 @@ function cigFrame(dt) {
     world.update(gdt, ball.d, cigAhead(), Math.max(CFG.viewBehind, camBack + 15), ball);
     fx.update(gdt, ball);
     updateWaveVis(gdt);
+    ui.cigCrush?.(G.crushDone && (G.state === 'play' || G.state === 'end') ? G.crushTons : -1);
     updateCamera(dt);
     scenery.update(gdt, camera, ball);
   }
@@ -1280,7 +1288,7 @@ function updateCamera(dt, snap = false) {
   // pull back as the ball grows so it keeps ~20-25% of the screen height instead of half
   // (smoothed radius, and the pull-back keeps growing past r = 9 so big balls stay ~20-25% of the screen height)
   camR = snap || camR === 0 ? r : camR + (r - camR) * (1 - Math.exp(-dt * 2.5));
-  const z = (1 + camZoom) * (1 + 0.4 * clamp((camR - 1) / 8, 0, 1) + 0.045 * clamp(camR - 9, 0, 14));
+  const z = (1 + camZoom) * (1 + 0.4 * clamp((camR - 1) / 8, 0, 1) + 0.045 * clamp(camR - 9, 0, 14)) * (G.mode === 'cig' && G.state === 'play' ? camGrowZ(camR, G.lv ? G.lv.r0 : CFG.startR) : 1);   // (+ the world shrinks as the ball grows)
   // steep enough that <= ~20-25% of the portrait screen is sky and the path stays visible over a big ball
   const near = G.lv && G.lv.n <= 5 ? 0.8 : 0.9;   // closer chase cam: the ball (not the HUD) is the biggest thing on screen (~20% of the width)
   const tight = 1 - 0.2 * clamp((2.2 - camR) / 1.4, 0, 1);   // a small ball (the opening seconds) gets a closer camera: it is not a speck in a white field
@@ -1288,6 +1296,8 @@ function updateCamera(dt, snap = false) {
   let up = (8.5 + r * 4.2) * z * near * tight;
   let ox = b.x * 0.88;
   if (plus && plus.bossFx && !plus.bossFx.dead) { back *= 1.1; up *= 1.28; }   // boss fight: higher camera keeps the ball and the traps readable
+  const cr = G.crushT > 0 ? clamp(G.crushT / 0.5, 0, 1) : 0;   // town-crush shot: a low camera close behind the ball
+  if (cr) { back *= 1 - 0.2 * cr; up *= 1 - 0.5 * cr; }
   const menu = G.state === 'menu';
   if (menu) {
     // Lobby: the ball is the hero — close, centred, slowly orbited, spinning on the snow.
@@ -1540,7 +1550,7 @@ function frame(now) {
   let wantFov = baseFov + (camera.userData.fovBoost || 0);
   if (G.mode === 'cig' && G.state === 'play') {
     const sk = G.lv ? G.lv.speedK : 1;
-    wantFov += (12 + (G.lv ? 6 * clamp((sk - 0.92) / 0.35, 0, 1) : 0)) * clamp((ball.speed - 18 * sk) / (27 * sk), 0, 1) + G.fovKick;
+    wantFov += (12 + (G.lv ? 6 * clamp((sk - 0.92) / 0.35, 0, 1) : 0)) * clamp((ball.speed - 18 * sk) / (27 * sk), 0, 1) + G.fovKick + camGrowFov(ball.r, G.lv ? G.lv.r0 : CFG.startR) + (G.crushT > 0.5 ? 6 : 0);
   }
   if (Math.abs(camera.fov - wantFov) > 0.05) {
     camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 4);

@@ -142,7 +142,8 @@ export const CFG = {
     bossVolley: [2.4, 3.2], bossHpK: 3.3,
     arenaMelt: 0.6,
     bossArena: true,                       // false: the boss level ends with a plain big gate (0.86 * rEnd)
-    chaseNear: 45,                         // chase gap (m) that turns the screen edge red
+    chaseNear: 80,                         // chase gap (m) where the wall shows (dust at the screen edge, gap bar, rumble); the red edge stays at chaseRed
+    chaseRed: 45,
   },
 };
 
@@ -184,6 +185,12 @@ export function bandRel(exp, r) {
 export function bandAt(r, d) {
   return bandRel(expectedRAt(d), r);
 }
+
+// Growth you can see: the camera pulls back and the FOV opens with log2(r / r0), so the world shrinks as the ball grows.
+export const camGrowZ = (r, r0) => 1 + 0.15 * Math.min(4, Math.log2(Math.max(1, r / Math.max(0.3, r0))));
+export const camGrowFov = (r, r0) => 4 * Math.min(4, Math.log2(Math.max(1, r / Math.max(0.3, r0))));
+// Size ladder: the class of prop the next tier can swallow (tier index -> word, a real library type that is placed bright at the unlock)
+export const LADDER = [['PENGUEN', 'penguin'], ['ARABA', 'car'], ['OTOBÜS', 'bus'], ['EV', 'house'], ['KULE', 'clocktower'], ['KASABA', 'hotel']];
 
 // 0-based tier of a ball radius.
 export function tierOf(r) {

@@ -123,6 +123,7 @@ export class World {
     // Size tint (readability): the game sets the ball radius and its eat ratio every frame; props near the ball that are too
     // big to swallow are painted amber (almost) / red (no way) through per-instance colours. 0 = off (lobby).
     this.tintR = 0; this.tintEat = CFG.eatRatio;
+    this.pt0 = this.pt1 = this.pt2 = 1;   // theme tint of every prop (the mountain's look, set by main.js)
     this.finalGate = null; this.bossProp = null; this.cratesLeft = 0; this.townVol = 0;   // townVol: total footprint (r^2) of the finale town's props (KASABA %)
     if (level) this.initLevel(level);
 
@@ -130,6 +131,7 @@ export class World {
     this.buildShared();
     this.initTerrain();
     if (this.lvl) this.levelOpening(); else this.breadcrumbs();
+    this.openingCarpet();
     for (let i = 0; i < 40 && this.genD < 150; i++) this.genSegment();
     this.stream(0, 300, 40, true);
     this.render(0);
@@ -1031,6 +1033,7 @@ export class World {
     // Everything placed anywhere (trails, towns, ramps' landing fields...) draws on one ledger, so jackpots are followed
     // by a thinner stretch instead of snowballing the growth.
     this.credit += allowed;
+    if (inner <= 0 && d > 6) this.carpet(d, seg, gr, hw);   // (paid from the same ledger below: denser, not richer)
     let budget = Math.max(this.credit - this.spent, allowed * 0.25);
     const floor = 0.0008 * gr ** 3;
     let guard = 0;
@@ -1075,6 +1078,35 @@ export class World {
     if (d > 200 && d >= this.nextRivalD) { this.placeRival(d + R.range(10, seg), gr, T, hw); this.nextRivalD = d + R.range(CFG.rivalGap[0], CFG.rivalGap[1]); }
     // life: skiers / walkers racing or wandering around
     if (d > 90 && R.next() < 0.1 * seg / 12) this.patMovers(d, seg, gr, T, hw);
+  }
+
+  // A carpet of small bright props (relative to the ball, ~1 per 3 m on a weaving line): something to eat every half second. Charged to the food ledger.
+  carpet(d, seg, gr, hw, nFix = 0, i0 = 0) {
+    const R = this.rng, n = nFix || Math.max(2, Math.round(seg / 2.6)), step = seg / n, ph = R.range(0, 6.28) + i0 * 2;
+    if (!this.carpetList) this.carpetList = this.snackNames.concat(['snowman', 'person', 'skier', 'sled', 'gift']).filter((t, i, a) => this.lib[t] && a.indexOf(t) === i).map((t) => ({ type: t, r: this.lib[t].radius, h: this.lib[t].height, kind: this.lib[t].kind, w: 1 })).sort((a, b) => a.r - b.r);
+    const k = gr < 1.2 ? 1.7 : 1;   // (a tiny ball: the carpet must still be seen)
+    for (let i = 0; i < n; i++) this.food1(R.range(0.16, 0.34) * k, gr, Math.sin(ph + i * 0.9) * hw * 0.55 * R.range(0.5, 1), d + i * step, hw, { list: this.carpetList, sLo: 0.15, sHi: 40, spacing: 0.1 });
+  }
+
+  // The first 80 m: a small bright prop every ~0.9 ball radii (so one is within reach from second 1 whatever the ball's size)
+  openingCarpet() {
+    const gr = this.genRad(), sp = clamp(gr * 0.9, 2.5, 9);
+    for (let d = 4, i = 0; d < 84; d += sp, i++) this.carpet(d, sp, gr, this.halfWidth(d), 1, i);
+  }
+
+  // After a tier-up: a bright feast right ahead, sized for the NEW ball; the prop class that just became edible (`type`) is big and lit (p.hi)
+  feast(d0, d1, gr, type) {
+    if (this.lvl && d1 > this.endD - 200) return;
+    if (!this.carpetList) this.carpet(d0, 4, gr, this.halfWidth(d0));
+    const R = this.rng, hw = this.halfWidth((d0 + d1) * 0.5), n = 14, step = (d1 - d0) / n;
+    for (let i = 0; i < n; i++) this.food1(R.range(0.14, 0.32), gr, R.range(-0.75, 0.75) * hw, d0 + i * step, hw, { list: this.carpetList, sLo: 0.15, sHi: 40, spacing: 0.1 });
+    const def = this.lib[type];
+    if (!def) return;
+    for (let k = 0; k < 2; k++) {
+      const q = R.range(0.5, 0.7), dd = d0 + (k + 0.5) * (d1 - d0) / 2.4;
+      const p = this.place(type, (k ? 1 : -1) * R.range(0.25, 0.6) * hw, dd, hw, { s: clamp(q * gr / def.radius, 0.2, 24), pad: 0.5 });
+      if (p) { p.hi = 1; this.spent += p.r ** 3; }
+    }
   }
 
   patScatter(d, seg, gr, T, hw, budget, inner) {
@@ -2308,6 +2340,11 @@ export class World {
       a[o] = f ? 1.6 : p.tint[0]; a[o + 1] = f ? 1.3 : p.tint[1]; a[o + 2] = f ? 1.3 : p.tint[2];
       return;
     }
+    if (p.hi) {   // the class that just became edible: a gold pulse
+      const k = 0.5 + 0.5 * Math.sin(this.time * 8 + p.phase);
+      a[o] = 1 + 0.5 * k; a[o + 1] = 1 + 0.35 * k; a[o + 2] = 1;
+      return;
+    }
     let g = 1, b = 1;
     if (tR > 0 && p.kind !== 'chunk') {
       const lim = tR * tE;
@@ -2319,7 +2356,7 @@ export class World {
         }
       }
     }
-    a[o] = 1; a[o + 1] = g; a[o + 2] = b;
+    a[o] = this.pt0; a[o + 1] = g * this.pt1; a[o + 2] = b * this.pt2;
   }
 
   render(ballD) {
