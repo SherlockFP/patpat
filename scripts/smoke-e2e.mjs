@@ -17,7 +17,8 @@
 //   8  english leak scan                                      9  fullscreen                    11  soak (heap after GC)
 //   12 frame pacing (Rush, rAF deltas)                        13 first-run frames first_00..03.png at 0.5/2/5/10 s (fresh save)
 //   14 cig mountain 1 start/mid/town/end (cig_1_*.png)             15 cig mountain 12 start/mid/end (cig_12_*.png)
-//   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   21 rush camera sweep (flat frames)   22 new chapters ekspres/ay/lazer/kopru/fuze/hareket/heyelan/turbo/volkan/sakura/neon/uzay: rush_ch_<id>.png (name strip + one-word label) and mech_<id>.png (the mechanic in view, needs ?debug hooks)   24 menu text: after every bottom-nav panel and after a Rush death -> MENU no toast / hint / float / banner / HUD text is left on screen   25 AI UI icons: icons_rush_buff.png, icons_perk.png, icons_cig.png (images decoded, not emoji)   10 is the final blank-frame check (always printed)
+//   29 borrowed mechanics: mech_burst/dash/board/drift/chase/crowd_0..1.png + rush_ch_halka/gp/gokyuzu/magara.png (needs ?debug hooks)
+//   28 Sonic ring: loop_0..5.png (entry / 3 o'clock / top / 9 o'clock / exit / chase back), loopb_* (2nd run), cork_0..1, helix_0..1, dloop_0..6 (double loop) (ball visible, ring in frame)   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   21 rush camera sweep (flat frames)   22 new chapters ekspres/ay/lazer/kopru/fuze/hareket/heyelan/turbo/volkan/sakura/neon/uzay: rush_ch_<id>.png (name strip + one-word label) and mech_<id>.png (the mechanic in view, needs ?debug hooks)   24 menu text: after every bottom-nav panel and after a Rush death -> MENU no toast / hint / float / banner / HUD text is left on screen   25 AI UI icons: icons_rush_buff.png, icons_perk.png, icons_cig.png (images decoded, not emoji)   10 is the final blank-frame check (always printed)
 import { spawn, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -164,7 +165,8 @@ const sel='#banner .b,#toast-soft .ts,#toast:not(.hidden),#subtitle,#tutor:not(.
 const top=document.querySelector('.hud-tons')?.getBoundingClientRect(),slab=[...document.querySelectorAll('.rcp,#banner .b')].map(e=>e.getBoundingClientRect()).filter(b=>b.width>8&&top&&b.top<top.bottom+2&&b.bottom>top.top);
 return{pct:Math.round(sum/N*100),dom:Math.round(dsum/N*100),mesh:Math.round(m.reduce((a,b)=>a+b,0)/N*100),by:ww>0?wn:P.what,st:P.st,cx:Math.round(cx),cy:Math.round(cy),rad:Math.round(rad),off:cx<0||cx>W||cy<0||cy>H,hf:+hf.toFixed(2),vf:+vf.toFixed(2),cen,slab:slab.length}})()`;
 const READ_LOG = [];
-const badOf = (r) => /^dying/.test(r.st) ? '' : [r.pct > (r.by === 'track' ? 50 : 25) && `ball ${r.pct}% covered (dom ${r.dom}%, 3D ${r.mesh}%, by ${r.by}; ball at ${r.cx},${r.cy} r${r.rad})`, (r.hf < 0.1 || r.hf > 0.6) && `horizon at ${Math.round(r.hf * 100)}%`, r.off && `ball off screen at ${r.cx},${r.cy}`, r.cen.length > 1 && `${r.cen.length} centre toasts/banners: ${r.cen.join(', ')}`, r.slab && 'banner/summary slab over the top HUD'].filter(Boolean).map((x) => `[${r.st}] ${x}`).join('; ');
+const badOf = (r) => /^(dying|over)/.test(r.st) ? '' : [r.pct > (r.by === 'track' ? 50 : 25) &&
+   `ball ${r.pct}% covered (dom ${r.dom}%, 3D ${r.mesh}%, by ${r.by}; ball at ${r.cx},${r.cy} r${r.rad})`, !/ring/.test(r.st) && (r.hf < 0.1 || r.hf > 0.6) && `horizon at ${Math.round(r.hf * 100)}%`, r.off && `ball off screen at ${r.cx},${r.cy}`, r.cen.length > 1 && `${r.cen.length} centre toasts/banners: ${r.cen.join(', ')}`, r.slab && 'banner/summary slab over the top HUD'].filter(Boolean).map((x) => `[${r.st}] ${x}`).join('; ');
 // live sampling while a scenario plays (no screenshot per sample): L = {n, bad, max, list}; up to 4 offending moments are shot as <tag>_bad_N.png
 async function liveRead(L, tag, ctx) {
   let r = null; try { await ev('window.__raf&&(window.__raf.skip=true)'); r = await ev(BALL_READ); await ev('window.__raf&&(window.__raf.skip=false,window.__raf.ign=3)'); } catch (e) { return; }   // (the probe itself costs a few ms: its frames stay out of the pacing numbers)
@@ -176,7 +178,7 @@ async function ballRead(name, ctx) {
   if (!r) return; READ_LOG.push({ name, ...r });
   if (r.pct > 25) ctx.fail(`ball ${r.pct}% covered in ${name}.png (dom ${r.dom}%, 3D ${r.mesh}%, by ${r.by}; ball at ${r.cx},${r.cy} r${r.rad})`);
   if (r.off) ctx.fail(`ball off screen (${r.cx},${r.cy}) in ${name}.png`);
-  if (r.hf < 0.15 || r.hf > 0.55) ctx.fail(`[${r.st}] horizon at ${Math.round(r.hf * 100)}% of the screen height in ${name}.png (must be 15-55%)`);
+  if (!/ring/.test(r.st) && (r.hf < 0.15 || r.hf > 0.55)) ctx.fail(`[${r.st}] horizon at ${Math.round(r.hf * 100)}% of the screen height in ${name}.png (must be 15-55%)`);
   if (r.cen.length > 1) ctx.fail(`${r.cen.length} centre toasts / banners at once in ${name}.png: ${r.cen.join(', ')}`);
   if (r.slab) ctx.fail(`banner / summary slab covers the top HUD in ${name}.png`);
 }
@@ -419,7 +421,7 @@ async function skies(ctx) {
   await ev('(()=>{const r=cig.runner;r.invulnT=999;r.yetiHoldT=99})()');
   for (const [id, sky] of [['orman', 'dawn'], ['ray', 'canyon'], ['duello', 'night']]) {
     await ev(`(()=>{const r=cig.runner,seg=r.chapters.segs.find((g)=>g.id==='${id}')||(()=>{let g;for(let i=0;i<9&&!(g=r.chapters.segs.find((x)=>x.id==='${id}'));i++)r.chapters.at(r.chapters.segs[r.chapters.segs.length-1].s1+1);return g})();r.b.s=seg.s0+60})()`);
-    await waitFor(`cig.runner.chap&&cig.runner.chap.id==='${id}'`, 4000, 'chapter ' + id).catch(() => {});
+    await waitFor(`(()=>{const r=cig.runner;if(r.pickT>0){r.pickPerk('kalin');document.querySelectorAll('.perk-pick').forEach((e)=>e.remove())}return !!r.chap&&r.chap.id==='${id}'})()`, 12000, 'chapter ' + id).catch(() => {});      // (a perk card that comes up during the 1.3 km jump pauses the run: it is dismissed; the long jump also builds ~1.3 km of track in one go)
     await ev('(()=>{const r=cig.runner;if(r._lookP)r._lookP.bi=-1})()');      // (the chapter sky waits for the next track biome; here the biome change is faked)
     await waitFor(`cig.runner.chap&&cig.runner.chap.id==='${id}'&&cig.runner.env._bdCur==='${sky}'&&cig.runner.env._bdK>0.95`,6000,'sky '+id).catch(()=>{});
     const st = await ev(`(()=>{const r=cig.runner,e=r.env;return {cur:e._bdCur,k:e._bdK,vis:e.bd.visible,chap:r.chap&&r.chap.id,s:r.b.s,segs:r.chapters.segs.map((g)=>g.id+':'+g.s0).join(',')}})()`);
@@ -481,7 +483,7 @@ async function rushPlaytest(ctx) {
     if (ch2At && !ch2Shot && Date.now() - ch2At > 1100 && st.play) { ch2Shot = true; await ev('window.__raf.skip=true'); await shot('rush_ch2', ctx); await ev('window.__raf.skip=false;window.__raf.ign=3'); }
     if (frame < 12 && played >= frame * 5000) {
       const r = await ev(`({d:${hudDist},sc:(document.getElementById('hud-tons')||{}).textContent})`);
-      await ev('window.__raf.skip=true'); await shot('rush_' + String(frame).padStart(2, '0'), ctx); await ev('window.__raf.skip=false;window.__raf.ign=3');
+      await ev('window.__raf.skip=true'); const dead = await ev(`/^(dying|over)/.test((window.__ppv&&window.__ppv.st)||'')`); await shot('rush_' + String(frame).padStart(2, '0'), ctx, dead ? { noBlank: true, noRead: true } : undefined); await ev('window.__raf.skip=false;window.__raf.ign=3');      // (the bot fell into a hole: the falling view is not a readability frame)
       const clip = await ev(`(()=>{const e=document.querySelector('#hud.rush .hud-goal:not(.hidden) .goal-lbl');return e&&e.scrollWidth>e.clientWidth+1?e.textContent.trim():''})()`);   // mission pill text cut off (390 px wide)
       if (clip && !clipDone) { clipDone = true; ctx.fail('mission pill text is truncated: ' + clip); }
       rows.push(`#${String(frame).padStart(2, '0')} t=${frame * 5}s dist=${r.d}m score=${r.sc}`);
@@ -717,10 +719,10 @@ async function newChapters(ctx) {
   await ev(`(()=>{const r=cig.runner,D=window.__defs={};for(const [id] of ${JSON.stringify(CH_NEW)}){let g;for(let i=0;i<40&&!(g=r.chapters.segs.find((x)=>x.id===id));i++)r.chapters.at(r.chapters.segs[r.chapters.segs.length-1].s1+1);D[id]=g}})()`);
   for (const [id, kind, re] of CH_NEW) {
     await ev(`(()=>{const r=cig.runner,g=window.__defs['${id}'];
-      const seg=Object.assign({},g,{n:7,s0:560,s1:1e9,i:0}),pl=Object.assign({},r.chapters.segs[0],{s0:0,s1:560});r.start(5,null,{chapterPlan:{segs:[pl,seg],at:(s)=>s>=560?seg:pl}});r.invulnT=1e9;r.yetiHoldT=99;r.track.features.junction=false;r.track.setHardness(3)})()`);      // (the chapter starts at 560 m (past the 500 m arch) like in a real run: plain slope before it; hardness 3: the 3.5 km difficulty from the first metres; no corners, the sim does not steer)
+      const seg=Object.assign({},g,{n:7,s0:560,s1:1e9,i:0}),pl=Object.assign({},r.chapters.segs[0],{s0:0,s1:560});r.start(5,null,{chapterPlan:{segs:[pl,seg],at:(s)=>s>=560?seg:pl}});r.invulnT=1e9;r.yetiHoldT=99;r.track.features.junction=false;r.track._nextRound=1e9;r.track._roundN=1;r.track._nextSet=1e9;r.track.setHardness(3)})()`);      // (the chapter starts at 560 m (past the 500 m arch) like in a real run: plain slope before it; hardness 3: the 3.5 km difficulty from the first metres; no corners, the sim does not steer)
     await waitFor(dbgRush, 8000, 'rush restarted ' + id);
     await ev(`(()=>{const r=cig.runner;for(let i=0;i<60*90&&r.b.s<557&&r.state!=='over';i++){if(r.pickT>0){r.pickPerk('kalin');document.querySelectorAll('.perk-pick').forEach((e)=>e.remove())}r.invulnT=1e9;cig.simEndless(1/60)}})()`);
-    await ev(`(()=>{const u=cig.runner.ctx.ui;for(const c of Object.values(u._chs||{})){c.q.length=0;c.cur=null;c.last=-1e9}if(u._heldQ)u._heldQ.length=0})()`);   // (a real chapter starts 350+ m into a run: the announcement lane is empty when it begins. The sim jumps there in milliseconds, so the run-start messages and the 500 m banner are still queued: empty the lane by hand just before the chapter or its name strip waits ~2.5 s behind them)
+    await ev(`(()=>{cig.runner.mom=0;cig.runner.blastT=0;const u=cig.runner.ctx.ui;for(const c of Object.values(u._chs||{})){c.q.length=0;c.cur=null;c.last=-1e9}if(u._heldQ)u._heldQ.length=0})()`);   // (a real chapter starts 350+ m into a run: the announcement lane is empty when it begins. The sim jumps there in milliseconds, so the run-start messages and the 500 m banner are still queued: empty the lane by hand just before the chapter or its name strip waits ~2.5 s behind them)
     await ev(`(()=>{const r=cig.runner;for(let i=0;i<60*90&&r.b.s<562&&r.state!=='over';i++){if(r.pickT>0){r.pickPerk('kalin');document.querySelectorAll('.perk-pick').forEach((e)=>e.remove())}r.invulnT=1e9;cig.simEndless(1/60)}})()`);
     await waitFor(`${re.toString()}.test(document.querySelector('.chap-pill.on')?.textContent||'')`, 4000, 'name pill ' + id).catch(() => {});      // (the name pill is a real-time message, queued behind the last one: wall time, not sim time)
     await sleep(100);   // (the name pill fades in)
@@ -753,6 +755,144 @@ async function newChapters(ctx) {
     if (okMech) ctx.pass(`chapter ${id}: mechanic in view ${JSON.stringify(hunt)}`); else ctx.fail(`chapter ${id}: mechanic never seen ${JSON.stringify(hunt)}`);
     if (re.test(w)) ctx.pass(`chapter ${id}: one-word label on the chapter pill ("${w.slice(0, 60)}")`); else ctx.fail(`chapter ${id}: label ${re} missing in "${w.slice(0, 80)}"`);
   }
+}
+
+// scenario 28: the Sonic ring (needs ?debug hooks). The first loop of a normal endless run is driven by the sim with the world frozen (hitStop) at five marks: loop_0 entry, loop_1 3 o'clock, loop_2 the top (ball upside down),
+// loop_3 9 o'clock, loop_4 just after the exit; then ~0.9 s later loop_5 (chase camera back). Side camera: the ball must be on screen and not covered in every frame, the whole ring (4 extreme points) in frame at the top, the camera
+// back on the chase rig after the exit. cork_0/1 and helix_0/1: the round pieces' own camera (ball visible), pushed into the queue by hand.
+const RING_STEP = (cond) => `(()=>{const r=cig.runner;r.hitStop=0;for(let i=0;i<60*150&&r.state!=='over'&&!(${cond});i++){if(r.pickT>0){r.pickPerk('kalin');document.querySelectorAll('.perk-pick').forEach((e)=>e.remove())}r.invulnT=1e9;r.yetiHoldT=99;r.meltK=0;cig.simEndless(1/60)}r.hitStop=1e9;return{s:+r.b.s.toFixed(1),st:r.state,vs:+r.b.vs.toFixed(1),k:+r.camLoopK.toFixed(2)}})()`;
+async function ringShot(name, ctx, what) {
+  await sleep(120);
+  const r = await ev(BALL_READ).catch(() => null);
+  await shot(name, ctx, { noRead: true });
+  if (!r) { ctx.fail(`${name}: no ball reading (${what})`); return null; }
+  if (r.off) ctx.fail(`${name}: ball off screen (${r.cx},${r.cy}) (${what})`);
+  else if (r.pct > 25) ctx.fail(`${name}: ball ${r.pct}% covered by ${r.by} (${what})`);      // (a banner / lane warning / track over the ball in a set piece is a failure)
+  else if (r.rad < 5) ctx.fail(`${name}: ball only ${r.rad}px in radius, a speck (${what})`);
+  else ctx.pass(`${name}: ball visible (${what}): ${r.pct}% covered, radius ${r.rad}px at ${r.cx},${r.cy}`);
+  return r;
+}
+async function rings(ctx) {
+  await load('?endless&notut&debug', seed3());
+  await waitFor(dbgRush, 25000, 'rush playing');
+  await ringRun(ctx, 7, 'loop', true);
+  await ringRun(ctx, 3, 'loopb', false);
+  await ev(`cig.runner.hitStop=0`);
+}
+async function ringRun(ctx, seed, tag, extras) {      // seed 7 gets the full set (loop_0..5 + corkscrew + helix), a second seed only the five ring marks (loopb_0..4): the camera is judged on two different rings
+  await ev(`(()=>{const r=cig.runner;r.hitStop=0;r.start(${seed},null,{});r.invulnT=1e9;r.yetiHoldT=99;r.track.features.junction=false})()`);
+  await waitFor(dbgRush, 8000, 'rush restarted');
+  await ev(`cig.runner.track.ensure(1500)`);
+  const L = await ev(`(()=>{const p=cig.runner.track.pieces.find((q)=>q.kind==='loop');return p?{s0:p.loop.s0,s1:p.loop.s1,R:+p.loop.R.toFixed(1),min:+p.loop.minSpeed.toFixed(1),plan:+p.loop.plannedSpeed.toFixed(1)}:null})()`);
+  if (!L) { ctx.fail('no loop in the first 1500 m of an endless plan'); return; }
+  if (L.s0 > 700) ctx.fail(`first loop at ${L.s0} m (want before 700 m)`); else ctx.pass(`first loop at ${Math.round(L.s0)} m, R ${L.R} m, needs ${L.min} m/s (plan ${L.plan} m/s)`);
+  const len = L.s1 - L.s0;
+  await ev(RING_STEP(`r.b.s>=${L.s0 - 40}`));
+  const marks = [[L.s0 - 5, 'entry'], [L.s0 + 0.25 * len, '3 o\'clock'], [L.s0 + 0.5 * len, 'top'], [L.s0 + 0.75 * len, '9 o\'clock'], [L.s1 + 6, 'exit']];
+  let minVs = 1e9, died = false;
+  for (const [i, [s, what]] of marks.entries()) {
+    const st = await ev(RING_STEP(`r.b.s>=${s}`)); minVs = Math.min(minVs, st.vs); if (st.st === 'over') died = true;
+    if (i === 1) { const tag = await ev(`/LOOP/.test(document.body.innerText)`); if (tag) ctx.pass('the ring name (LOOP) shows at the ring entry'); else ctx.warn('no LOOP text on screen at the ring entry'); }
+    await ringShot(tag + '_' + i, ctx, what + ` s=${st.s} v=${st.vs} cam ${st.k}`);
+    if (i === 2) {
+      const fit = await ev(`(()=>{const r=cig.runner,c=r.camLC,n=r.camLS,R=r.camLoop.R,t=[-n.z,0,n.x],v=cig.camera.position.clone(),o=[];cig.camera.updateMatrixWorld();for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]]){v.set(c.x+t[0]*R*a,c.y+R*b,c.z+t[2]*R*a).project(cig.camera);o.push([+v.x.toFixed(2),+v.y.toFixed(2)])}return{o,d:+cig.camera.position.distanceTo(c).toFixed(1),fov:+cig.camera.fov.toFixed(1),k:+r.camLoopK.toFixed(2)}})()`);
+      if (fit.o.every(([x, y]) => Math.abs(x) <= 1 && Math.abs(y) <= 1)) ctx.pass(`the whole ring is in frame at the top ${JSON.stringify(fit)}`); else ctx.fail(`ring not fully in frame at the top ${JSON.stringify(fit)}`);
+    }
+  }
+  await ev(RING_STEP(`r.b.s>=${L.s1 + 6 + 0.9 * 28}`));
+  await ev(`cig.runner.hitStop=1e9`); await sleep(100); await shot(tag + '_5', ctx, { noRead: true });
+  const cam = await ev(`(()=>{const r=cig.runner;return{k:+r.camLoopK.toFixed(3),back:+r.camBackS.toFixed(2),st:r.state}})()`);
+  if (cam.k < 0.1) ctx.pass(`the camera is back on the chase rig ~0.9 s after the exit ${JSON.stringify(cam)}`); else ctx.fail(`camera still in the ring view after the exit ${JSON.stringify(cam)}`);
+  if (minVs >= L.min * 0.98 && !died) ctx.pass(`the ball kept its speed through the ring (lowest ${minVs} m/s at the marks, needed ${L.min})`); else ctx.fail(`speed through the ring ${minVs} m/s < needed ${L.min}, died ${died}`);
+  if (!extras) return;
+  // corkscrew + helix: the round pieces' own camera
+  for (const [kind, tag] of [['corkscrew', 'cork'], ['helix', 'helix']]) {
+    const P = await ev(`(()=>{const r=cig.runner,T=r.track;const SEG={def:{},s0:0,s1:1e9,bonus:false};T.chapterAt=()=>SEG;T._q.unshift(${JSON.stringify(kind)});T._nextRound=1e9;let p;for(let i=0;i<8&&!(p=T.pieces.find((q)=>q.kind===${JSON.stringify(kind)}&&q.s0>r.b.s));i++)T.ensure(T.genEnd+30);return p?{s0:p.s0,s1:p.s1}:null})()`);
+    if (!P) { ctx.warn(`${kind}: the hand-queued piece was not built (chapter border guard)`); continue; }
+    const pre = await ev(RING_STEP(`r.b.s>=${P.s0 - 20}`)); if (process.env.VERBOSE) console.log('  s28 ' + kind + ' piece ' + JSON.stringify(P) + ' pre ' + JSON.stringify(pre) + ' ' + await ev(`cig.runner.cause`));
+    for (const [i, f] of [0.3, 0.7].entries()) { const st = await ev(RING_STEP(`r.b.s>=${P.s0 + f * (P.s1 - P.s0)}`)); await ringShot(`${tag}_${i}`, ctx, `${kind} ${Math.round(f * 100)}% s=${st.s}`); }
+  }
+  // double loop: two rings back to back (the second swings back the other way); the camera glides from the first ring to the second
+  const D = await ev(`(()=>{const r=cig.runner,T=r.track,SEG={def:{},s0:0,s1:1e9,bonus:false};T.chapterAt=()=>SEG;T._q.unshift('loop','loop');T._nextRound=1e9;let a;for(let i=0;i<12&&(a=T.pieces.filter((q)=>q.kind==='loop'&&q.s0>r.b.s)).length<2;i++)T.ensure(T.genEnd+30);return a.length>1?{a:a[0].loop,b:a[1].loop}:null})()`);
+  if (!D) ctx.warn('double loop: the two hand-queued rings were not built');
+  else {      // dense sweep: the ball read every 1.5 m from before the first ring to past the last: not a frame may hide it (> 50 % covered) or lose it (off screen / a speck)
+    const bad = [], len = D.b.s1 - D.b.s0, marks = [[D.a.s1 + 2, 'exit of the first ring'], [D.a.s1 + 8, 'between the rings'], [D.b.s0 - 3, 'entry of the second ring'], [D.b.s0 + 0.25 * len, "3 o'clock, second ring"], [D.b.s0 + 0.5 * len, 'top of the second ring'], [D.b.s0 + 0.75 * len, "9 o'clock, second ring"], [D.b.s1 + 5, 'exit of the second ring']]; let n = 0, minRad = 99, mi = 0;
+    await ev(RING_STEP(`r.b.s>=${D.a.s0 - 40}`));
+    for (let sm = D.a.s0 - 18; sm < D.b.s1 + 12; sm += 1.5) {
+      const st = await ev(RING_STEP(`r.b.s>=${sm}`)); await sleep(30);
+      if (mi < marks.length && sm >= marks[mi][0]) { await ringShot('dloop_' + mi, ctx, `${marks[mi][1]} s=${st.s} cam ${st.k}`); mi++; }
+      const q = await ev(BALL_READ).catch(() => null); if (!q) continue; n++; minRad = Math.min(minRad, q.rad);
+      if (q.pct > 50 || q.off || q.rad < 4) bad.push(`${Math.round(sm)}:${q.pct}%${q.off ? " off" : ""} r${q.rad} at ${q.cx},${q.cy} by ${q.by}`);
+    }
+    if (bad.length > 5) ctx.fail(`double loop sweep: ${bad.length} of ${n} reads hide or lose the ball: ${bad.slice(0, 8).join('; ')}`); else ctx.pass(`double loop sweep: the ball is visible in ${n - bad.length} of ${n} reads (smallest radius ${minRad}px; at most 5 reads = 7.5 m hidden behind a ring edge)`);
+  }
+  await ev(`cig.runner.hitStop=0`);
+}
+
+// scenario 29: the mechanics borrowed from other games (needs ?debug hooks): mech_burst_0/1 (flake burst: the spray, then picked up again), mech_dash_0/1 (panel -> spring -> panel chain), mech_board_0/1 (hoverboard),
+// mech_drift_0/1 (blue then orange charge on a bend), mech_chase_0/1 (boulder chase: camera looking back), mech_crowd_0/1 (critters stick to the ball), rush_ch_halka / gp / gokyuzu / magara (chapter name strip).
+// Every frame goes through the same ball / banner / horizon reads as a Rush frame; the numbers behind each mechanic are asserted too.
+const MSTART = (id, seed) => `(()=>{const r=cig.runner,g=window.__defs[${JSON.stringify(id)}];const seg=Object.assign({},g,{n:7,s0:0,s1:1e9,i:0});r.hitStop=0;r.start(${seed},null,{chapterPlan:{segs:[seg],at:()=>seg}});r.invulnT=1e9;r.yetiHoldT=99;r.track.features.junction=false;r.track._nextRound=1e9;r.track._roundN=1;r.track._nextSet=1e9;r.tipsSeen={}})()`;
+async function mechs(ctx) {
+  await load('?endless&notut&debug', seed3());
+  await waitFor(dbgRush, 25000, 'rush playing');
+  await ev(`(()=>{const r=cig.runner,D=window.__defs={};for(const id of ['yamac','halka','gp','gokyuzu','tapinak','magara','kalabalik']){let g;for(let i=0;i<60&&!(g=r.chapters.segs.find((x)=>x.id===id));i++)r.chapters.at(r.chapters.segs[r.chapters.segs.length-1].s1+1);D[id]=g}})()`);
+  const go = async (id, seed, s) => { await ev(MSTART(id, seed)); await waitFor(dbgRush, 8000, 'rush restarted ' + id); await ev(`cig.runner.track.ensure(1600)`); await ev(RING_STEP(`r.b.s>=${s}`)); };
+  const frame = async (name, extra = '') => { await ev(`cig.runner.hitStop=1e9`); await sleep(120); await ev('window.__raf&&(window.__raf.skip=true)'); await shot(name, ctx); await ev('window.__raf&&(window.__raf.skip=false)'); };
+  // flake burst
+  await go('yamac', 11, 200);
+  await ev(`(()=>{const r=cig.runner;r.hitStop=0;r.coins=40;r.tier=2;r.invulnT=0;r.crash({kind:'static',id:-1,u:0,headOn:true});r.invulnT=1e9;for(let i=0;i<10;i++)cig.simEndless(1/60)})()`);
+  const bn = await ev(`({n:cig.runner.burstN,live:cig.runner.obstacles.picks.filter((k)=>k.ttl&&k.alive).length,held:cig.runner.coins})`);
+  if (bn.n >= 4 && bn.live >= 4) ctx.pass(`flake burst: ${bn.n} flakes dropped (${bn.live} on the snow), ${bn.held} held`); else ctx.fail(`flake burst: ${JSON.stringify(bn)}`);
+  await frame('mech_burst_0');
+  await ev(`(()=>{const r=cig.runner;r.hitStop=0;const ks=r.obstacles.picks.filter((k)=>k.ttl&&k.alive);for(let i=0;i<8;i++){const k=ks[i%ks.length];if(k&&k.alive){r.b.s=k.s;r.b.u=k.u;r.b.h=k.h}r.invulnT=1e9;cig.simEndless(1/60)}})()`); await frame('mech_burst_1');
+  // spring-dash chain
+  await go('halka', 12, 262);
+  const L = await ev(`(()=>{const r=cig.runner;const c=r.obstacles.obs.filter((o)=>o.chain&&o.s>r.b.s+20&&o.s%500>45&&o.s%500<420);return c.length?{s:c[0].s,u:c[0].u,n:c.filter((o)=>Math.abs(o.s-c[0].s)<80).length,k:c.map((o)=>o.kind[3]).join('')}:null})()`);
+  if (!L) ctx.fail('dash chain: no chain built in the first 1600 m of the HALKA ADASI chapter');
+  else {
+    await ev(`(()=>{const r=cig.runner;r.lane=Math.round(${L.u}/2.4);})()`);
+    await ev(RING_STEP(`r.b.s>=${L.s - 7}`)); await frame('mech_dash_0');
+    await ev(RING_STEP(`r.b.s>=${L.s + 22}||r.turboN>=3`)); await frame('mech_dash_1');
+    const d = await ev(`({n:cig.runner.turboN,dash:+cig.runner.dashT.toFixed(1)})`);
+    if (d.n >= 2) ctx.pass(`dash chain: ${L.n} links (${L.k}), chain x${d.n}, dash ${d.dash} s`); else ctx.warn(`dash chain: only x${d.n} (the scripted lane change may have missed a panel)`);
+  }
+  // hoverboard
+  await go('yamac', 13, 160);
+  await ev(`(()=>{const r=cig.runner;r.hitStop=0;r.handle({type:'pickup',kind:'board',value:1,s:r.b.s,u:0,h:1})})()`);
+  await ev(RING_STEP(`r.b.h>=4.2`)); await frame('mech_board_0');
+  await ev(`(()=>{const r=cig.runner;r.hitStop=0;for(let i=0;i<150;i++){r.invulnT=1e9;cig.simEndless(1/60)}})()`); await frame('mech_board_1');
+  const bd = await ev(`({on:cig.runner.boardOn,h:+cig.runner.b.h.toFixed(1)})`); if (bd.on && bd.h > 3.5) ctx.pass(`hoverboard: flying at ${bd.h} m`); else ctx.fail(`hoverboard: ${JSON.stringify(bd)}`);
+  // drift
+  await go('gp', 14, 120);
+  const cv = await ev(`(()=>{const T=cig.runner.track;T.ensure(1500);for(let s=Math.ceil(cig.runner.b.s)+20;s<1400;s++)if(Math.abs(T.curvature(s))>0.02&&Math.abs(T.curvature(s+10))>0.02)return s;return -1})()`);
+  if (cv < 0) ctx.fail('drift: no bend in the first 1400 m of the GP chapter');
+  else {
+    await ev(RING_STEP(`r.b.s>=${cv - 2}`));
+    await ev(`(()=>{const r=cig.runner;r.hitStop=0;r.ctx.input.down=true;for(let i=0;i<85;i++){r.invulnT=1e9;r.b.s=Math.min(r.b.s,${cv}+7);cig.simEndless(1/60)}})()`); const d0 = await ev(`+cig.runner.drift.toFixed(2)`); await frame('mech_drift_0');
+    await ev(`(()=>{const r=cig.runner;r.hitStop=0;for(let i=0;i<60;i++){r.invulnT=1e9;r.b.s=Math.min(r.b.s,${cv}+7);cig.simEndless(1/60)}})()`); await frame('mech_drift_1');
+    const dr = await ev(`({d0:${d0},d:+cig.runner.drift.toFixed(2),hold:+cig.runner.driftHold.toFixed(2),g:cig.runner.grounded,c:+cig.runner.track.curvature(cig.runner.b.s).toFixed(3),down:cig.runner.ctx.input.down,s:Math.round(cig.runner.b.s),cv:${cv}})`); await ev(`cig.runner.ctx.input.down=false`);
+    if (dr.d0 >= 1 && dr.d >= 2) ctx.pass(`drift: charge ${dr.d0} (blue) then ${dr.d} (orange) on the bend`); else ctx.warn(`drift: charge only ${dr.d} ${JSON.stringify(dr)}`);
+  }
+  // boulder chase
+  await go('tapinak', 15, 30);
+  await ev(RING_STEP(`r.chase&&r.chase.t>1.4`)); await frame('mech_chase_0');
+  await ev(RING_STEP(`r.chase&&r.chase.t>4`)); await frame('mech_chase_1');
+  const ch = await ev(`({k:+cig.runner.chaseK.toFixed(2),gap:cig.runner.chase?+(cig.runner.b.s-cig.runner.chase.cs).toFixed(1):-1})`);
+  if (ch.k > 0.8 && ch.gap > 0) ctx.pass(`boulder chase: camera looks back (${ch.k}), the rock ${ch.gap} m behind`); else ctx.fail(`boulder chase: ${JSON.stringify(ch)}`);
+  // crowd
+  await go('kalabalik', 16, 110);
+  await frame('mech_crowd_0');
+  await ev(RING_STEP(`r.b.s>=230`)); await frame('mech_crowd_1');
+  const cw = await ev(`({n:cig.runner.swallowN||0,crowd:cig.runner.crowd})`); if (cw.crowd) ctx.pass(`crowd: ${cw.n} critters swallowed on the way`); else ctx.fail(`crowd: ${JSON.stringify(cw)}`);
+  // chapter frames: the name strip is up 1-2 s after the start
+  for (const id of ['halka', 'gp', 'gokyuzu', 'magara']) {
+    await ev(MSTART(id, 5)); await waitFor(dbgRush, 8000, 'rush restarted ' + id);
+    await ev(`(()=>{const u=cig.runner.ctx.ui;for(const c of Object.values(u._chs||{})){c.q.length=0;c.cur=null;c.last=-1e9}})()`);
+    await ev(RING_STEP(`r.b.s>=40`)); await waitFor(`!!document.querySelector('.chap-pill.on')`, 4000, 'name pill ' + id).catch(() => {}); await sleep(150);
+    await frame('rush_ch_' + id); ctx.pass(`chapter ${id}: frame rush_ch_${id}.png`);
+  }
+  await ev(`cig.runner.hitStop=0`);
 }
 
 // scenario 24: no stray text on the menu. Visible text outside the menu card / panels (toast, hint, float, banner, HUD, level-up overlay) is scanned after every bottom-nav panel and after a Rush death -> MENU.
@@ -962,6 +1102,8 @@ async function main() {
   await scenario(16, 'debug overlay stats', 30000, debugStats);
   await scenario(21, 'rush camera sweep (flat frames)', 90000, camSweep);
   await scenario(25, 'AI UI icons (buffs, perk cards, cig HUD)', 45000, uiIcons);
+  await scenario(28, 'sonic ring (loop_0..5, cork_*, helix_*)', 90000, rings);
+  await scenario(29, 'borrowed mechanics (mech_*, rush_ch_halka/gp/gokyuzu/magara)', 120000, mechs);
   await scenario(26, 'sonic layer (opening shot, bunny hop, dive-stomp, BLAST)', 70000, sonic);
   await scenario(27, 'Blender props in place (prop_*.png)', 40000, props);
 }

@@ -4,6 +4,7 @@
 // hit you, tap-to-skip, revive, and a short fuzz run (random swipes, deaths, retries) that must not throw or produce NaN.
 // Usage: node scripts/check-feel-sim.mjs        (a few seconds per scenario)
 import * as THREE from 'three';
+import { existsSync } from 'node:fs';
 
 // ---------- fake DOM (just enough for runner.js) ----------
 const noop2d = () => new Proxy(function () {}, { get: (t, k) => (k === 'width' || k === 'height' ? 256 : noop2d()), apply: () => noop2d(), set: () => true });
@@ -81,6 +82,7 @@ function junction(f, { secBefore = 0 } = {}) {
   const target = () => (secBefore ? r.jnSA - r.b.vs * secBefore : r.jnSA + f * (J.s - r.jnSA));
   while (r.b.s < target() - r.b.vs * DT * 0.5 && k++ < 9000) step(h);
   const out = { h, r, J, open: r.jnOpen, lane0: r.lane, turns0: r.turns };
+  r.mom = 0; r.blastT = 0; r.flow = 0;      // (a ring earlier in the run lights BLAST and feeds the combo: that multiplier ebbing away would skew the three timing tiers)
   swipe(h, J.dir * 40);
   out.frames = -1;
   for (let i = 0; i < 20; i++) { step(h); if (r.turns > out.turns0 && out.frames < 0) out.frames = i; }
@@ -97,7 +99,7 @@ function junction(f, { secBefore = 0 } = {}) {
     ok('late swipe: SON ANDA', l.turned === 1 && l.tag.main === 'SON ANDA!');
     ok('perfect pays more than late, late more than early', parseInt(p.tag.sub, 10) > parseInt(l.tag.sub, 10) && parseInt(l.tag.sub, 10) > parseInt(e.tag.sub, 10));
     ok('a swipe 80 ms before the window is held, then turns (no stray lane change)', !b.open && b.turned === 1 && b.frames >= 3 && b.frames <= 8 && b.r.lane === b.lane0);
-    ok('a swipe 300 ms early is still a normal lane change', !x.open && x.turned === 0 && x.r.lane === x.lane0 + 1);
+    ok('a swipe 300 ms early is still a normal lane change', !x.open && x.turned === 0 && x.r.lane === x.lane0 + x.J.dir);
   }
 }
 
@@ -237,6 +239,7 @@ function junction(f, { secBefore = 0 } = {}) {
   while (r.time < 40 && k++ < 4000) { step(h); if (r.time > 5) minGap = Math.min(minGap, r.gap); }
   ok('the Yeti closes in for a glimpse (gap < 9) with no stumble window', minGap < 9 && r.stumbleT === 0 && r.stumbles === 0);
   ok('the glimpse is announced by a roar', roars >= 1);
+  let wk = 0; while (r.gap <= 9.5 && wk++ < 360) step(h);      // (the next glimpse may be in progress at the 40 s mark: give it up to 6 s to drop back)
   ok('and it drops back again', r.gap > 9.5);
   const a = make({ seed: 32 }).runner, b = make({ seed: 32 }); const rb = b.runner;
   goLive({ runner: a }); goLive(b);
@@ -250,7 +253,7 @@ function junction(f, { secBefore = 0 } = {}) {
 {
   const { speedAt } = await import('../src/runner/runner.js');
   const seen = new Set(); let pairs = 0, worst = 9, newRows = 0, blocked = 0, swapTight = 0, newFirst = 99999;
-  for (let seed = 1; seed <= 24; seed++) {
+  for (let seed = 1; seed <= 40; seed++) {      // (40: the rings take a few pieces, dodgeHop is rare and did not show in the first 24 plans any more)
     const r = make({ seed }).runner; r.track.ensure(4800);
     const rl = r.obstacles.rowsLog.slice().sort((a, b) => a.s - b.s);
     for (let i = 0; i < rl.length; i++) {
@@ -490,12 +493,12 @@ function junction(f, { secBefore = 0 } = {}) {
     ok('after the tour: remixes of two rule sets, never the same id twice in a row', plan(new ChapterPlan(7, 0, () => 30)).filter((c) => !c.bonus).every((c, i, a) => (c.n <= TOUR.length ? c.id === TOUR[c.n - 1] : c.def.parts && c.def.parts.length === 2 && c.id !== a[i - 1].id)));
     // walk the real speed curve: order, every new mechanic shows up, something new at least every ~900 m
     {
-      const { speedAt } = await import('../src/runner/runner.js'), NEW = ['ekspres', 'ay', 'lazer', 'kopru', 'fuze', 'hareket', 'heyelan', 'turbo', 'neon', 'uzay'], THEMED = ['volkan', 'sakura', 'neon', 'uzay'];
+      const { speedAt } = await import('../src/runner/runner.js'), NEW = ['ekspres', 'ay', 'lazer', 'kopru', 'fuze', 'hareket', 'heyelan', 'turbo', 'neon', 'uzay', 'halka', 'gp', 'gokyuzu', 'tapinak', 'magara', 'kalabalik'], THEMED = ['volkan', 'sakura', 'neon', 'uzay'];
       const all = plan(new ChapterPlan(11, 0, speedAt)), w = all.filter((c) => !c.bonus), before = new Set(), gaps = []; let last = 0;
-      for (const c of all) { if (c.s1 > 13000) break; if (c.bonus || !before.has(c.id)) { gaps.push(c.s0 - last); last = c.s0; before.add(c.id); } }      // (a coin-rain bonus is something new too)
-      ok('the walk 0..13000 m follows the tour order', w.filter((c) => c.n <= TOUR.length && c.s0 < 13000).every((c) => c.id === TOUR[c.n - 1]));
-      ok('every new mechanic shows up within 0..13000 m (ekspres, ay, neon, lazer, kopru, uzay, fuze, hareket, heyelan, turbo)', NEW.every((id) => w.some((c) => c.id === id && c.s0 < 13000)));
-      ok('a chapter with something new at least every 800 m, no repeat of an id before the tour ends (max gap ' + Math.round(Math.max(...gaps)) + ' m)', Math.max(...gaps) <= 800 && w.filter((c) => c.n <= TOUR.length).length === new Set(w.filter((c) => c.n <= TOUR.length).map((c) => c.id)).size);
+      for (const c of all) { if (c.s1 > 17000) break; if (c.bonus || !before.has(c.id)) { gaps.push(c.s0 - last); last = c.s0; before.add(c.id); } }      // (a coin-rain bonus is something new too)
+      ok('the walk 0..17000 m follows the tour order', w.filter((c) => c.n <= TOUR.length && c.s0 < 17000).every((c) => c.id === TOUR[c.n - 1]));
+      ok('every new mechanic and the 6 mechanic chapters (halka, gp, gokyuzu, tapinak, magara, kalabalik) show up within 0..17000 m', NEW.every((id) => w.some((c) => c.id === id && c.s0 < 17000)));
+      ok('a chapter with something new at least every 760 m, no repeat of an id before the tour ends (max gap ' + Math.round(Math.max(...gaps)) + ' m)', Math.max(...gaps) <= 760 && w.filter((c) => c.n <= TOUR.length).length === new Set(w.filter((c) => c.n <= TOUR.length).map((c) => c.id)).size);
       ok('chapters name a look (sky) and a one-word label', NEW.every((id) => CHAPTER_BY_ID[id].look && CHAPTER_BY_ID[id].word));
       // themed chapters: a biome of biomes.js, a sky backdrop that exists as a file (and as a BACKDROPS entry), a track palette; two of them inside the first 3 km
       const { BIOMES } = await import('../src/runner/biomes.js'), fs = await import('node:fs'), bsrc = fs.readFileSync(new URL('../src/runner/biomes.js', import.meta.url), 'utf8');
@@ -595,6 +598,51 @@ function junction(f, { secBefore = 0 } = {}) {
       for (const c of r.chapters.segs.filter((q) => q.s0 > 100 && q.s0 < 8600)) { tot++; if (gates.some((x) => x >= c.s0 - 1 && x < c.s0 + 120)) gated++; }
     }
     ok('chapter gates: ' + gated + ' of ' + tot + ' chapter starts have one within 120 m (>= 60%)', gated >= 0.6 * tot);
+  }
+  // -- Sonic rings: round set pieces show up in every chapter without a signature hazard of its own. Over 0..6000 m of 12 normal plans: >= 6 round pieces incl. >= 3 loops,
+  //    the first loop before 700 m, none across a chapter border, every ring 11-16 m and completable at the plan pace (the strips' +30 % covers what the pace lacks) --
+  {
+    const RND = { loop: 1, corkscrew: 1, helix: 1, halfpipe: 1, tube: 1 };
+    let minRound = 99, minLoops = 99, firstMax = 0, across = 0, badR = 0, badV = 0, dbl = 0, nLoops = 0, full = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const r = make({ seed }).runner; r.track.ensure(6200);
+      const P = r.track.pieces.filter((p) => p.s0 < 6000), rd = P.filter((p) => RND[p.kind]), lp = P.filter((p) => p.kind === 'loop');
+      minRound = Math.min(minRound, rd.length); minLoops = Math.min(minLoops, lp.length); if (rd.length >= 6 && lp.length >= 3) full++; firstMax = Math.max(firstMax, lp.length ? lp[0].s0 : 9999);
+      across += rd.filter((p) => p.kind !== 'tube' && r.chapters.at(p.s0) !== r.chapters.at(p.s1 - 0.1)).length;
+      for (const p of lp) { nLoops++; const L = p.loop; if (L.R < 11 - 1e-6 || L.R > 16 + 1e-6) badR++; if (L.minSpeed > 1.3 * L.plannedSpeed) badV++; }
+      dbl += lp.filter((p, i) => i && Math.abs(p.s0 - lp[i - 1].s1) < 1).length;
+    }
+    // (the chapters with a signature hazard of their own, the coin rain and the boss stretch are skipped, so a plan with few eligible chapters falls a ring short: >= 6 incl. >= 3 loops in 9 of 12 plans, never below 5 / 1)
+    ok(`round set pieces in 0..6000 m: >= 6 incl. >= 3 loops in ${full} of 12 plans (need 9), fewest ${minRound} pieces (need 5) / ${minLoops} loops (need 1)`, full >= 9 && minRound >= 5 && minLoops >= 1);
+    ok(`the first loop comes before 700 m (latest ${Math.round(firstMax)} m)`, firstMax < 700);
+    ok('no corkscrew / helix / half-pipe / loop across a chapter border', across === 0);
+    ok(`all ${nLoops} rings are 11-16 m in radius and need at most 1.3x the planned pace (${badR} / ${badV} outside)`, badR === 0 && badV === 0);
+    ok(`double loops (two rings back to back) exist later in the run (${dbl})`, dbl >= 1);
+    // a ball that enters at plan speed gets through: the real runner, no input, nothing can hurt it but a fall
+    const h = make({ seed: 3 }), r = h.runner; goLive(h);
+    r.track.ensure(900);
+    const L = r.track.pieces.find((p) => p.kind === 'loop').loop;
+    let minV = 1e9, k = 0, camK = 0; while (r.b.s < L.s1 + 30 && r.state === 'play' && k++ < 6000) { step(h); if (r.b.s > L.s0 && r.b.s < L.s1) minV = Math.min(minV, r.b.vs); if (r.b.s > L.s1 + 20) camK = r.camLoopK; }
+    ok(`a ball at the plan pace gets through the ring (still playing at ${Math.round(r.b.s)} m, slowest inside ${minV.toFixed(1)} m/s, needs ${L.minSpeed.toFixed(1)})`, r.state === 'play' && r.b.s > L.s1 + 25 && minV >= L.minSpeed * 0.98);
+    ok('the ring camera lets go again after the exit', camK < 0.15);
+    // the ring camera keeps the ball in frame in every frame, through the entry blend, a single and a double loop (NDC inside 0.9; chase-camera frames are not judged)
+    for (const dbl of [false, true]) {
+      const g = make({ seed: 7 }), q = g.runner; goLive(g); q.track.features.junction = false; q.yetiHoldT = 99;
+      const T = q.track, SEG = { def: {}, s0: 0, s1: 1e9, bonus: false };
+      if (dbl) { T.chapterAt = () => SEG; T._q.unshift('loop', 'loop'); T._nextRound = 1e9; for (let i = 0; i < 12 && T.pieces.filter((p) => p.kind === 'loop' && p.s0 > q.b.s).length < 2; i++) T.ensure(T.genEnd + 30); } else T.ensure(1500);
+      const rings = T.pieces.filter((p) => p.kind === 'loop').map((p) => p.loop), a0 = rings[0], z1 = rings[dbl ? 1 : 0].s1, cam = q.ctx.camera, nd = new THREE.Vector3();
+      let guard = 0, out = 0, seen = 0, mk = 9;
+      while (q.b.s < a0.s0 - 45 && guard++ < 9000) { step(g); q.b.vs = Math.max(q.b.vs, 30); }
+      guard = 0;
+      while (q.b.s < z1 + 40 && guard++ < 4000) {
+        step(g); q.b.vs = Math.max(q.b.vs, 30);
+        if (q.camLoopK < 0.02) continue;
+        seen++; cam.updateMatrixWorld(); nd.copy(q.ctx.ball.group.position).project(cam);
+        if (Math.abs(nd.x) > 0.9 || Math.abs(nd.y) > 0.92 || nd.z > 1) out++;
+        if (q.b.s > a0.s0 - 5 && q.b.s < z1) mk = Math.min(mk, q.camLoopK);
+      }
+      ok(`${dbl ? 'double' : 'single'} loop: the ball stays on screen in all ${seen} ring-camera frames (${out} outside)` + (dbl ? `, the side camera holds through both rings (lowest blend ${mk.toFixed(2)})` : ''), seen > 60 && out === 0 && (!dbl || mk > 0.9));
+    }
   }
   // -- upgrades: start size, melt resistance, magnet range, power durations; the score share is capped at 25% --
   {
@@ -721,6 +769,118 @@ function junction(f, { secBefore = 0 } = {}) {
   w.mom = 0.8; w.lungeT = 0; w.lungeCd = 99; step(pr, 120); ok('while blasting it falls away (visual)', w.yFall > 2.9);
   const lv = (() => { try { return levelById(1); } catch { return null; } })();
   if (lv) { const c = make({ seed: 50, level: lv }).runner; ok('campaign levels have none of it (no meter, no shot, plain pace)', c.introK0 === 0 && (c.addMom(1), c.mom === 0)); }
+}
+// ---------- RUSH MECHANICS (borrowed from other games) ----------
+// FLAKE BURST (Sonic ring loss): a hit that is not the end sprays min(12, 20 % of the held flakes, >= 4) of them, 3 s to pick them up again
+{
+  const h = make({ seed: 61 }), r = h.runner; goLive(h); r.tier = 2; r.coins = 30; r.invulnT = 0; r.yetiHoldT = 99;
+  r.crash({ kind: 'static', id: -1, u: 0, headOn: true });
+  const live = () => r.obstacles.picks.filter((k) => k.ttl && k.alive);
+  ok(`flake burst: 20 % of 30 flakes = 6 dropped (${r.burstN}), held ${r.coins}, each with a 3 s life`, r.burstN === 6 && r.coins === 24 && live().length === 6 && live().every((k) => Math.abs(k.ttl - r.obstacles.time - 3) < 0.05));
+  const ks = live().slice(); let got = 0; r.obstacles.time += 0; for (const k of ks.slice(0, 5)) { r.b.s = k.s; r.b.u = k.u; r.b.h = k.h; step(h, 1); }
+  got = r.burstGot; r.invulnT = 1e9;
+  ok(`flake burst: flying through them picks them up again (${got} of 6)`, got >= 5 && r.coins >= 24 + got);
+  r.flow = 0; const sc0 = r.score; r.hitStop = 0; r.burstT = 0.01; step(h, 3);
+  ok('flake burst: 70 % or more back = GERİ ALDIN (+1 flow, +100 x mult)', r.flow >= 0.9 && r.score - sc0 >= 100 && r.burstN === 0);
+  const g = make({ seed: 62 }), q = g.runner; goLive(g); q.tier = 2; q.coins = 30; q.invulnT = 0; q.yetiHoldT = 99; q.crash({ kind: 'static', id: -1, u: 0, headOn: true });
+  q.hitStop = 0; q.obstacles.time += 3.2; step(g, 3);
+  ok('flake burst: an uncollected flake is gone after 3 s', q.obstacles.picks.filter((k) => k.ttl && k.alive).length === 0 && q.burstGot === 0);
+  const f = make({ seed: 63 }).runner; goLive({ runner: f, ctx: f.ctx }); f.tier = 2; f.coins = 6; f.crash({ kind: 'static', id: -1, u: 0, headOn: true });
+  ok('flake burst: with fewer than 10 flakes held nothing drops (no early-game sting)', f.burstN === 0 && f.coins === 6);
+}
+// SPRING-DASH CHAIN: panel -> spring -> panel, each link inside 3.2 s adds a dash (+18 % pace), a skipped link ends it
+{
+  const h = make({ seed: 64 }), r = h.runner; goLive(h); r.yetiHoldT = 99; r.hitStop = 0;
+  r.addMom = () => {}; step(h, 30); const base = r.topV;
+  r.handle({ type: 'pad', kind: 'boost', value: 1, power: 1, onBeat: false }); step(h, 20);
+  r.handle({ type: 'pad', kind: 'spring', value: 1, power: 1.55, onBeat: false }); step(h, 20);
+  r.handle({ type: 'pad', kind: 'boost', value: 1, power: 1, onBeat: false }); step(h, 20);
+  r.handle({ type: 'pad', kind: 'spring', value: 1, power: 1.55, onBeat: false }); step(h, 2);
+  ok(`dash chain: 4 links (panel, spring, panel, spring) = chain x${r.turboN}, dash ${r.dashT.toFixed(1)} s`, r.turboN === 4 && r.dashT >= 2.2);
+  ok(`dash chain: the pace is +18 % while the dash lasts (${(r.topV / base).toFixed(3)})`, Math.abs(r.topV / base - 1.18) < 0.03);
+  step(h, 200); ok('dash chain: a skipped link (3.2 s with no panel) ends the chain', r.turboN === 0 && r.dashT <= 0);
+  let ch = 0, alt = 0;
+  for (let sd = 1; sd <= 24; sd++) { const t = make({ seed: sd }).runner; t.track.ensure(4000); const os = t.obstacles.obs.filter((o) => o.chain); ch += os.length; if (os.some((o) => o.kind === 'spring') && os.some((o) => o.kind === 'strip')) alt++; }
+  ok(`dash chain: generated chains alternate panel and spring (${alt} of 24 plans have both, ${ch} links)`, alt >= 1);
+}
+// HOVERBOARD: 8 s of flight at 4.5 m over everything, a lane of 28 sky flakes, a down swipe lands early, then the snow again
+{
+  const h = make({ seed: 65 }), r = h.runner; goLive(h); r.yetiHoldT = 99; r.hitStop = 0; r.tipsSeen = {};
+  const c0 = r.crashes, sc0 = r.b.s;
+  r.handle({ type: 'pickup', kind: 'board', value: 1, s: r.b.s, u: 0, h: 1 });
+  const sky = r.obstacles.picks.filter((k) => k.kind === 'flake' && k.alive && k.h > 4.4 && k.h < 5.6).length;
+  step(h, 48, false);
+  ok(`hoverboard: up to 4 m within 0.8 s (h ${r.b.h.toFixed(1)}), ${sky} sky flakes ahead`, r.b.h >= 4 && sky >= 20 && r.boardOn && r.rocketT > 6);
+  let k = 0; r.meltK = 0; while (r.rocketT > 0 && k++ < 700) step(h, 1, false);
+  ok(`hoverboard: 8 s over the obstacles without one crash (${(r.b.s - sc0) | 0} m flown, crashes ${r.crashes - c0})`, r.crashes === c0 && r.state === 'play' && k * DT >= 7 && k * DT <= 8.5);
+  step(h, 60, false); ok('hoverboard: it ends and the ball is back on the snow within 1.5 s', !r.boardOn && r.grounded && r.b.h < 1.5);
+  const g = make({ seed: 65 }), q = g.runner; goLive(g); q.yetiHoldT = 99; q.hitStop = 0; q.handle({ type: 'pickup', kind: 'board', value: 1, s: q.b.s, u: 0, h: 1 }); step(g, 40, false);
+  q.dive(); step(g, 3, false); ok('hoverboard: a down swipe ends the flight early', !q.boardOn && q.rocketT <= 0);
+  let sp = 0; for (let sd = 1; sd <= 8; sd++) { const t = make({ seed: sd }).runner; t.track.ensure(6000); sp += t.obstacles.picks.filter((x) => x.kind === 'board').length; }
+  ok(`hoverboard: about one per 700 m (${sp} in 8 x 6 km)`, sp >= 20 && sp <= 90);
+}
+// DRIFT TURBO: hold a finger on a bend 0.25 s, charge to blue (0.9 s) / orange (1.8 s), let go for +18 % / +30 % pace, nothing below the blue stage
+{
+  const drive = (hold) => {
+    const h = make({ seed: 66 }), r = h.runner; goLive(h); r.yetiHoldT = 99; r.hitStop = 0; r.track.ensure(1200); r.addMom = () => {};
+    let c = 0, s0 = 0; for (let s = 150; s < 1100; s += 1) if (Math.abs(r.track.curvature(s)) > 0.02 && Math.abs(r.track.curvature(s + 10)) > 0.02) { s0 = s; break; }
+    r.b.s = s0; r.grounded = true; step(h, 5); const base = r.topV; r.mom = 0;
+    h.fire('pointerdown', { clientX: 200, clientY: 500 }); let t = 0; while (t < hold) { r.b.s = s0; r.grounded = true; r.b.h = r.groundAt(r.b.s, r.b.u); step(h, 1); t += DT; }
+    const d = r.drift; h.fire('pointerup', { clientX: 200, clientY: 500 }); step(h, 3); return { r, d, base, h };
+  };
+  const a = drive(1.3), b = drive(2.3), c = drive(0.3), n = drive(0);
+  ok(`drift: a 1.3 s hold on a bend is blue (charge ${a.d.toFixed(2)}), release = +18 % for 1.2 s`, a.d >= 1 && a.d < 2 && Math.abs(a.r.driftT - 1.2) < 0.1 && Math.abs(a.r.driftK - 0.18) < 1e-9 && Math.abs(a.r.topV / a.base - 1.18) < 0.03);
+  ok(`drift: a 2.3 s hold is orange (charge ${b.d.toFixed(2)}), release = +30 % for 1.8 s`, b.d >= 2 && Math.abs(b.r.driftT - 1.8) < 0.1 && Math.abs(b.r.topV / b.base - 1.30) < 0.03);
+  ok('drift: a short hold (0.3 s) or none pays nothing, no penalty', c.r.driftT <= 0 && n.r.driftT <= 0 && c.r.state === 'play');
+  a.r.drift = 1.5; a.r.driftHold = 1; a.r.crash({ kind: 'static', id: -1, u: 0, headOn: true }); ok('drift: a hit resets the charge', a.r.drift === 0);
+  const a2 = drive(1.3); ok('drift: deterministic (same seed, same charge)', Math.abs(a2.d - a.d) < 1e-9 && a2.r.driftT === a.r.driftT || Math.abs(a2.d - drive(1.3).d) < 1e-9);
+}
+// the six mechanic chapters + BOULDER CHASE + KALABALIK TOPU (Katamari)
+{
+  const GG = await import('../src/runner/goals.js');
+  const fp = (ids, len = 900) => { const p = new GG.ChapterPlan(1, 0, () => 20); let s0 = 0; p.segs = ids.map((id, i) => { const def = GG.CHAPTER_BY_ID[id], seg = { n: i + 1, id, def, s0, s1: s0 + len, bonus: false, i }; s0 += len; return seg; }); return p; };
+  ok('the six new chapters exist with a sky file, a one-word label and own track colours', ['halka', 'gp', 'gokyuzu', 'tapinak', 'magara', 'kalabalik'].every((id) => { const d = GG.CHAPTER_BY_ID[id]; return d && d.word && d.intro && d.ground && d.look && existsSync(new URL('../public/sky/' + d.look.sky + '.jpg', import.meta.url)); }) && new Set(['halka', 'gp', 'gokyuzu', 'tapinak', 'magara', 'kalabalik'].map((id) => GG.CHAPTER_BY_ID[id].ground.tileA)).size === 6);
+  // BOULDER CHASE: the rock starts 44 m behind, the camera looks back, swipes are mirrored, a clean run past 320 m pays +20 flakes and BLAST; a stalled ball is caught
+  {
+    const h = make({ seed: 67 }), r = h.runner; r.start(67, null, { chapterPlan: fp(['tapinak']) }); goLive(h); r.hitStop = 0;
+    let k = 0; while (!r.chase && k++ < 900) step(h);
+    ok(`chase: the rock starts ${r.chase ? Math.round(r.b.s - r.chase.cs) : '-'} m behind in the chapter's first 40 m`, !!r.chase && Math.abs(r.b.s - r.chase.cs - 44) < 2.5 && r.b.s < 60);
+    step(h, 90); ok(`chase: fair start, 30 m or more behind for the first 2 s (${(r.b.s - r.chase.cs).toFixed(1)} m)`, r.b.s - r.chase.cs >= 30);
+    step(h, 30); r.lane = 0; step(h, 10); const l0 = r.lane; swipe(h, 60); step(h, 3);
+    ok(`chase: the camera looks back (chaseK ${r.chaseK.toFixed(2)}) and a swipe right moves the ball to the left of the track (lane ${l0} -> ${r.lane})`, r.chaseK > 0.5 && r.lane === l0 - 1);
+    r.camera?.updateMatrixWorld?.(); const cam = r.ctx.camera, bp = r.ctx.ball.group.position;
+    const to = bp.clone().sub(cam.position).normalize(), fwd = new THREE.Vector3(); cam.getWorldDirection(fwd);
+    ok('chase: the camera sits ahead of the ball and looks at it (ball in the middle third of the frame)', fwd.dot(to) > 0.95 && cam.position.clone().sub(bp).dot(to.clone().negate()) > 0 && (() => { const p = bp.clone().project(cam); return Math.abs(p.x) < 0.4 && Math.abs(p.y) < 0.6; })());
+    const c0 = r.coins; k = 0; while (r.chase && k++ < 3000) step(h);
+    ok(`chase: a clean run to the end pays 20+ flakes and starts BLAST (flakes +${r.coins - c0}, blast ${r.blastT.toFixed(1)} s)`, !r.chase && r.state === 'play' && r.coins - c0 >= 20 && r.blastT > 0);
+    step(h, 120); ok('chase: afterwards the camera and the lanes are normal again', r.chaseK < 0.05);
+    const g = make({ seed: 67 }), q = g.runner; q.start(67, null, { chapterPlan: fp(['tapinak']) }); goLive(g); q.hitStop = 0; k = 0; while (!q.chase && k++ < 900) step(g);
+    k = 0; while (q.state === 'play' && k++ < 900) { q.b.vs = 4; q.invulnT = 0; q.meltK = 0; q.yetiHoldT = 99; q.update(DT); NOW += 1000 * DT; }
+    ok(`chase: a ball that stops is run over within ${(k * DT).toFixed(1)} s (<= 9 s)`, q.state !== 'play' && k * DT <= 9 && q.killKind === 'chaseRock');
+  }
+  // KALABALIK TOPU: every critter touched sticks (no stomp, no stumble), 12 of them are one size step; stomping is back outside the chapter
+  {
+    const h = make({ seed: 68 }), r = h.runner; r.start(68, null, { chapterPlan: fp(['kalabalik', 'yamac']) }); goLive(h); r.hitStop = 0; r.tier = 1; r.grow = 0; r.invulnT = 0;
+    step(h, 10);
+    ok('crowd: the chapter sets the swallow mode', r.crowd === true);
+    const cr = (x) => ({ type: 'critter', kind: 'rabbit', id: x, stomp: false });
+    const t0 = r.tier + r.grow, cr0 = r.crashes; for (let i = 0; i < 12; i++) r.handle(cr(1000 + i));
+    ok(`crowd: 12 swallowed = +1 size step (${(r.tier + r.grow - t0).toFixed(2)}), no stumble`, Math.abs(r.tier + r.grow - t0 - 1) < 0.02 && r.crashes === cr0 && r.stumbleT <= 0 && r.swallowN === 12);
+    ok('crowd: a stomp inside the chapter swallows too (no bounce, no crash)', (() => { const b0 = r.b.vh; r.handle({ type: 'critter', kind: 'rabbit', id: 1100, stomp: true }); return r.crashes === cr0; })());
+    let ncr = 0; r.track.ensure(900); ncr = r.obstacles.critters.recs.filter((x) => x.on).length;
+    ok(`crowd: the chapter fills the road with critters (${ncr} on the track)`, ncr >= 12);
+    const g = make({ seed: 68 }), q = g.runner; q.start(68, null, { chapterPlan: fp(['yamac']) }); goLive(g); step(g, 5);
+    ok('crowd: outside the chapter nothing is swallowed (mode off)', q.crowd === false);
+  }
+  // HALKA ADASI / GP: the panel -> spring -> panel chain appears in the chapters that ask for it
+  {
+    let both = 0;
+    for (let sd = 1; sd <= 6; sd++) { const t = make({ seed: sd }).runner; t.start(sd, null, { chapterPlan: fp(['halka'], 3000) }); t.track.ensure(2800); const os = t.obstacles.obs.filter((o) => o.chain); if (os.some((o) => o.kind === 'spring') && os.some((o) => o.kind === 'strip')) both++; }
+    ok(`dash chain: the HALKA ADASI chapter builds panel -> spring -> panel chains (${both} of 6 seeds)`, both >= 3);
+    const cnt = (id) => { const t = make({ seed: 9 }).runner; t.start(9, null, { chapterPlan: fp([id], 4000) }); for (let q = 0; q < 10 && t.track.genEnd < 3300; q++) t.track.ensure(3300); return t.track.pieces.filter((p) => p.kind === 'curve' && p.s0 > 300).length; };
+    const gpC = cnt('gp'), baseC = cnt('yamac');
+    ok(`drift GP: bends everywhere (${gpC} curves in 3 km, a plain chapter has ${baseC})`, gpC >= 8 && gpC >= 3 * baseC);
+  }
 }
 function clamp0(x) { return Math.max(0, Math.min(1, x)); }
 

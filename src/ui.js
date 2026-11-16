@@ -111,6 +111,7 @@ const KILL_TIP = {
   laser: 'Lazerin altından eğilerek geç.',
   slidewall: 'Kayan duvarın açıklığına gir.',
   oncoming: 'Karşıdan gelen araca çarpma, şerit değiştir.',
+  chaseRock: 'Kaya arkandan geliyor: durma, engellere tek zıpla.',
 };
 export function runnerDeathText(cause, killKind) {
   const d = DEATH[cause] || { icon: '❄️', title: 'OLMADI!', tip: '' };
@@ -825,6 +826,10 @@ export class UI {
   }
 
   hideRunnerRevive() { this.el.revive.classList.add('hidden'); }
+
+  // set pieces seen from the side: the centre banner drops below the ball when the ball is in the upper half of the screen
+  laneWarnClear() { this.el.floats.querySelectorAll('.lane-warn').forEach((e) => e.remove()); }
+  bannerLow(on) { this.el.banner.classList.toggle('sp-low', !!on); }
 
   // A red "!" over the lane something is coming down/at you (boulder shadow, oncoming snowcat).
   laneWarn(lane, kind, x, y) {

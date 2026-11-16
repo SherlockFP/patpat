@@ -101,6 +101,7 @@ html, body {
 #banner .b.cnt { font-size: 54px; }
 /* runner: banners sit up in the open track, clear of the HUD (top) and the ball + swipe hint (bottom) */
 #banner.runner { top: max(30%, calc(var(--sat) + 190px)); }
+#banner.runner.sp-low { top: 68%; }
 #banner.runner .b { font-size: 38px; }
 #banner.runner .b.l4, #banner.runner .b.l5 { font-size: 40px; }
 @keyframes bannerPop {

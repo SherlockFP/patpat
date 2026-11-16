@@ -220,6 +220,7 @@ export class Track {
     this._chapSetAt = 0;
     this._nextSet = this.level ? 300 : 340;   // earliest s of the next set piece (helix, loop, halfpipe ...); endless keeps the first 300 m for teaching rows
     this._lastSet = '';
+    this._rs = (this.seed | 0) ^ 0x5bd1e995; this._nextRound = 300; this._roundN = 0; this._lastRound = ''; this._dbl = false; this._ringY = 0; this._ringEnd = -1;     // round clock (loops / corkscrews / helixes / half-pipes) and the double-loop state
     // Temple Run junctions: earliest corner of the next one (endless: ~350 m, tutorial: 300 m), live junction list (junctionAt), blocked ranges
     this._juncs = []; this._jid = 0;
     this._nextCorner = this.tutorial ? 300 : 640;      // first corner at ~45 s
@@ -528,9 +529,10 @@ export class Track {
 // Generation: piece selection, specs, path integration
 // ---------------------------------------------------------------------------
 // set pieces: unlock distance, weight, rough length (for spacing); at most one every ~250-400 m
-const SET = { waves: 250, helix: 350, skiJump: 450, iceBridge: 400, halfpipe: 500, chasm: 650, tube: 700, zipline: 800, corkscrew: 900, loop: 1000 };
-const SET_W = { waves: 1.2, helix: 1.0, skiJump: 1.0, iceBridge: 0.9, halfpipe: 1.0, chasm: 0.8, tube: 0.8, zipline: 0.7, corkscrew: 0.7, loop: 0.8 };
-const SET_LEN = { waves: 90, helix: 200, skiJump: 60, iceBridge: 60, halfpipe: 60, chasm: 55, tube: 60, zipline: 70, corkscrew: 50, loop: 70 };
+const SET = { waves: 250, helix: 350, skiJump: 450, iceBridge: 400, halfpipe: 500, chasm: 650, tube: 700, zipline: 800, corkscrew: 500, loop: 300 };
+const SET_W = { waves: 1.2, helix: 1.0, skiJump: 1.0, iceBridge: 0.9, halfpipe: 1.0, chasm: 0.8, tube: 0.8, zipline: 0.7, corkscrew: 0.7, loop: 1.6 };
+const SET_LEN = { waves: 90, helix: 200, skiJump: 60, iceBridge: 60, halfpipe: 60, chasm: 55, tube: 60, zipline: 70, corkscrew: 50, loop: 125 };
+const ROUND_SET = { loop: 1, corkscrew: 1, helix: 1, halfpipe: 1 };     // round set pieces: in endless Rush they come from the round clock (_pickRound), every chapter, one per ~450-650 m
 const HAZARD = { narrow: 1, gapRamp: 1, gapJump: 1, hexHoles: 1, split: 1, stairs: 1, waves: 1, helix: 1, skiJump: 1, iceBridge: 1, halfpipe: 1, chasm: 1, tube: 1, zipline: 1, corkscrew: 1, loop: 1, junction: 1 };
 const NEEDS_FLAT = { gapRamp: 1, gapJump: 1, slalom: 1, skiJump: 1, chasm: 1, loop: 1 };
 // downhill run: mean pitch ~ -9 deg, from -4 (flats before jumps / clusters) to -16 (plunges)
@@ -554,7 +556,7 @@ Object.assign(Track.prototype, {
     const cd = !this.level && this.chapterAt ? this.chapterAt(s0).def : null;      // chapter rule (goals.js CHAPTERS): which pieces this stretch is made of
     if (cd && (cd.plain || cd.slalom || cd.gap)) {
       if (cd.gap && since >= 1 && rng.chance(cd.gap)) return 'gapRamp';
-      const w = cd.slalom ? { slalom: 5, straight: 1.5, curve: 1.5 } : cd.plain ? { straight: 4, curve: 3, slalom: cd.bonus ? 0 : 1.2 } : null;
+      const w = cd.slalom ? { slalom: 5, straight: 1.5, curve: 1.5 } : cd.curves ? { curve: 6, straight: 1.2, slalom: 0.6 } : cd.plain ? { straight: 4, curve: 3, slalom: cd.bonus ? 0 : 1.2 } : null;
       if (w) { let tot = 0; for (const k in w) tot += w[k]; let r = rng.next() * tot; for (const k in w) { r -= w[k]; if (r <= 0) return k; } return 'straight'; }
     }
     const sk = s0 * this.hardness;     // hardness unlocks the hard pieces earlier (Kabus) / later (Kolay)
@@ -574,13 +576,34 @@ Object.assign(Track.prototype, {
   _pickSet(sEst, diff) {
     const rng = this.rng, w = {};
     let tot = 0;
-    for (const k in SET) if (sEst * this.hardness >= SET[k] && this.allows(k) && k !== this._lastSet && this['_spec_' + k]) { w[k] = SET_W[k]; tot += w[k]; }
+    for (const k in SET) if (sEst * this.hardness >= SET[k] && this.allows(k) && k !== this._lastSet && this['_spec_' + k] && !(ROUND_SET[k] && this.chapterAt && !this.level)) { w[k] = SET_W[k]; tot += w[k]; }
     if (tot <= 0) return null;
     let r = rng.next() * tot, kind = null;
     for (const k in w) { r -= w[k]; if (r <= 0) { kind = k; break; } }
     if (!kind) return null;
     this._lastSet = kind;
     this._nextSet = sEst + SET_LEN[kind] + rng.range(250, 400 - 80 * diff) / Math.sqrt(this.hardness);
+    return kind;
+  },
+
+  /** may a round set piece of `len` m start at s0? Not in a bonus / zone / rain / duel / fog / wind / signature-row chapter, not within ~30 m after or (len + 25 m: the calm run-out, then the next chapter's first hazard) before a chapter border, not in a zone. */
+  /** a queued round piece did not get built: the round clock fires again soon (a lost first ring counts as no ring yet) */
+  _roundLost(s0) { if (this._roundN === 1) this._roundN = 0; this._nextRound = s0 + 20; },
+  _roundDef(seg) { const d = seg.def; return !seg.bonus && !(d.sig || d.zone || d.rain || d.duel || d.fog || d.wind || d.bonus); },
+  _roundOk(sEst, seg, len) {
+    return this._roundDef(seg) && sEst >= seg.s0 + 30 && sEst + len + 25 <= seg.s1 && !this.zoneAt(sEst) && !this.zoneAt(sEst + len);
+  },
+
+  /** the round clock fired: the first one is always a loop (a new player meets it in the first minute); later ones mix, a loop most often, a double loop once the run is long */
+  _pickRound(sEst, seg) {
+    const rr = () => (this._rs = (Math.imul(this._rs, 1664525) + 1013904223) >>> 0) / 4294967296, hk = sEst * this.hardness, w = { loop: 12, helix: 1, corkscrew: 1, halfpipe: 0.9 };
+    let tot = 0, kind = null;
+    if (!this._roundN) kind = this.allows('loop') ? 'loop' : null;
+    else { for (const k in w) { if ((k === this._lastRound && k !== 'loop') || !this.allows(k) || hk < SET[k] || !this['_spec_' + k] || sEst + SET_LEN[k] + 25 > seg.s1) w[k] = 0; tot += w[k]; } let r = rr() * tot; for (const k in w) { r -= w[k]; if (r <= 0 && w[k] > 0) { kind = k; break; } } }     // (the piece is queued behind the current plain one, so it starts flat)
+    if (!kind) return null;
+    const dbl = kind === 'loop' && this._roundN >= 1 && hk >= 800 && sEst + 2 * SET_LEN.loop + 25 <= seg.s1 && rr() < 0.75;
+    this._dbl = dbl; this._roundN++; this._lastRound = kind; this._lastSet = kind;
+    this._nextRound = sEst + SET_LEN[kind] * (dbl ? 2 : 1) + (100 + 120 * rr()) / Math.sqrt(this.hardness);     // (start to start ~210-330 m inside the eligible chapters; about one per 700 m over a whole run, the signature chapters are skipped)
     return kind;
   },
 
@@ -595,10 +618,9 @@ Object.assign(Track.prototype, {
       kind = cs; this._chapSetAt = sEst + SET_LEN[cs] + 70 + this.rng.range(0, 50); this._lastSet = cs; this._nextSet = Math.max(this._nextSet, this._chapSetAt + 60);
     }
     const chapSoon = !L && this.chapterAt && this.chapterAt(sEst + 140) !== this.chapterAt(sEst);      // a chapter starts within ~140 m: no long set piece across the border (its first metres must show the chapter's rule)
-    if (!kind) kind = sEst >= this._nextSet && !this.zoneAt(sEst) && !(cd && cd.plain) && !chapSoon && this.rng.chance(0.8) ? this._pickSet(sEst, diff) : null;
+    if (!kind) kind = sEst >= this._nextSet && !this.zoneAt(sEst) && !(cd && cd.plain) && !chapSoon && this.rng.chance(0.8) ? this._pickSet(sEst, diff) : null;      // (endless: no other set piece before the first ring, it must have its chance in the first chapters)
     if (!kind) kind = this._pickKind(sEst, diff, this._qSince);
-    // Full vertical loops are no longer generated: from the inside, a 5.5-11 m ring fills the screen with track whatever the
-    // camera does. A gentle rolling-hills section (waves) takes their slot. (A loop pushed into _q by hand still builds — tests.)
+    // the Sonic ring is an endless-Rush moment (side camera, round clock in _gen): campaign / tutorial queues never get one, a gentle rolling-hills section takes the slot (a loop pushed into _q by hand still builds: tests)
     if (kind === 'loop') kind = 'waves';
     this._qSince = HAZARD[kind] ? 0 : this._qSince + 1;
     return kind;
@@ -657,7 +679,7 @@ Object.assign(Track.prototype, {
     const yaw0 = p.yaw0 - this._yawOff;
     switch (kind) {
       case 'straight':
-        p.len = s0 === 0 ? 40 : rng.int(28, 56);
+        p.len = s0 === 0 ? 40 : !this.level && this.chapterAt && this.chapterAt(s0).def.dash && s0 > 250 ? rng.int(62, 84) : rng.int(28, 56);      // (a dash chapter: longer straights, room for the panel -> spring -> panel chain)
         if (s0 > 100 && rng.chance(0.35)) p.dYaw = this._turn(yaw0, rng.range(5, 16) * DEG);
         this._pitchPlan(p);
         break;
@@ -896,17 +918,30 @@ Object.assign(Track.prototype, {
       while (this._q.length < 3) this._q.push(this._qPick(s0 + 40 * (this._q.length + 1)));
       let kind = this._q.shift();
       if (s0 === 0) kind = 'straight';
-      else if (this._juncDue(s0)) { this._q.unshift(kind); kind = 'junction'; if (HAZARD[this._q[0]]) this._q[0] = 'straight'; }       // Temple Run junction: scheduled by the corner clock, not by the 3-deep queue
+      else if (this._juncDue(s0)) { this._q.unshift(kind); kind = 'junction'; if (HAZARD[this._q[0]]) { if (ROUND_SET[this._q[0]]) this._q.splice(1, 0, this._q[0]); this._q[0] = 'straight'; } }     // (a round piece waits behind one straight after the corner)       // Temple Run junction: scheduled by the corner clock, not by the 3-deep queue
       const pNow = this.PT[this.PT.length - 1];
       const flatNow = Math.abs(pNow - flatOf(kind)) < 2.5 * DEG;
       let flatten = false;
       if (NEEDS_FLAT[kind] && !flatNow) { this._q.unshift(kind); kind = 'straight'; flatten = true; }
       p = this._spec(kind, s0, diff, bNow, flatten);
+      if (!L && this.chapterAt && kind !== 'junction' && !ROUND_SET[kind] && s0 >= this._nextRound) {
+        // round clock: queue a Sonic ring / corkscrew / helix / half-pipe right behind this piece (measured first, then built again so that it ends flat for a ring).
+        // A plain piece keeps its length (the ring starts exactly there); any other kind is measured with 30 m of slack.
+        const exact = kind === 'straight' || kind === 'curve' || kind === 'slalom', e = s0 + p.len + 2, tol = exact ? 0 : 30, len0 = p.len;
+        if (this._roundOk(e + tol, this.chapterAt(e + tol), SET_LEN.loop) && !this._juncDue(e) && this.biomeIndexAt(e - tol) === this.biomeIndexAt(e + tol + SET_LEN.loop + 10)) {      // (no biome portal inside the ring: it would cut it short)
+          const rk = this._pickRound(e + tol, this.chapterAt(e + tol));
+          if (rk) { this._bonusAt = Math.max(this._bonusAt, e + 160); this._wideAt = Math.max(this._wideAt, e + 160); if (this._dbl) { this._dbl = false; this._q.unshift('loop'); } this._q.unshift(rk); p = this._spec(kind, s0, diff, bNow, flatten); if (exact && p.len !== len0) { p.len = len0; p.s1 = s0 + len0; } }
+        }
+      }
       if (L && p.s1 > L.length) {
         // would cross the finish line: replace by a straight that ends exactly on it (nearly flat for the arch)
         p = this._spec('straight', s0, diff, bNow, true);
         p.len = L.length - s0; p.s1 = L.length; p.dYaw = 0;
         if (p.len < 24) p.pitch1 = p.pitch0;
+      } else if (ROUND_SET[p.kind] && !L && this.chapterAt && (this.chapterAt(p.s0) !== this.chapterAt(p.s1 + 15) || !this._roundDef(this.chapterAt(p.s0)) || this.zoneAt(p.s0))) {
+        // an estimate in _qPick put a round piece across a chapter border / into a signature-hazard chapter: a plain straight instead, the round clock tries again
+        p = this._spec('straight', s0, diff, bNow, true);
+        this._roundLost(s0); this._dbl = false;
       } else if (this.biomeIndexAt(p.s1) !== bNow) {
         // biome boundary inside this piece: end it exactly at the boundary (portal follows)
         let lo = s0, hi = p.s1;
@@ -1423,8 +1458,9 @@ Object.assign(Track.prototype, {
   // ----- 8. loop "Takla Cemberi" (vertical circle, shifted sideways one road width) and corkscrew -----
   _spec_loop(p, s0, diff, yaw0) {
     const rng = this.rng, vp = this.speedAt(s0 + 30);
-    const Gr = G_REAL * this.gravity(s0 + 30) / T.G, R = clamp((0.8 * vp * vp) / (5 * Gr), 5.5, 11);
-    const entry = 10, exit = 12, L = Math.round(TAU * R);
+    // a big Sonic ring (11-16 m, grows with the pace): minSpeed = sqrt(5 g R) is <= the planned pace for all but the slowest rings; the strips before it (+30 % pad) cover the rest
+    const Gr = G_REAL * this.gravity(s0 + 30) / T.G, R = clamp(0.55 * vp, 11, 16);
+    const second = Math.abs(s0 - this._ringEnd) < 0.5, entry = second ? Math.round(R) : 10, exit = 12, L = Math.round(TAU * R);     // (the second ring of a double loop starts a ring radius further on: the two circles overlap only a little seen from the side)
     p.len = entry + L + exit; p.hw = hwFor(p.n); p.curb = true; p.edge = 'wall'; p.free3d = true;
     const ls = s0 + entry, phi0 = T.FLAT2;
     // yaw bump amplitude giving a net lateral shift of 8.6 m (> one road width): the horizontal part of the heading
@@ -1432,7 +1468,9 @@ Object.assign(Track.prototype, {
     const shiftOf = (Y) => { let sh = 0; for (let i = 0; i < 200; i++) { const u = (i + 0.5) / 200, sn = Math.sin(Math.PI * u); sh += Math.cos(phi0 + TAU * u) * Math.sin(Y * sn * sn) * (L / 200); } return Math.abs(sh); };
     let lo = 0.02, hi = 1.4;
     for (let i = 0; i < 24; i++) { const mid = 0.5 * (lo + hi); if (shiftOf(mid) < 8.6) lo = mid; else hi = mid; }
-    const Y = rng.sign() * hi;
+    // (the second ring of a double loop drifts the same way as the first: the side camera stays on one side of both)
+    const Y = (second ? Math.sign(this._ringY) : rng.sign()) * hi;
+    this._ringY = Y; this._ringEnd = s0 + p.len;
     p.pitch1 = this._endPitch(p);
     p.pitchFn = (t, s) => {
       if (s <= ls) return p.pitch0 + (phi0 - p.pitch0) * smooth((s - s0) / entry);

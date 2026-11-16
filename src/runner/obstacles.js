@@ -298,7 +298,7 @@ const POOLS = {
   beam: ['beamBox', 'glow', 220],
 };
 // pickup kind -> pool
-const PICK_POOL = { flake: 'flake', snow: 'ball', x2: 'star', gem: 'gem', crystal: 'crystal', box: 'gift', letter: 'letter', scarf: 'scarf', magnet: 'magnet', helmet: 'helmet', rocket: 'rocket', superjump: 'spring', timewarp: 'timewarp', ghost: 'ghost', risk: 'risk', clone: 'clone', cannon: 'rocket', bait: 'gem', bread: 'gem' };
+const PICK_POOL = { flake: 'flake', snow: 'ball', x2: 'star', gem: 'gem', crystal: 'crystal', box: 'gift', letter: 'letter', scarf: 'scarf', magnet: 'magnet', helmet: 'helmet', rocket: 'rocket', superjump: 'spring', timewarp: 'timewarp', ghost: 'ghost', risk: 'risk', clone: 'clone', cannon: 'rocket', bait: 'gem', bread: 'gem', board: 'gem' };
 
 export function pulseOf(phase) {
   const p = phase > 0.5 ? phase - 1 : phase, a = 1 - Math.abs(p) / 0.3;
@@ -347,7 +347,7 @@ export class Obstacles {
     this.rowsLog = [];         // {s, ext, free} of every row (used to keep boulders from trapping the player)
     this._hk = null;           // explicit hardness override (else track.hardness)
     this.nextBoulder = 1e9;
-    this.powerW = { cannon: 1, magnet: 1, x2: 1, superjump: 1, rocket: 1, helmet: 1, timewarp: 1, ghost: 1, risk: 1, clone: 1 };
+    this.powerW = { cannon: 1, magnet: 1, x2: 1, superjump: 1, rocket: 1, helmet: 1, timewarp: 1, ghost: 1, risk: 1, clone: 1, board: 1 };
     this._cid = 'main';
     this.rng = makeRng((this.seed ^ 0xa5a5a5a5) >>> 0);
     this.next = { power: 260, gem: 520, box: 340, letter: 300, scarf: 140, chain: 420, yeti: 330, plow: 1000, tunnel: 900, slide: 380 };   // distance accumulators for rare pickups
@@ -570,6 +570,7 @@ export class Obstacles {
       const k = pk[i];
       if (k.s > ball.s + 140) break;
       if (!k.alive) continue;
+      if (k.ttl && t > k.ttl) { k.alive = false; this._freePick(k); continue; }       // (FLAKE BURST: a dropped flake lives 3 s)
       if (k.kind === 'snow') { const q = 1 + 0.1 * pulse; this._set('ball', k.idx, k.f, k.u, 0.55 + 0.08 * Math.sin(t * 2.4 + k.ph), t * 0.8 + k.ph, 0, 1.05 * q, 1.0 * q, 1.05 * q); continue; }
       const bob = k.h + 0.1 * Math.sin(t * 2.4 + k.ph);
       if (k.kind === 'flake') this._set('flake', k.idx, k.f, k.u, bob, t * 5.24 + k.ph, 0, 0.95, 0.95, 0.95);
@@ -655,7 +656,7 @@ export class Obstacles {
       k.alive = false;
       this._freePick(k);
       const e = ev(events, 'pickup');
-      e.kind = k.kind; e.value = k.value; e.s = k.s; e.u = k.u; e.h = k.h;
+      e.kind = k.kind; e.value = k.value; e.s = k.s; e.u = k.u; e.h = k.h; e.burst = k.ttl ? 1 : 0;
       if (k.kind === 'letter') e.letter = k.letter || this.nextLetter || '';
     }
     CUR_ID = 'main'; this._cid = 'main';
@@ -722,7 +723,7 @@ export class Obstacles {
       k.sh = this._alloc('shadow');                                                            // contact shadow: the pile reads on white snow
       if (k.sh >= 0) { this._col('shadow', k.sh, 0xffffff); this._set('shadow', k.sh, f, u, 0.025, 0, 0, 1.4, 1, 1.4); }
     } else if (kind === 'flake') this._col('flake', idx, COL.flake);
-    else this._col(pool, idx, kind === 'bait' ? 0xff9a4a : kind === 'bread' ? 0xd9a05b : 0xffffff);      // (BALIK YEMİ: an orange gem; SICAK ÇÖREK: a warm tan one)
+    else this._col(pool, idx, kind === 'bait' ? 0xff9a4a : kind === 'bread' ? 0xd9a05b : kind === 'board' ? 0x6af0ff : 0xffffff);      // (BALIK YEMİ: an orange gem; SICAK ÇÖREK: a warm tan one)
     this.picks.push(k);
     return k;
   }
@@ -2188,6 +2189,14 @@ Object.assign(Obstacles.prototype, {
    * CRITTER group (stomp it: the ball bounces, combo). Returns { free (lanes without a critter), ext } or null. A parade of 3-5 in one lane is spaced
    * so a stomp bounce (vh 9, ~0.64 s) lands on the next one; some critters hop lanes (0.6 s crouch telegraph) but never into the route lane.
    */
+  /** KALABALIK TOPU (Katamari): a dense, slow crowd of critters over every lane of a stretch (the runner swallows them in that chapter instead of stomping) */
+  _crowd(plan, a, b) {
+    const cr = this.critters, rng = plan.rng;
+    if (!cr) return;
+    const species = cr.speciesFor(plan.biomeId);
+    for (let s = a; s < b - 4; s += 18) for (let l = 0; l < NL; l++) if (rng.chance(0.75)) cr.spawnGroup({ species, s: s + rng.range(0, 5), lane: l, n: rng.int(3, 5), spacing: 3.4, vc: rng.range(0.2, 0.8), hopTo: -1, second: -1, seed: (rng.next() * 1e9) | 0, skin: plan.skin });
+  },
+
   _critterGroup(plan, c, s, free0, rm, prevRoute, opt = {}) {
     const cr = this.critters, rng = plan.rng;
     if (!cr) return null;
@@ -2446,12 +2455,14 @@ Object.assign(Obstacles.prototype, {
               this._clock = Math.max(this._clock, rowStart);
             }
           }
+          const dashPiece = !!(cd && cd.dash) && kind === 'straight' && !early && !padFlight && s0 >= 250 && s1 - s0 >= 54 && s1 > this.next.chain;
           const gates = kind === 'slalom' && !early && F.gates !== false && rng.chance(cd && cd.gates ? cd.gates : 0.55 * Math.max(0, 1 - (T.budget ? T.budget(s0) : plan.diff) / 0.4));
           if (plan.zone === 'coinRain') { if (!early && !(cd && cd.bonus) && rng.chance(0.3)) this._rows(plan, rowStart, rowEnd, { dense: false }); }
           else if (gates) { this._gates(plan, s0 + 9, s1 - 6); this._clock = Math.max(this._clock, s1 - 6); }
-          else if (!early) this._rows(plan, rowStart, rowEnd, { dense, dens: kind === 'curve' ? 0.7 : 1 });
+          else if (!early && !dashPiece) this._rows(plan, rowStart, rowEnd, { dense, dens: kind === 'curve' ? 0.7 : 1 });      // (a dash chapter keeps the long straights free for the panel -> spring -> panel chain: its reward breather)
           route = plan.gates ? this._gateRoute(plan, 1) : this._routeFn(plan, 1);
           arcs = this._rowArcs(plan);
+          if (cd && cd.crowd && !early && !plan.gates) this._crowd(plan, s0 + 8, s1 - 5);
           let av = [];
           if (kind === 'straight' && !early && F.boost !== false && !padFlight && s0 >= TEACH_END && rng.chance(cd && cd.boost ? cd.boost : 0.22)) this._placeStrip(plan, route, s0 + 6, s1 - 6);
           if (plan.zone === 'coinRain') this._coinRain(plan, route, s0 + 3, s1 - 2);
@@ -2520,6 +2531,11 @@ Object.assign(Obstacles.prototype, {
         this._powerUp(plan, k, s, rng.chance(0.5) ? offRoute(s) : laneOf(route(s)));
         this.next.power = s + rng.range(560, 720);
       }
+      if (s0 >= 600 && normal && !plan.zone && s1 - s0 > 30 && s1 > (this.next.board ?? 600)) {      // HOVERBOARD: its own rare pickup, about one per 700 m
+        const s = freeS(mid + 4);
+        this._powerUp(plan, 'board', s, rng.chance(0.5) ? offRoute(s) : laneOf(route(s)));
+        this.next.board = s + rng.range(600, 800);
+      }
       if (s0 >= 450 && normal && !plan.zone && s1 - s0 > 36 && s1 > (this.next.sball ?? 0) && T.allows('critters')) {
         const sc = freeS(mid + 6), l = rng.int(0, NL - 1), sg = rng.chance(0.5) ? 1 : -1;
         this._mk(plan, { kind: 'snowball', s: sc, u: LANES[l], lane: l, uT: sg * (hwFor(NL) + 0.9), sT: sc + 9, ext: 60 });
@@ -2538,14 +2554,18 @@ Object.assign(Obstacles.prototype, {
       if (kind !== 'junction' && (normal || apex)) this._gems(plan, route, s0 + 4, s1 - 3, apex);
       // mini mechanics: speed-pad chain, Y-E-T-I letters, snowplow head-on
       if (s0 >= 250 && normal && s1 > this.next.chain && (this.track.features || {}).boost !== false) {
-        const n = rng.int(3, 4), sp = 9, span = n * sp + 12;
-        for (let a = s0 + 6; a + span < s1 - 4; a += 3) {
-          if (plan.rows.some((r) => a - 6 < r.s + r.ext && a + span + 4 > r.s - r.ext)) continue;
-          const l = rng.int(0, NL - 1);
-          for (let i = 0; i < n; i++) this._mk(plan, { kind: 'strip', s: a + i * sp, u: LANES[l], len: 4, ext: 3, glow: this._pal(a).glow, power: 1, chain: true });
-          for (let x = a + n * sp + 1; x < a + n * sp + 11; x += 1.6) this._pickup('flake', x, LANES[l], 1.35);
-          this.next.chain = a + span + rng.range(380, 620);
-          break;
+        // SPRING-DASH CHAIN: half the chains (all of them in a chapter with `dash`) alternate panel -> spring -> panel, 4-5 links: the spring flings you on to the next panel, the chain keeps counting in the air
+        const alt0 = !!(cd && cd.dash) || rng.chance(0.5), nn = rng.int(3, 4), dashCh = !!(cd && cd.dash);
+        chainTry: for (const [alt, n] of alt0 ? [[true, 4], [true, 3], [false, nn]] : [[false, nn]]) {      // (a piece too short for the long chain takes a shorter one)
+          const pw = 0.85, sp = alt ? Math.max(11, 0.85 * T.speedAt(s0 + 10) * (2 * this.jumpPadV * pw) / AIR_G) : 9, span = n * sp + (alt ? 8 : 12);
+          for (let a = s0 + 5; a + span < s1 - 3; a += 3) {
+            if (plan.rows.some((r) => a - 6 < r.s + r.ext && a + span + 4 > r.s - r.ext)) continue;
+            const l = rng.int(0, NL - 1);
+            for (let i = 0; i < n; i++) this._mk(plan, alt && (i & 1) ? { kind: 'spring', s: a + i * sp, u: LANES[l], ext: 2, glow: this._pal(a).glow, power: pw, chain: true } : { kind: 'strip', s: a + i * sp, u: LANES[l], len: 4, ext: 3, glow: this._pal(a).glow, power: 1, chain: true });
+            for (let x = a + n * sp + 1; x < a + n * sp + (alt ? 7 : 11); x += 1.6) this._pickup('flake', x, LANES[l], 1.35);
+            this.next.chain = a + span + (dashCh ? rng.range(90, 220) : rng.range(380, 620));
+            break chainTry;
+          }
         }
       }
       if (this.yetiLetter && s0 >= 300 && normal && s1 > this.next.yeti) {
@@ -2663,12 +2683,24 @@ Object.assign(Obstacles.prototype, {
    * Rocket power-up: a lane-weaving line of flakes at h ~ 6 along [s0, s1] (the runner calls this when the
    * rocket starts). They are ordinary pickups: collected only while the ball is up there.
    */
-  spawnSkyCoins(s0, s1) {
-    const T = this.track, vs = T.speedAt(s0), sp = (vs * 60) / T.bpmAt(s0) / 2;
-    const n = Math.min(70, Math.floor((s1 - s0) / sp));
+  /** FLAKE BURST (Sonic ring loss): n flakes sprayed around the crash spot (+-3 m along, +-1 lane across), each one lives 3 s and is picked up with a wide reach. Returns how many were placed. */
+  spawnBurst(s, u, n) {
+    const lim = Math.abs(LANES[0]) + 0.6;
+    let got = 0;
+    for (let i = 0; i < n; i++) {
+      const k = this._pickup('flake', s + 1.5 + (i % 6 - 2.5) * 1.1, clamp(u + ((i * 5) % 7 - 3) * 0.7, -lim, lim), 1.1 + (i % 3) * 0.75, { rad: 1.15 });
+      if (k) { k.ttl = this.time + 3; got++; }
+    }
+    this._sortPicks();
+    return got;
+  },
+
+  spawnSkyCoins(s0, s1, h0 = 6.7, max = 70) {
+    const T = this.track, vs = T.speedAt(s0), sp = max < 70 ? (s1 - s0) / max : (vs * 60) / T.bpmAt(s0) / 2;      // (a short count = spread evenly over the whole flight)
+    const n = Math.min(max, Math.floor((s1 - s0) / sp));
     for (let i = 0; i < n; i++) {
       const s = s0 + i * sp, u = LANES[NL - 1] * Math.sin(i * sp * 0.2);
-      this._pickup('flake', s, u, 6.7 + 0.25 * Math.sin(i * 0.9));   // rocket flies the ball bottom at h = 6
+      this._pickup('flake', s, u, h0 + 0.25 * Math.sin(i * 0.9));   // rocket flies the ball bottom at h = 6
     }
     this._sortPicks();
     return n;
@@ -2693,7 +2725,7 @@ KIND.strip = {
     ob.was = false;
   },
   hit(ob, ball, events, t) {
-    const inside = Math.abs(ball.s - ob.s) <= ob.len / 2 && Math.abs(ball.u - ob.u) <= 1.15 + ball.r * 0.3 && ball.h - ball.r < 0.6;
+    const inside = Math.abs(ball.s - ob.s) <= ob.len / 2 && Math.abs(ball.u - ob.u) <= 1.15 + ball.r * 0.3 && ball.h - ball.r < (ob.chain ? 2.6 : 0.6);      // (a chain panel also counts in the air: panel -> spring -> panel)
     if (inside && !ob.was && t >= ob.cdUntil) {
       ob.cdUntil = t + 0.6;
       const e = ev(events, 'pad');
@@ -2721,7 +2753,7 @@ KIND.spring = {
     if (Math.abs(ball.s - ob.s) > 1.05 || Math.abs(ball.u - ob.u) > 1.05 + ball.r * 0.3) return;
     ob.cdUntil = t + 0.8;
     const e = ev(events, 'pad');
-    e.kind = 'spring'; e.onBeat = Math.abs(this.phase) < 0.15 || this.phase > 0.85; e.power = ob.power || 1.55;
+    e.kind = 'spring'; e.onBeat = Math.abs(this.phase) < 0.15 || this.phase > 0.85; e.power = ob.power || 1.55; e.value = ob.chain ? 1 : 0;
   },
 };
 

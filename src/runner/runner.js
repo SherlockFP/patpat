@@ -150,12 +150,13 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const _tp = new THREE.Vector3();
 const _yp = new THREE.Vector3();
+const _lc = new THREE.Vector3(), _ls = new THREE.Vector3();      // Sonic ring camera: ring centre (target / smoothed) and the side it is seen from
 const _goal = { mode: 'cp', val: 0, frac: 0 };
 const _lst = {};   // live campaign stats scratch (starProgress)
 const BIO_IX = {}; Biomes.BIOMES.forEach((b, i) => { BIO_IX[b.id] = i; });
 const _bi = { biome: null, index: 0, t: 0, next: null };   // biomeAt() scratch: read it right away, never keep it
 const RAGE_SKIP = new Set(['zipline', 'rail', 'loop', 'corkscrew']); // sections where the Yeti keeps its boulders
-const GLOW_KINDS = new Set(['star', 'x2', 'superjump', 'crystal', 'timewarp', 'ghost', 'risk', 'clone', 'helmet', 'magnet', 'rocket', 'cannon']);
+const GLOW_KINDS = new Set(['star', 'x2', 'superjump', 'crystal', 'timewarp', 'ghost', 'risk', 'clone', 'helmet', 'magnet', 'rocket', 'cannon', 'board']);
 const _gp = new Map();      // (chapter def -> biome track palette -> tinted palette): built once per pair, the track asks per piece
 const groundPal = (base, d) => { let m = _gp.get(d); if (!m) _gp.set(d, m = new Map()); let o = m.get(base); if (!o) m.set(base, o = Object.assign({}, base, d.ground, { checker: false })); return o; };
 const CH_SKY = { orman: 'dawn', ray: 'canyon', rampa: 'canyon', duello: 'night', kaydirak: 'night' };      // chapter -> sky backdrop (biomes.js setBackdrop); the rest keep the procedural sky
@@ -512,7 +513,7 @@ export class Runner {
     this.camU = 0;
     this.camLookU = 0;
     this.camRoundK = 0;
-    this.camLoopK = 0;
+    this.camLoopK = 0; this.camLoop = null; this.camLC = new THREE.Vector3(); this.camLS = new THREE.Vector3(); this.camCorkK = 0; this.camHi = 0; this.camHiS = 0; this.setPiece = false; this.spLow = 0;     // ring camera: the ring being framed, its smoothed centre, the side the camera sits on
     this.tilt = 0;
     this.leanT = 0;
     this.hitStop = 0;
@@ -545,6 +546,7 @@ export class Runner {
     this.ctx.meta?.track?.('run_start', { mode: 'endless' });
     this.obstacles.setNextLetter?.(this.ctx.meta?.letterHunt?.()?.nextLetter ?? null);
     this.yetiN = 0; this.dblT = 0; this.turboN = 0; this.turboT = 0;
+    this.swallowN = 0; this.crowd = false; this.endChase(false); this.chase = null; this._chaseSeg = null; this.chaseK = 0; this.boardOn = false; this.dashT = 0; this.drift = 0; this.driftHold = 0; this.driftT = 0; this.driftK = 0; this.burstN = 0; this.burstGot = 0; this.burstT = 0;      // FLAKE BURST: flakes dropped by the last hit / picked up again / seconds left to pick them up
     this._secPc = null;
     this.bait = 0; this.baitT = 0; this.baitBonus = 0; this.baitTap = -9; this.baitChip(); this.seasonTokens = 0; this.scarfChip(); this.bread = 0; this.breadChip(); this.cannonChip();
     this.obstacles.setYetiLetter?.('Y');
@@ -817,13 +819,14 @@ export class Runner {
       if (input.consumeDoubleTap()) this.trySled();
     }
     this.tickJump(dt);
+    this.driftTick(dt);
     this.diveT -= dt;
     this.duckT -= dt;
 
     // ---- speed: downhill pace + size bonus; rocket overrides ----
-    const top0 = speedAt(b.s) * this.mutSpd * (1 + this.tier * RCFG.sizeSpeed) * (this.rocketT > 0 ? 1.35 : 1) * (this.riskT > 0 ? 1.45 : 1) * (this.cardRiskT > 0 ? 1.04 : 1) * (this.slideT > 0 ? (this.abil === 'buzejder' ? 1.4 + 0.05 * this.cs : 1.2) : 1) * (this.rhythm ? this.rhythm.speedK : 1) * this.chapSpd;
+    const top0 = speedAt(b.s) * this.mutSpd * (1 + this.tier * RCFG.sizeSpeed) * (this.rocketT > 0 ? (this.boardOn ? 1.05 : 1.35) : 1) * (this.riskT > 0 ? 1.45 : 1) * (this.cardRiskT > 0 ? 1.04 : 1) * (this.slideT > 0 ? (this.abil === 'buzejder' ? 1.4 + 0.05 * this.cs : 1.2) : 1) * (this.rhythm ? this.rhythm.speedK : 1) * this.chapSpd;
     // momentum (+15% at a full meter), BLAST (+30%) and the hop chain only ADD to the pace; the Yeti logic keeps reading the plain pace (top0), so a surge never reads as a stumble
-    const top = this.level ? top0 : (top0 * (this.blastT > 0 ? 1.3 : 1 + 0.15 * this.mom) + this.hopV);
+    const top = this.level ? top0 : (top0 * (this.blastT > 0 ? 1.3 : 1 + 0.15 * this.mom) + this.hopV + (this.dashT > 0 ? 0.18 * top0 : 0) + (this.driftT > 0 ? this.driftK * top0 : 0));
     this.topV = top;
     if (b.vs < top) b.vs = Math.min(top, b.vs + RCFG.accel * dt);
     else b.vs = Math.max(top, b.vs - RCFG.accel * 0.6 * dt);
@@ -841,7 +844,8 @@ export class Runner {
     if (this.rocketT > 0) {
       this.rocketT -= dt;
       if (Math.random() < dt * 40) this.burst(1, 0xffa040, 2);
-      if (this.rocketT <= 0) { this.invulnT = Math.max(this.invulnT, 1); this.yetiHoldT = 0; }
+      if (this.boardOn && this.rocketT > 0 && this.rocketT < 1.5 && (this.rocketT * 4 | 0) !== ((this.rocketT + dt) * 4 | 0)) this.ctx.audio.hop?.(0.3, 4);      // the last 1.5 s: a tick every 0.25 s
+      if (this.rocketT <= 0) { this.invulnT = Math.max(this.invulnT, this.boardOn ? 1.5 : 1); this.yetiHoldT = 0; if (this.boardOn) { this.boardOn = false; this.mistBurst(10, 0x6af0ff, 4, 1); this.ctx.audio.bump?.(0.6); } }
     }
     if (this.cannonN > 0) this.cannonTick(dt);
     this.furyTick(dt);
@@ -875,6 +879,7 @@ export class Runner {
     this.sonicTick(dt);
 
     this.bossTick(dt);
+    this.chaseTick(dt);
     this.progression(dt); this.perkTick();
     this.zoneTick();
     this.fogK += (this.fogTarget - this.fogK) * Math.min(1, dt * 2.5);
@@ -883,6 +888,9 @@ export class Runner {
     // ---- scoring / music ----
     if (this.dblT > 0) this.dblT -= dt;
     if (this.turboT > 0) this.turboT -= dt; else this.turboN = 0;
+    if (this.dashT > 0) this.dashT -= dt;
+    if (this.driftT > 0) this.driftT -= dt;
+    if (this.burstT > 0 && (this.burstT -= dt) <= 0) this.burstEnd();
     this.score += b.vs * dt * this.mult * (this.dblT > 0 ? 2 : 1);
     music.setBpm(bpmAt(b.s) + (this.blastT > 0 ? 10 : 0));
     music.setIntensity(this.blastT > 0 ? 1 : clamp(0.55 + b.s / 4000 + (this.stumbleT > 0 ? 0.35 : 0), 0.55, 1));
@@ -966,6 +974,7 @@ export class Runner {
 
   // ---------- input actions ----------
   laneChange(lane) {
+    if (this.chaseK > 0.5) lane = -lane;      // BOULDER CHASE: the camera looks back at the ball, so a swipe right moves it to the right of the screen
     const { ui, platform, audio } = this.ctx;
     const b = this.b;
     ui.hint(false);
@@ -1000,6 +1009,7 @@ export class Runner {
 
   dive() {
     if (this.grind) return;     // swipes down are ignored on a rail
+    if (this.boardOn && this.rocketT > 0) this.rocketT = 0.001;      // HOVERBOARD: a down swipe ends the flight early and slams to the snow
     const b = this.b;
     this.diveT = 0.7;
     if (!this.grounded && !this.zip) {
@@ -2377,7 +2387,7 @@ export class Runner {
   chapterEnter(seg) {
     const prev = this.chap, def = seg.def, ui = this.ctx.ui;
     if (prev && !prev.bonus) this.chapterEnd(prev);
-    this.chap = seg; this.chapCrash0 = this.crashes; this.duelNear = 0; this._air = 0; this.chapSpd = def.spd || 1; this.lowG = !!def.lowg; this.rainT = def.rain ? 0.1 : 0; this.rainN = 0;
+    this.chap = seg; this.chapCrash0 = this.crashes; this.duelNear = 0; this._air = 0; this.chapSpd = def.spd || 1; this.lowG = !!def.lowg; this.crowd = !!def.crowd; this.rainT = def.rain ? 0.1 : 0; this.rainN = 0;
     if (!seg.bonus && seg.n > this.bestChapter) { this.bestChapter = seg.n; this.saveBestChapter(); }
     let line = seg.bonus ? t('ALTIN DAMAR') : chapterLine(seg.n, def.parts ? def.parts.map(t).join(' × ') : def.name, def.parts ? (x) => x : t, getLang() === 'en');
     if (def.word && !def.parts && !this._words[seg.id]) { this._words[seg.id] = 1; const wd = t(def.word); if (!line.toUpperCase().includes(wd.replace(/[!?]/g, '').toUpperCase())) line += ' · ' + wd; }      // (a word the name already says is not repeated: MISSILE RAIN · MISSILE!)      // the new rule in one word, first time per run (on the name pill: a float would lose to the other messages)
@@ -2387,6 +2397,7 @@ export class Runner {
     this._lookP = { sky, look, bi: biomeAt(this.b.s, this._ba || (this._ba = {})).index, s: this.b.s };
     if (!sky || def.biome) this._lookApply();      // the procedural sky matches the track at once; a backdrop sky waits for the next biome portal (sunset sky over a snow chute looked wrong)
     this.ctx.audio.milestone?.(2);
+    if (def.board && this.state === 'play') this.after(1.0, () => { if (this.chap === seg && this.rocketT <= 0 && this.state === 'play') this.pickup({ kind: 'board', value: 1, dur: 14, s: this.b.s, u: this.b.u, h: this.b.h }); });      // GÖKYÜZÜ OTOBANI: a 14 s hoverboard flight to open it
     if (!def.parts && !this.chapterSeen(seg.id)) {
       this.markChapterSeen(seg.id);
       this.after(1.2, () => { if (this.chap === seg) ui.toastSoft?.(t(def.intro), { icon: '🗺️', prio: 2, info: true }); });      // first entry: one sentence
@@ -2557,7 +2568,7 @@ export class Runner {
       b.vh = 0;
       // round / upside-down sections (now or ~0.6 s ahead): hug the surface — 6 m of 'up' would cross a 5.5-11 m loop
       const rnd = ROUND_KINDS.has(this.track.pieceAt(b.s)?.kind) || ROUND_KINDS.has(this.track.pieceAt(b.s + b.vs * 0.6)?.kind);
-      b.h += ((rnd ? 0.6 : RCFG.rocketH) - b.h) * Math.min(1, dt * (rnd ? 6 : 4));
+      b.h += ((rnd ? 0.6 : this.boardOn ? 4.5 : RCFG.rocketH) - b.h) * Math.min(1, dt * (rnd ? 6 : 4));
     } else if (this.grounded) {
       if (this.lastSlope > 0.08 && (surf === -Infinity || surf < this.lastSurf - 0.2)) {
         // Left the end of a ramp: launched along its slope (works over a gap as well as onto lower ground).
@@ -2821,7 +2832,7 @@ export class Runner {
     if (this.grow < 0) { if (this.tier > 0) { this.tier--; this.grow += 1; this.syncRadius(); this.onMeltDrop?.(); } else this.grow = 0; }
     b.vs *= 0.88; this.squash = Math.max(this.squash, 0.45); this.trauma = Math.min(1, this.trauma + 0.35);
     this.invulnT = Math.max(this.invulnT, 0.9);
-    this.flow = Math.max(0, this.flow - 3); this.nearChain = 0; this.breakCombo();
+    this.flow = Math.max(0, this.flow - 3); this.nearChain = 0; this.breakCombo(); this.flakeBurst();
     this.debris(e, 10);
     this.float('YETİ ATTI!', 'bad'); this.ctx.audio.crash?.(0.4); this.ctx.platform.haptic('medium');
   }
@@ -2911,7 +2922,7 @@ export class Runner {
   // Power-up pickup: a brief glow burst + a pulse of the ball.
   pickPulse(kind) {
     this.glowT = 0.5; this.kick += 1.2;
-    const col = { star: 0xffe45a, x2: 0xffd24a, superjump: 0x7affb0, crystal: 0x9ae8ff, timewarp: 0xb48aff, ghost: 0xd8e8ff, risk: 0xff6a4a, clone: 0x7ad0ff, helmet: 0xffb050, magnet: 0xff7a7a, rocket: 0xffa040 }[kind] ?? 0xffffff;
+    const col = { star: 0xffe45a, x2: 0xffd24a, superjump: 0x7affb0, crystal: 0x9ae8ff, timewarp: 0xb48aff, ghost: 0xd8e8ff, risk: 0xff6a4a, clone: 0x7ad0ff, helmet: 0xffb050, magnet: 0xff7a7a, rocket: 0xffa040, board: 0x6af0ff }[kind] ?? 0xffffff;
     this.mistBurst(12, col, 3.2, 1.1); this.burst?.(8, col, 4);
   }
 
@@ -3070,6 +3081,7 @@ export class Runner {
     const b = this.b;
     const { audio, platform, ui } = this.ctx;
     this.crashes++;
+    this.drift = 0; this.driftHold = 0;
     const m0 = this.mult;
     this.flow = 0;
     this.flowLvl = 0;
@@ -3096,6 +3108,7 @@ export class Runner {
     this.nearChain = 0;
     this.invulnT = RCFG.invulnAfterCrash;
     this.openStumble();
+    this.flakeBurst();
     this.burst(18 + Math.round(lostR * 40), 0xffffff, 6);
     this.mistBurst(14, 0xffffff, 5, 1.6);
     this.hitStop = 0.11;
@@ -3256,10 +3269,11 @@ export class Runner {
         break;
       case 'loop':
         if (b.vs < (e.minSpeed || 0)) b.vs = e.minSpeed * 1.05; // the boost strips guarantee entry speed
-        this.float('TAKLA!', 'big');
         this.score += 150 * this.mult;
         if (this.mom >= 0.5 && !this.level) { this.score += 300 * this.mult; audio.chime?.(); }
-        this.addMom(0.2);
+        this.addMom(0.3);
+        this.skillTag('DÖNGÜ!', '', 3, 8);      // (a call-out, not a float: it wins over a chapter banner and the BLAST it may have lit)
+        audio.whoosh?.(); platform.haptic('medium'); this.fovPunch(5); this.kick += 3;
         break;
       case 'grind':
         if (e.active && !this.grind) {
@@ -3291,13 +3305,8 @@ export class Runner {
           this.gap = Math.min(RCFG.yetiMax, this.gap + 4);
           this.kick += 5;
           this.addMom(e.onBeat ? 0.35 : 0.25);
-          if (e.value) {
-            this.turboN++; this.turboT = 3;
-            b.vs += 3 * Math.min(4, this.turboN); this.gap = Math.min(RCFG.yetiMax, this.gap + 2);
-            this.score += 50 * this.turboN * this.mult;
-            if (this.turboN >= 2) this.float(`TURBO x${this.turboN}!`, 'big');
-          }
-        } else { this.jump(RCFG.jumpPadV * (e.onBeat ? 1.15 : 1) * (e.power || 1), true); this.kick += 3; if (e.onBeat) this.addMom(0.1); }
+          if (e.value) this.turboLink();
+        } else { this.jump(RCFG.jumpPadV * (e.onBeat ? 1.15 : 1) * (e.power || 1), true); this.kick += 3; if (e.onBeat) this.addMom(0.1); if (e.value) this.turboLink(); }
         if (e.onBeat) {
           this.perfects++;
           this.addFlow(5);
@@ -3359,8 +3368,10 @@ export class Runner {
   // Lane warning above the threatened lane (projected at a capped distance so the icons stay legible).
   laneWarn(e) {
     const ui = this.ctx.ui;
-    if (!ui.laneWarn) return;
-    const b = this.b, d = Math.min(18, b.vs * (e.t || 1));
+    if (!ui.laneWarn || this.setPiece) return;
+    const b = this.b, pw = this.track.pieceAt(b.s + 45);
+    if (pw && (pw.loop || pw.kind === 'corkscrew') || this.track.pieceAt(b.s)?.loop) return;     // (a warning lives 1.1 s: none may sit on the ball in a ring / corkscrew)
+    const d = Math.min(18, b.vs * (e.t || 1));
     this.track.toWorld(b.s + d, (LANES[e.lane] ?? 0), 1.2, _v2);
     _v2.project(this.ctx.camera);
     if (_v2.z > 1) { ui.laneWarn(e.lane, e.kind); return; }
@@ -3414,6 +3425,7 @@ export class Runner {
         break;
       case 'flake':
         this.addFlakes(e.value || 1);
+        if (e.burst) { this.burstGot++; audio.star?.(Math.min(2, this.burstGot >> 2)); }
         this.score += 10 * this.mult * (gold ? 2 : 1);
         if (audio.flake) audio.flake(); else music.note();
         platform.haptic('select');
@@ -3546,6 +3558,14 @@ export class Runner {
         audio.milestone(3); platform.haptic('success');
         this.float('KAR KANONU!', 'big'); this.cannonChip();
         break;
+      case 'board':
+        this.rocketT = e.dur || 8; this.boardOn = true;
+        this.powerups = (this.powerups || 0) + 1; this.ctx.meta?.track?.('powerup', { kind: 'board' });
+        this.obstacles.spawnSkyCoins?.(b.s + 14, b.s + 14 + this.rocketT * b.vs, 5, Math.round(3.5 * this.rocketT));      // a sine lane of 28 flakes (3.5 a second) along the flight
+        this.stumbleT = 0; this.gap = Math.max(this.gap, RCFG.yetiMax - 4);
+        audio.whoosh(); platform.haptic('success'); this.addMom(0.1); this.fovPunch(4);
+        this.float('HOVERBOARD!', 'big'); this.firstTag(64, 'HAVALAN!', 2);
+        break;
       case 'rocket':
         this.rocketT = this.dur('rocket');
         this.powerups = (this.powerups || 0) + 1; this.ctx.meta?.track?.('powerup', { kind: 'rocket' });
@@ -3576,6 +3596,16 @@ export class Runner {
     const b = this.b;
     const { audio, platform, ui } = this.ctx;
     const obs = this.obstacles;
+    if (this.crowd) {      // KALABALIK TOPU (Katamari): in a crowd chapter every critter touched sticks to the ball (12 of them = a size step), no stomp, no stumble
+      obs.killCritter?.(e.id);
+      if (e.kind === 'penguin') this.addPenguin?.();
+      this.swallowN = (this.swallowN || 0) + 1;
+      if (this.tier < 4) this.addSnow(1 / 12);
+      this.score += 30 * this.mult; this.addFlow(0.3); this.addMom(0.02); this.squash = Math.max(this.squash, 0.2);
+      this.burst(4, 0xffc0e0, 3); audio.star?.(Math.min(2, this.swallowN % 12 >> 2)); platform.haptic('light');
+      this.firstTag(512, 'YAPIŞTI!', 2);
+      return;
+    }
     if (e.stomp) {
       obs.killCritter?.(e.id);
       if (e.kind === 'penguin') this.addPenguin();
@@ -4216,7 +4246,7 @@ export class Runner {
       case 'grind': if (e.active) this.tip('rail', 'RAY: üstünde kay, yön ver', false); break;
       case 'ring': if (!e.miss) this.tip('ring', 'HALKA: art arda geç, çarpan artsın', false); break;
       case 'gate': if (e.grp && !e.miss) this.tip('slalom', 'SLALOM: kapıları sırayla geç', false); break;
-      case 'loop': this.tip('loop', 'TAKLA: hız şart, devam et!', false); break;
+      case 'loop': this.tip('loop', 'DÖNGÜ: hızını koru, devam et!', false); break;
       case 'pad': if (e.kind === 'boost') this.tip('boost', 'HIZ PEDİ: üstünden geç, hızlan', false); else this.tip('jumppad', 'ZIPLAMA PEDİ: yüksel, havada kal', false); break;
       case 'bait': this.tip('bait', 'BALIK YEMİ: Yeti yakınken ↓↓', false); break;
       case 'cannon': this.tip('cannon', 'KAR KANONU: engelleri otomatik vurur', false); break;
@@ -4224,6 +4254,7 @@ export class Runner {
       case 'ghost': this.tip('ghostp', 'HAYALET: engellerden geçersin', false); break;
       case 'helmet': this.tip('helmet', 'KASK: bir çarpmayı affeder', false); break;
       case 'rocket': this.tip('rocket', 'ROKET: uç, her şeyi kır!', false); break;
+      case 'board': this.tip('board', 'HOVERBOARD: havalan, kar tanelerini topla, ↓ ile in', false); break;
       case 'snow': this.tip('snow', 'KAR: topla, büyü! Top sürekli erir', false); break;
       case 'risk': case 'x2': case 'timewarp': case 'clone': case 'superjump': this.tip('buff', 'BONUS KARTI: kısa süreli güç!', false); break;
     }
@@ -4272,7 +4303,7 @@ export class Runner {
   // lvl 0..3 = heat (colour), prio: 3 small stuff, 5 skill, 7 multiplier step, 9 milestones.
   skillTag(main, sub, lvl, prio) {
     if (this.state !== 'play' || this.countT > 0 || typeof document === 'undefined') return;
-    if (this.quietRun && !/DÖNÜŞ|^TAVŞAN|^KAY/.test(main)) return;
+    if (this.quietRun && !/DÖNÜŞ|^TAVŞAN|^KAY|^DÖNGÜ/.test(main)) return;
     if (prio < 7 && this.ctx.ui.annBusy?.()) return;      // a banner / toast / chapter name owns the top: no second callout under it
     if (this.time - this.floatT < 0.9 && prio < 7) return;    // a centre float is showing: one transient message at a time
     if (this.time < this.tagT && prio < this.tagPrio) return;
@@ -4301,6 +4332,7 @@ export class Runner {
     el.style.top = clamp(rc + (sub ? 78 : 58), H * 0.3, H * 0.94) + 'px';       // below the ball, off the road ahead
     const mt = main.startsWith('ÇARPAN x');      // the multiplier call-out (+ why it grew) sits up in the sky, smaller: never under the ball or over its trail
     if (mt) el.style.top = Math.round(H * 0.34) + 'px';
+    if (this.setPiece) { el.style.left = '50%'; el.style.top = Math.round(H * 0.84) + 'px'; }      // seen from the side the ball sweeps the whole screen: the callout waits low and centred
     el.style.fontSize = mt ? 'clamp(15px,4.4vw,21px)' : '';
     if (this._tagA) { this._tagA.cancel(); this._tagA.play(); }
     else { el.style.opacity = '1'; clearTimeout(this._tagTm); this._tagTm = setTimeout(() => { el.style.opacity = '0'; }, 800); }     // (no Web Animations: just show it for a moment)
@@ -4319,6 +4351,104 @@ export class Runner {
   // ---- SONIC LAYER (Rush only; every method is a no-op in a campaign level) ----
   // Momentum 0..1: skill fills it (near miss, stomps, perfect hops, boost pads, rails, downhill), 4 s without a gain drains it, a crash keeps 40%.
   // Full = BLAST for 6 s: +30% pace, tough <= 3 things are ploughed through, the meter drains with the clock. Below that it adds up to +15% pace.
+  /** BOULDER CHASE (Crash Bandicoot): a chapter with `chase` opens with a ~320 m run from a giant rock that starts 44 m behind and rolls at 1.12 x your pace (0.97 x for the first 2 s). The camera swings round to look back
+   *  at you, left / right are mirrored to the screen. A hit costs the gap (the crash slows you), the rock reaching you is the end (a shell / helmet forgives it once and shoves the rock back 18 m).
+   *  Past the 320 m: the rock smashes into a wall, +20 flakes and BLAST. */
+  chaseTick(dt) {
+    const C = this.chase, b = this.b, seg = this.chap;
+    if (!C) {
+      if (seg && seg.def.chase && !seg.bonus && this._chaseSeg !== seg && b.s >= seg.s0 + 20 && b.s < seg.s1 - 340 && this.state === 'play' && !this.boss && this.countT <= 0) this.startChase(seg);
+      return;
+    }
+    if (this.state !== 'play') return;
+    C.t += dt;
+    const v = Math.max(speedAt(b.s) * this.chapSpd, b.vs) * (C.t < 2 ? 0.97 : 1.12);      // (the rock runs at the track's pace, so a ball that slows or stops is caught)
+    C.cs += v * dt;
+    const gap = b.s - C.cs, m = C.mesh;
+    if (m) {
+      this.track.toWorld(C.cs, b.u * 0.35, 3.6, m.position); m.rotation.x -= v * dt / 3.6; m.rotation.z += 0.3 * dt;
+      m.visible = gap < 130;
+    }
+    this.trauma = Math.max(this.trauma, clamp((26 - gap) / 26, 0, 1) * 0.3);
+    this.yetiHoldT = Math.max(this.yetiHoldT, 2);
+    if (gap < 2.6) {
+      if (this.invulnT > 0 || this.ghostT > 0 || this.absorbShield({ kind: 'boulder', id: -1, u: b.u })) { C.cs = b.s - 20; this.trauma = Math.min(1, this.trauma + 0.5); }
+      else { this.killKind = 'chaseRock'; this.crashes++; this.crashFx(30); this.ctx.audio.crash?.(1); this.die('smash'); return; }
+    }
+    if (b.s >= C.end) this.endChase(true);
+  }
+  startChase(seg) {
+    const b = this.b;
+    this._chaseSeg = seg;
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: 0x8c8274, flatShading: true }));
+    m.scale.setScalar(3.6); this.ctx.scene.add(m);
+    this.chase = { cs: b.s - 44, t: 0, end: b.s + 320, mesh: m };
+    this.queueBanner('DUR YOK, KOŞ!', 5, 1.3, true); this.firstTag(256, 'KAÇ!', 3);
+    this.ctx.audio.roar?.(); this.ctx.platform.haptic('heavy'); this.trauma = Math.min(1, this.trauma + 0.5); this.fovPunch(4);
+  }
+  endChase(win) {
+    const C = this.chase; if (!C) return;
+    if (C.mesh) { this.ctx.scene.remove(C.mesh); C.mesh.geometry.dispose(); C.mesh.material.dispose(); }
+    this.chase = null;
+    if (win && this.state === 'play') {
+      this.addFlakes(20); this.score += 1500 * this.mult; this.addMom(1); this.kick += 5; this.trauma = Math.min(1, this.trauma + 0.6);
+      this.queueBanner('KAYA PARÇALANDI!', 5, 1.3, true); this.ctx.audio.milestone?.(3); this.ctx.platform.haptic('success'); this.ctx.menus?.confetti?.();
+    }
+  }
+
+  /** DRIFT TURBO (Mario Kart): on a bend (|curvature| > 0.008) a finger held down for 0.25 s starts charging; 0.9 s of it = blue sparks (stage 1), 1.8 s = orange (stage 2).
+   *  Letting go (or leaving the bend) pays a mini-turbo: +18 % pace for 1.2 s (stage 1) or +30 % for 1.8 s (stage 2) and +0.15 momentum; below stage 1 nothing happens, a hit resets it. */
+  driftTick(dt) {
+    const b = this.b;
+    if (!this._driftTip && !this.level && this.grounded && this.b.s > 150 && Math.abs(this.track.curvature(b.s + 8)) > 0.015 && this.tip('drift', 'DRİFT: virajda parmağını basılı tut, bırakınca hızlan', false)) this._driftTip = true;
+    const on = this.grounded && !this.level && this.ctx.input.down && this.countT <= 0 && !this.zip && !this.grind && this.state === 'play' && Math.abs(this.track.curvature(b.s)) > 0.008;
+    if (on) {
+      if ((this.driftHold += dt) < 0.25) return;
+      const was = this.drift; this.drift += dt / 0.9;
+      if (was < 1 && this.drift >= 1) { this.ctx.audio.star?.(1); this.ctx.platform.haptic('light'); }
+      else if (was < 2 && this.drift >= 2) { this.ctx.audio.star?.(2); this.ctx.platform.haptic('medium'); }
+      if (Math.random() < dt * 40) this.burst(1, this.drift >= 2 ? 0xffa040 : this.drift >= 1 ? 0x58b8ff : 0xffffff, 2);
+    } else {
+      if (this.drift >= 1) this.driftRelease();
+      this.drift = 0; this.driftHold = 0;
+    }
+  }
+  driftRelease() {
+    const L = this.drift >= 2 ? 2 : 1;
+    this.driftT = L === 2 ? 1.8 : 1.2; this.driftK = L === 2 ? 0.30 : 0.18;
+    this.addMom(0.15); this.fovPunch(3 + 2 * L); this.kick += 2 + L; this.score += 100 * L * this.mult;
+    this.ctx.audio.whoosh?.(); this.ctx.platform.haptic('success'); this.mistBurst(8, L === 2 ? 0xffa040 : 0x58b8ff, 4, 1);
+    this.firstTag(128, 'DRİFT!', 2);
+  }
+
+  /** SPRING-DASH CHAIN link (panel or spring of a chain): each link within 3.2 s of the last adds speed, score and a DASH of +18 % pace for 1.4 s (+0.3 s a link, up to x5); the chain feeds momentum. */
+  turboLink() {
+    const b = this.b, n = ++this.turboN;
+    this.turboT = 3.2; this.dashT = Math.max(this.dashT, 1.4 + 0.3 * (Math.min(5, n) - 1));
+    b.vs += 3 * Math.min(4, n); this.gap = Math.min(RCFG.yetiMax, this.gap + 2);
+    this.score += 50 * n * this.mult; this.addMom(0.05 + 0.02 * Math.min(5, n));
+    this.fovPunch(2 + Math.min(5, n)); this.kick += 2; this.ctx.audio.star?.(Math.min(2, n - 1)); this.ctx.platform.haptic(n >= 3 ? 'medium' : 'light');
+    if (n >= 2) this.float(`TURBO x${n}!`, 'big'); else this.firstTag(32, 'ZİNCİR!', 2);
+  }
+
+  /** FLAKE BURST (Sonic ring loss): a hit that is not the end sprays min(12, 20 % of the held flakes, at least 4) of them around the spot; they stay 3 s and can be picked up again
+   *  (>= 70 % back = GERİ ALDIN, +1 flow). Only with 10+ flakes held, one burst at a time. */
+  flakeBurst() {
+    if (this.level || this.coins < 10 || this.burstT > 0) return;
+    const b = this.b, got = this.obstacles.spawnBurst?.(b.s, b.u, clamp(Math.round(this.coins * 0.2), 4, 12)) | 0;
+    if (!got) return;
+    this.coins -= got; this.burstN = got; this.burstGot = 0; this.burstT = 3.2;
+    this.burst(14, 0xffd24a, 6); this.ctx.audio.star?.(0); this.ctx.platform.haptic('medium');
+    this.firstTag(16, 'SAÇILDI!', 1);
+  }
+  burstEnd() {
+    if (this.burstN > 0 && this.burstGot >= 0.7 * this.burstN) {
+      this.addFlow(1); this.score += 100 * this.mult; this.kick += 2; this.fovPunch(2);
+      this.ctx.audio.milestone?.(2); this.ctx.platform.haptic('success'); this.float('GERİ ALDIN!', 'big');
+    }
+    this.burstN = 0;
+  }
+
   addMom(a) {
     if (this.level || this.state !== 'play' || this.blastT > 0) return;
     this.mom = Math.min(1, this.mom + a); this.momIdle = 0;
@@ -4578,6 +4708,20 @@ export class Runner {
     for (let v = 0; v < nv; v++) { av.meshes[v].count = kv[v]; av.meshes[v].instanceMatrix.needsUpdate = true; }
   }
 
+  /** a Sonic ring came into view: ring centre (mean of the entry / exit circle centres: the ring drifts sideways one road width) and the side to watch from:
+   *  the one AWAY from the drift (the exit pass lies farther from the lens). On the drift side the near road wall of the shifted pass hides the ball at 3 and 9 o'clock. */
+  loopRig(L) {
+    const tr = this.track, R = L.R;
+    this.camLoop = L;
+    tr.frame(L.s0, _f2); _lc.copy(_f2.pos); _v2.copy(_f2.pos); _lc.addScaledVector(_f2.up, R);
+    tr.frame(L.s1, _f2); _lc.add(_f2.pos).addScaledVector(_f2.up, R).multiplyScalar(0.5);
+    _v2.subVectors(_f2.pos, _v2);
+    tr.frame((L.s0 + L.s1) * 0.5, _f2); _ls.copy(_f2.right); _ls.y = 0; _ls.normalize();
+    if (_v2.dot(_ls) > 0) _ls.negate();
+    this.camLS.copy(_ls);
+    if (this.camLoopK < 0.05) this.camLC.copy(_lc);
+  }
+
   // The chase camera rides the path (exactly `camBackS` behind the ball along the track — no world-space lag, so it never
   // cuts corners into banks), looks at a point 12-18 m AHEAD on the track, tilts at most 25° on banked sections (it only
   // follows the track fully where the track itself turns upside down), climbs on high curvature / steep pitch and keeps
@@ -4622,11 +4766,11 @@ export class Runner {
     let laT = 11 + 5 * speedK + 2 * this.closeK - 4 * this.cornerK;       // through a sharp corner: look a little shorter, swing a little slower
     if (hk2 > 0.001) { backT += (5.6 + r * 1.8 - backT) * hk2; upT += (Math.min(upT, 2.9 + r * 1.1) - upT) * hk2; laT += (8 - laT) * hk2; }      // (a touch higher and further ahead than before: the turn's track stays in view instead of a green flank)
     if (kind === 'tube') { upT = Math.min(upT, 4.6); backT = Math.min(backT, 7); }   // stay inside the 5.6 m tube (axis 4 m up)
-    // Inside a vertical loop (a circle only 5.5-11 m in radius) the camera is a rigid chase rig in the BALL's own frame:
-    // close behind (along the tangent), up toward the circle's centre, looking at the track a short way ahead.
-    const loopT = pc && pc.loop && b.s > pc.loop.s0 - 4 && b.s < pc.loop.s1 + 2 ? 1 : 0;
-    this.camLoopK += (loopT - this.camLoopK) * kfil(snap, cdt, 6);
-    if (loopT) { const R = pc.loop.R; backT = 0.8 * R + 0.8; upT = 0.5 * R + 0.5; laT = 0.8 * R; }
+    // Sonic ring (11-16 m): from ~1 s before it until ~0.8 s after it the camera leaves the chase rig and watches from the SIDE (see below); the chase framing itself is untouched.
+    const pa = tr.pieceAt(b.s + 26), lpC = pc && pc.loop && b.s < pc.loop.s1 + 12 ? pc : null, lp = !dying ? (lpC || (pa && pa.loop ? pa : null)) : null;
+    const loopT = lp && b.s > lp.loop.s0 - 26 && b.s < lp.loop.s1 + 12 ? 1 : 0;
+    this.camLoopK += (loopT - this.camLoopK) * kfil(snap, cdt, 5);
+    if (loopT && this.camLoop !== lp.loop) { if (this.camLoop) this.camHiS = this.camLoop.s1 + this.camLoop.R + 8; this.loopRig(lp.loop); }
     const lk = this.camLoopK;
     this.camBackS += (backT - this.camBackS) * kfil(snap, cdt, 5);
     this.camUpH += (upT - this.camUpH) * kfil(snap, cdt, 5);
@@ -4650,20 +4794,33 @@ export class Runner {
       if (sA > 1e-4) { _ax.multiplyScalar(1 / sA); _x.copy(WORLD_UP).applyAxisAngle(_ax, MAX_ROLL); }
     }
     _upC.copy(_x);
+    // Corkscrew: the road rolls a full turn, so a camera above it in the world ends up on the wrong side of an upside-down deck (the road hides the ball): ride on the ball's side (the track's own up), the horizon stays level
+    this.camCorkK += ((kind === 'corkscrew' && !dying ? 1 : 0) - this.camCorkK) * kfil(snap, cdt, 6);
+    if (this.camCorkK > 0.001) _upC.lerp(_f.up, this.camCorkK).normalize();
     const camH = dying && this.cause === 'fall' ? Math.max(b.h + this.camUpH, -6) + this.camUpH * 0.5 : Math.max(b.h * 0.5, 0) + this.camUpH;
     tr.toWorld(camS, this.camU, 0, _v);
     _v.addScaledVector(_upC, camH);           // always above the ball's side of the track, never off to a bank's side
-    if (lk > 0.001 && pc && pc.loop) {
-      // Vertical loop: a rigid chase rig ON THE SAME PASS of the ring — a point of the track 0.8 R behind the ball, lifted 0.72 R (~0.25 R from the centre, ~0.85 R from the ball)
-      // along that station's up (toward the circle's centre). Camera and ball both lie in the circle's disc, so the line of sight
-      // is a chord that can never cut the ring or the laterally shifted entry / exit pass (the old centre camera looked across
-      // them at the loop's ends and the screen filled with track). Camera up = the track's up at the camera station.
-      const R = pc.loop.R, sc = b.s - 0.8 * R;
-      tr.frame(sc, _f2);
-      tr.toWorld(sc, b.u * 0.5, 0, _tp);
-      _tp.addScaledVector(_f2.up, 0.72 * R);
-      _v.lerp(_tp, lk);
-      _x.lerp(_f2.up, lk).normalize();
+    if (lk > 0.001 && this.camLoop) {
+      // Side view of the ring: the whole circle in frame, the ball going round it. Distance from the lens (the ring plus a margin must fit the narrower screen side), at the ring's height.
+      const e = lk * lk * (3 - 2 * lk), R = this.camLoop.R, th = Math.tan(cam.fov * 0.00872665) * Math.min(1, cam.aspect);
+      this.camLC.lerp(_lc, lk < 0.05 || snap ? 1 : 1 - Math.exp(-cdt * 5));
+      const D = clamp((R * 1.28 + 1.4) / th, 26, 90);
+      // from the last quarter of a ring until a ring radius past its exit the lens rises high and close (nearly overhead): seen flat from the side, the ring's near pass hides the ball just after the exit
+      const cl = this.camLoop, hiT = b.s > cl.s0 + 0.7 * (cl.s1 - cl.s0) && b.s < cl.s1 + cl.R + 8 || b.s < this.camHiS ? 1 : 0;
+      this.camHi += (hiT - this.camHi) * kfil(snap, cdt, hiT ? 6 : 12);
+      _tp.copy(this.camLC).addScaledVector(this.camLS, D * (1 - 0.55 * this.camHi)); _tp.y += (0.35 + 2.9 * this.camHi) * R;
+      _v.lerp(_tp, e);
+      // the blend in and out never swings the lens away from the ball faster than the view closes in (a speck 60 m away is lost): the distance grows with e^3 up to the full side view
+      _ax.subVectors(_v, this.ctx.ball.group.position); _tp.x = 12 + (D + 2 * R - 12) * e * e * e;
+      if (_ax.length() > _tp.x) _v.copy(this.ctx.ball.group.position).addScaledVector(_ax.normalize(), _tp.x);
+      _x.lerp(WORLD_UP, e).normalize();
+    }
+    this.chaseK += ((this.chase && !dying && playing ? 1 : 0) - this.chaseK) * kfil(snap, cdt, 3);
+    const ck = this.chaseK;
+    if (ck > 0.001) {      // BOULDER CHASE: the lens swings round to 24 m ahead of the ball and looks back at it, the rock rolling in behind
+      const e = ck * ck * (3 - 2 * ck);
+      tr.toWorld(b.s + 24, b.u * 0.5, 0, _tp); _tp.addScaledVector(_upC, 7 + Math.max(b.h, 0) * 0.5);
+      _v.lerp(_tp, e);
     }
     if (pc && (lk > 0.001 || ROUND_KINDS.has(kind) || dying || (playing && b.s > 30)) && this.env?.groundAt) {   // (also while playing past 30 m: a hill flank beside the chase camera filled a Rush frame with flat green; not at the start: the path is not there yet; dying: the death pull-back must not end up inside a slope wall = a white screen)
       // Safety net: never below the terrain under the camera (+2 m), at most 6 m of correction.
@@ -4693,17 +4850,18 @@ export class Runner {
     _look.addScaledVector(_upC, Math.max(b.h * 0.6, 0) + 3.2 - this.closeK * 0.6);   // look a little above the track: the ball sits in the lower-middle of the screen
     // Keep the ball horizontally centred: on a curve the track point ahead drifts sideways of the camera->ball line, so the
     // horizontal look direction is blended (85%) toward the camera->ball line, extended past the ball by camLa.
-    if (!dying && lk < 0.5) {
+    if (!dying && lk < 0.5 && this.chaseK < 0.5) {
       tr.toWorld(b.s, b.u, 0, _tp);
       const dx = _tp.x - _v.x, dz = _tp.z - _v.z, dl = Math.hypot(dx, dz);
       if (dl > 0.5) { const e = (dl + this.camLa) / dl, bx = _v.x + dx * e, bz = _v.z + dz * e, w = 0.85 * (1 - 2 * lk); _look.x += (bx - _look.x) * w; _look.z += (bz - _look.z) * w; }
     }
-    if (lk > 0.001) _look.lerp(this.ctx.ball.group.position, lk);
+    if (lk > 0.001) _look.lerp(this.camLC, lk * lk * (3 - 2 * lk));
+    if (ck > 0.001) { _tp.copy(this.ctx.ball.group.position).addScaledVector(_upC, 1.5); tr.toWorld(b.s - 3, b.u, 0, _ax); _ax.addScaledVector(_upC, 2.2 + Math.max(b.h * 0.7, 0)); _look.lerp(_ax, ck * ck * (3 - 2 * ck)); }
     if (dying) {
       _look.copy(this.ctx.ball.group.position);
       if (this.cause === 'yeti' && this.yeti?.group?.visible) _look.lerp(_yp, 0.3 * clamp(this.deadT / 0.6, 0, 1));
     }
-    if (!dying && lk < 0.5) {
+    if (!dying && lk < 0.5 && this.chaseK < 0.5) {
       // The look direction never swings more than 25 deg off the track's forward direction at the ball (limits pitch and yaw).
       tr.frame(b.s, _f2);
       _ax.copy(_look).sub(_v);
@@ -4731,13 +4889,26 @@ export class Runner {
     cam.position.copy(this.camPos);
     cam.up.copy(this.camUp);
     cam.lookAt(this.camLook);
+    if (lk > 0.001 && !dying) {      // ring camera: whatever the blend does, the ball stays inside the frame (the look target is pulled toward the ball until it is)
+      for (let i = 0; i < 5; i++) {
+        cam.updateMatrixWorld(); _v2.copy(this.ctx.ball.group.position).project(cam);
+        if (Math.abs(_v2.x) < 0.7 && Math.abs(_v2.y) < 0.7 && _v2.z < 1) break;
+        this.camLook.lerp(this.ctx.ball.group.position, 0.5); cam.lookAt(this.camLook);
+      }
+    }
 
     // Lean into lane changes a touch (≤ 3°) and into a committed turn.
     if (this.jnLeanT > 0) this.jnLeanT -= dt;
     const lean = this.jnLeanT > 0 ? this.jnLean * (this.jnLeanT / 0.45) : 0;
     this.tilt += (clamp(-b.vu * 0.006 - lean * 0.35, -0.052, 0.052) - this.tilt) * Math.min(1, dt * 8);     // <= 3 degrees
     cam.rotateZ(this.tilt);
-    if (playing || dying) { cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert(); _v2.copy(this.ctx.ball.group.position).applyMatrix4(cam.matrixWorldInverse); const dp = -_v2.z; _v2.applyMatrix4(cam.projectionMatrix); const th = Math.tan(cam.fov * 0.00872665); if (playing) nfBall.value.set(_v2.x, _v2.y, dp, r / (dp * th)); ppView.on = dp > 0.5 && this.ctx.ball.group.visible; ppView.st = this.state + (dying ? ':' + this.cause : ''); ppView.r = r; ppView.x = _v2.x; ppView.y = _v2.y; ppView.d = dp; ppView.th = th; ppView.ry = r / (dp * th); ppView.asp = cam.aspect; ppView.hy = Math.tan(Math.asin(cam.matrixWorld.elements[9])) / th; tr.toWorld(b.s + 150, 0, 0, _v2); _v2.project(cam); ppView.vy = _v2.y; ppView.vs = b.vs; } else ppView.on = false;
+    if (playing || dying) { cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert(); _v2.copy(this.ctx.ball.group.position).applyMatrix4(cam.matrixWorldInverse); const dp = -_v2.z; _v2.applyMatrix4(cam.projectionMatrix); const th = Math.tan(cam.fov * 0.00872665); if (playing) nfBall.value.set(_v2.x, _v2.y, dp, r / (dp * th)); ppView.on = dp > 0.5 && this.ctx.ball.group.visible; ppView.st = this.state + (dying ? ':' + this.cause : '') + (this.camLoopK > 0.3 ? ':ring' : ''); ppView.r = r; ppView.x = _v2.x; ppView.y = _v2.y; ppView.d = dp; ppView.th = th; ppView.ry = r / (dp * th); ppView.asp = cam.aspect; ppView.hy = Math.tan(Math.asin(cam.matrixWorld.elements[9])) / th; tr.toWorld(b.s + 150, 0, 0, _v2); _v2.project(cam); ppView.vy = _v2.y; ppView.vs = b.vs; } else ppView.on = false;
+    // set pieces seen from the side (ring, corkscrew): a banner that would land on the ball moves down; lane warnings stay off
+    const sp = playing && (lk > 0.05 || this.camCorkK > 0.3);
+    if (sp && !this.setPiece) this.ctx.ui.laneWarnClear?.();
+    this.setPiece = sp;
+    const spLow = this.setPiece && ppView.y > 0.02 ? 1 : 0;
+    if (spLow !== this.spLow) { this.spLow = spLow; this.ctx.ui.bannerLow?.(spLow); }
     if (!playing || dying) nfBall.value.z = 0;   // (the shaders in nearfade.js fade what sits between camera and ball)
     // Trauma shake: smooth rotational noise that keeps running through hit-stop (peaks ≈ 3° at trauma 1).
     if (!snap && this.trauma > 0) {
@@ -4762,10 +4933,11 @@ export class Runner {
     ud.fovKick = this.kick + this.fovP * 0.35;
     // main.js low-passes fovBoost at 4/s, which keeps only ~27% of a short pulse: until it applies fovKick itself (and sets
     // fovKickOk) the pulse is sent through fovBoost with a gain that survives that filter (a smash or near miss: ~1.5 degrees).
-    ud.fovBoost = -2 + speedK * 5 + this.fovX + 4 * this.introK + (this.rocketT > 0 ? 6 : 0) + (this.riskT > 0 ? 4 : 0) + (ud.fovKickOk ? 0 : this.kick * 1.6 + this.fovP) - (this.state === 'dying' ? 5 * (this.deathZoom || 0) : 0);
+    ud.fovBoost = -2 + speedK * 5 + this.fovX + 4 * this.introK + (this.rocketT > 0 ? 6 : 0) + (this.riskT > 0 ? 4 : 0) - 6 * this.camLoopK + (ud.fovKickOk ? 0 : this.kick * 1.6 + this.fovP) - (this.state === 'dying' ? 5 * (this.deathZoom || 0) : 0);
   }
 
   dispose() {
+    this.endChase(false);
     for (const g of this.penMeshes || []) { this.ctx.scene.remove(g); g.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); }); }
     this.penMeshes = [];
     this._rcpKill();
