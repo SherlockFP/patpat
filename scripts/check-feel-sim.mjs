@@ -288,7 +288,7 @@ function junction(f, { secBefore = 0 } = {}) {
   ok('run 2: no gate either', evs.length === 0);
   r.start(43, null, {}); ok('run 3 is depth 2: the perk pick and every system are back', r.depth === 2 && picks === 0 && r.pickDue);
   ui.runnerPerkPick = null;
-  r.start(44, null, { retry: true }); ok('a retry counts in 0.4 s, silent', Math.abs(r.countT - 0.4) < 1e-9 && r.countQuiet);
+  r.start(44, null, { retry: true }); ok('a retry counts in 0.2 s (the quick front shot), silent', Math.abs(r.countT - 0.2) < 1e-9 && r.countQuiet);
   const v = make({ seed: 45, runs: 0 }); v.ctx.save.runnerBestDist = () => 800; v.runner.start(46, null, {});
   ok('a save with a record counts as a veteran', v.runner.depth >= 2);
   // one hint at a time: a tip never shows over the first-run hint
@@ -476,7 +476,7 @@ function junction(f, { secBefore = 0 } = {}) {
   // -- the plan: first 6 fixed, a bonus after every 4th, 500-700 m, deterministic, unlocked by distance, every type shows up --
   {
     const p = new ChapterPlan(7, 0, () => 20), got = plan(p), reg = got.filter((c) => !c.bonus);
-    ok('the first 6 chapters are fixed: Yamaç, Orman, Buz Tüneli, Ray, Çığ, Düello', CHAPTER_FIXED.every((id, i) => reg[i].id === id && reg[i].n === i + 1));
+    ok('the first 8 chapters are fixed: Yamaç, Orman, Sakura, Buz Tüneli, Volkan, Ray, Çığ, Düello', CHAPTER_FIXED.every((id, i) => reg[i].id === id && reg[i].n === i + 1));
     ok('chapters 1-2 run 350 m, 3-6 500-700 m, 7+ 450-750 m, the plan is contiguous', reg.every((c, i) => (i < 2 ? c.s1 - c.s0 === 350 : i < 6 ? c.s1 - c.s0 >= 500 && c.s1 - c.s0 <= 700 : c.s1 - c.s0 >= 450 && c.s1 - c.s0 <= 750)) && got.every((c, i) => !i || c.s0 === got[i - 1].s1));
     ok('ALTIN DAMAR (10 s) follows every 4th chapter and is not numbered', got.every((c, i) => (i > 0 && !got[i - 1].bonus && got[i - 1].n % BONUS_EVERY === 0) === c.bonus) && got.filter((c) => c.bonus).every((c) => c.s1 - c.s0 === 200));
     ok('same seed = same plan; at() reuses its segments', JSON.stringify(got.map((c) => [c.id, c.s0])) === JSON.stringify(plan(new ChapterPlan(7, 0, () => 20)).map((c) => [c.id, c.s0])) && p.at(100) === p.at(100));
@@ -490,13 +490,19 @@ function junction(f, { secBefore = 0 } = {}) {
     ok('after the tour: remixes of two rule sets, never the same id twice in a row', plan(new ChapterPlan(7, 0, () => 30)).filter((c) => !c.bonus).every((c, i, a) => (c.n <= TOUR.length ? c.id === TOUR[c.n - 1] : c.def.parts && c.def.parts.length === 2 && c.id !== a[i - 1].id)));
     // walk the real speed curve: order, every new mechanic shows up, something new at least every ~900 m
     {
-      const { speedAt } = await import('../src/runner/runner.js'), NEW = ['ekspres', 'ay', 'lazer', 'kopru', 'fuze', 'hareket', 'heyelan', 'turbo'];
+      const { speedAt } = await import('../src/runner/runner.js'), NEW = ['ekspres', 'ay', 'lazer', 'kopru', 'fuze', 'hareket', 'heyelan', 'turbo', 'neon', 'uzay'], THEMED = ['volkan', 'sakura', 'neon', 'uzay'];
       const all = plan(new ChapterPlan(11, 0, speedAt)), w = all.filter((c) => !c.bonus), before = new Set(), gaps = []; let last = 0;
-      for (const c of all) { if (c.s1 > 10000) break; if (c.bonus || !before.has(c.id)) { gaps.push(c.s0 - last); last = c.s0; before.add(c.id); } }      // (a coin-rain bonus is something new too)
-      ok('the walk 0..10000 m follows the tour order', w.filter((c) => c.n <= TOUR.length && c.s0 < 10000).every((c) => c.id === TOUR[c.n - 1]));
-      ok('every new mechanic shows up within 0..10000 m (ekspres, ay, lazer, kopru, fuze, hareket, heyelan, turbo)', NEW.every((id) => w.some((c) => c.id === id && c.s0 < 10000)));
+      for (const c of all) { if (c.s1 > 13000) break; if (c.bonus || !before.has(c.id)) { gaps.push(c.s0 - last); last = c.s0; before.add(c.id); } }      // (a coin-rain bonus is something new too)
+      ok('the walk 0..13000 m follows the tour order', w.filter((c) => c.n <= TOUR.length && c.s0 < 13000).every((c) => c.id === TOUR[c.n - 1]));
+      ok('every new mechanic shows up within 0..13000 m (ekspres, ay, neon, lazer, kopru, uzay, fuze, hareket, heyelan, turbo)', NEW.every((id) => w.some((c) => c.id === id && c.s0 < 13000)));
       ok('a chapter with something new at least every 800 m, no repeat of an id before the tour ends (max gap ' + Math.round(Math.max(...gaps)) + ' m)', Math.max(...gaps) <= 800 && w.filter((c) => c.n <= TOUR.length).length === new Set(w.filter((c) => c.n <= TOUR.length).map((c) => c.id)).size);
       ok('chapters name a look (sky) and a one-word label', NEW.every((id) => CHAPTER_BY_ID[id].look && CHAPTER_BY_ID[id].word));
+      // themed chapters: a biome of biomes.js, a sky backdrop that exists as a file (and as a BACKDROPS entry), a track palette; two of them inside the first 3 km
+      const { BIOMES } = await import('../src/runner/biomes.js'), fs = await import('node:fs'), bsrc = fs.readFileSync(new URL('../src/runner/biomes.js', import.meta.url), 'utf8');
+      ok('volkan / sakura / neon / uzay: a real biome, a sky jpg <= 200 KB listed in BACKDROPS, own track colours, a word', THEMED.every((id) => { const d = CHAPTER_BY_ID[id]; return BIOMES.some((b) => b.id === d.biome) && fs.existsSync(new URL('../public/sky/' + d.look.sky + '.jpg', import.meta.url)) && fs.statSync(new URL('../public/sky/' + d.look.sky + '.jpg', import.meta.url)).size <= 200 * 1024 && bsrc.includes(' ' + d.look.sky + ': 0x') && d.ground && d.ground.edge && d.word; }));
+      ok('the four themed chapters differ underfoot (distinct track colours)', new Set(THEMED.map((id) => CHAPTER_BY_ID[id].ground.tileA)).size === 4);
+      ok('two themed chapters (sakura, volkan) start inside the first 3 km on every seed', [1, 2, 3, 7, 11, 40].every((sd) => { const all = plan(new ChapterPlan(sd, 0, speedAt)); return ['sakura', 'volkan'].every((id) => all.some((c) => c.id === id && c.s0 < 3000)); }));
+      ok('themed chapters carry their signature: volkan gaps + rain, sakura hops + pads, neon oncoming, uzay low gravity + gaps', CHAPTER_BY_ID.volkan.gap && CHAPTER_BY_ID.volkan.rain && CHAPTER_BY_ID.sakura.hops && CHAPTER_BY_ID.sakura.pads && CHAPTER_BY_ID.neon.sig === 'oncoming' && CHAPTER_BY_ID.uzay.lowg && CHAPTER_BY_ID.uzay.gap);
     }
     ok('a clean chapter pays 2x', chapterReward(3, true).coins === 2 * chapterReward(3, false).coins && chapterReward(3, true).xp === 2 * chapterReward(3, false).xp);
     ok('chapter pay grows, then stops at chapter 8', chapterReward(2, false).coins < chapterReward(5, false).coins && chapterReward(8, false).coins === chapterReward(30, false).coins);
@@ -624,6 +630,99 @@ function junction(f, { secBefore = 0 } = {}) {
     { const x = make({ seed: 34 }); x.ctx.meta.charLevel = () => { throw new Error('x'); }; x.ctx.meta.upgradeLevel = () => { throw new Error('x'); }; ok('a broken meta never breaks the run', (() => { try { x.runner.start(34, null, {}); step(x, 5); return true; } catch (e) { return false; } })()); }
   }
 }
+
+// ---------- SONIC LAYER: bunny hop, momentum / BLAST, dive bounce, hold + slide jump, growth, gear shift, opening shot, Yeti presence ----------
+{
+  const air = (r, vh, buf) => { r.grounded = false; r.b.vh = vh; r.b.h = r.groundAt(r.b.s, r.b.u) + 0.2; r.jumpBufT = buf; };
+  const spy = (r) => { const out = []; const oj = r.jump.bind(r); r.jump = (v, f, hp) => { oj(v, f, hp); out.push({ vh: r.b.vh, hop: !!hp }); }; return out; };
+  // bunny hop: a press <= 0.12 s before touchdown chains, each hop springs 2% higher and adds 0.35 m/s; a late press is a plain jump; standing breaks the chain
+  const h = make({ seed: 41 }), r = h.runner; goLive(h); const jv = spy(r);
+  air(r, -10, 0.08); step(h, 3);
+  ok('hop 1: a press 80 ms before touchdown is a perfect hop (hopN 1, +2% jump)', r.hopN === 1 && jv.length === 1 && jv[0].hop && jv[0].vh >= 8.5 * 1.02 - 1e-6 && Math.abs(r.hopV - 0.35) < 1e-9);
+  r.grounded = false; r.b.vh = -10; r.b.h = r.groundAt(r.b.s, r.b.u) + 0.2; r.jumpBufT = 0.08; step(h, 3);
+  ok('hop 2: the chain grows (hopN 2, hopV 0.7, +4%)', r.hopN === 2 && Math.abs(r.hopV - 0.7) < 1e-9 && jv[1].vh >= 8.5 * 1.04 - 1e-6 && r.mom > 0.05);
+  ok('a perfect hop is called out once with its one-word label', h.tags.filter((t) => t.main === 'TAVŞAN!').length === 1);
+  step(h, 60); ok('standing on the snow 0.25 s breaks the chain, hopV then drains', r.hopN === 0 && r.hopV < 0.7);
+  const h2 = make({ seed: 41 }), r2 = h2.runner; goLive(h2);
+  air(r2, -10, 0.02); step(h2, 3); ok('a press 0.12-0.15 s early is a plain buffered jump (no hop, no penalty)', r2.hopN === 0 && r2.jumps === 1 && !r2.grounded);
+  const h3 = make({ seed: 41 }), r3 = h3.runner; goLive(h3);
+  air(r3, -10, 0); while (!r3.grounded) step(h3); swipe(h3, 0, -45); step(h3, 2);
+  ok('a press right AFTER touchdown (within 120 ms) is a perfect hop', r3.hopN === 1);
+  const h3b = make({ seed: 41 }), r3b = h3b.runner; goLive(h3b);
+  air(r3b, -10, 0); while (!r3b.grounded) step(h3b); step(h3b, 8); swipe(h3b, 0, -45); step(h3b, 2);
+  ok('a press 133 ms after touchdown is a plain jump', r3b.hopN === 0 && r3b.jumps === 1);
+  // hold jump (+2.2 m/s after 0.10 s with the finger down) and slide-jump (jump out of a duck keeps the arc, +2.5 m/s of pace)
+  const hA = make({ seed: 44 }), hB = make({ seed: 44 }); goLive(hA); goLive(hB);
+  hA.runner.jump(8.5, false); hB.runner.jump(8.5, false); hA.ctx.input.down = true; hB.ctx.input.down = false; step(hA, 7); step(hB, 7);
+  ok('finger still down 0.10 s after take-off: +2.2 m/s of lift; a flick is unchanged', Math.abs(hA.runner.b.vh - hB.runner.b.vh - 2.2) < 0.05);
+  const hS = make({ seed: 44 }); goLive(hS); hS.runner.duckT = 0.3; hS.runner.jump(8.5, false);
+  ok('slide-jump: full arc, +2.5 m/s of pace', hS.runner.b.vh === 8.5 && hS.runner.hopV >= 2.5 - 1e-9 && hS.runner.mom > 0);
+  // momentum / BLAST
+  const m = make({ seed: 42 }), q = m.runner; goLive(m);
+  for (let i = 0; i < 10; i++) q.handle({ type: 'near', toughness: 3, side: 1, s: q.b.s, u: 0 });
+  step(m, 2); const tB = q.topV;
+  ok('ten near misses fill the meter: BLAST 6 s, meter drains with the clock', q.blastT > 5.9 && q.blastT <= 6 && q.mom > 0.9);
+  q.blastT = 0; q.mom = 0; q.hopV = 0; step(m, 1);
+  ok('BLAST pace = 1.30 x the plain pace', Math.abs(tB / q.topV - 1.3) < 0.003);
+  q.mom = 0.5; step(m, 1); ok('half a meter = +7.5% pace (never below the plain pace)', Math.abs(q.topV / tB * 1.3 - 1.075) < 0.004);
+  q.mom = 1; q.blastT = 6; const calls = []; q.obstacles.resolve = (id, sm) => calls.push(sm); q.b.vs = 30;
+  q.handle({ type: 'hit', toughness: 3, kind: 'crate', id: -5, headOn: true, s: q.b.s, u: q.b.u, color: 0x886644 });
+  ok('BLAST smashes a toughness-3 blocker with no slow-down', calls[0] === true && q.b.vs === 30);
+  q.invulnT = 0; q.critterHit();
+  ok('a crash ends BLAST and keeps 40% of the meter', q.blastT === 0 && q.mom <= 0.4 + 1e-9 && q.hopN === 0);
+  q.mom = 0.8; q.blastT = 0; q.momIdle = 0; for (let i = 0; i < 14 * 60; i++) q.sonicTick(DT);
+  ok('4 s idle, then 0.03 per second', Math.abs(q.mom - 0.5) < 0.01);
+  q.mom = 0.5; q.momIdle = 0; q.addMom(0.2); ok('a gain restarts the idle timer', q.momIdle === 0 && q.mom > 0.69);
+  // dive: homing, bounce chain, a dive with nothing under it
+  const d = make({ seed: 45 }), e = d.runner; goLive(d);
+  e.obstacles.critters.spawnGroup({ species: 'penguin', s: e.b.s + 8, lane: 2, n: 1, spacing: 2, vc: 0.2, hopTo: -1, second: -1, seed: 3 });
+  e.grounded = false; e.b.vh = 2; e.b.h = 1.2; e.dive();
+  ok('a dive with a critter 8 m ahead steers into its lane and slams (out of reach: the plain -20)', e.lane === 1 && e.b.vh === -20 && e.diveAir);
+  { const x = make({ seed: 45 }), y = x.runner; goLive(x); y.b.vs = 21; y.obstacles.critters.spawnGroup({ species: 'penguin', s: y.b.s + 3, lane: 1, n: 1, spacing: 2, vc: 0.2, hopTo: -1, second: -1, seed: 4 }); y.grounded = false; y.b.vh = 1; y.b.h = 1.2; y.dive();
+    ok('a critter in reach: the slam is aimed (slower than -20, still downward)', y.b.vh < -1 && y.b.vh > -20 && y.diveAir); }
+  for (const [ds, h0] of [[3.2, 1.6], [4, 2.5], [6, 3.5], [8, 4.5]]) {
+    const x = make({ seed: 45 }), y = x.runner; goLive(x); y.b.vs = 21; y.obstacles.critters.spawnGroup({ species: 'penguin', s: y.b.s + ds, lane: 1, n: 1, spacing: 2, vc: 0.2, hopTo: -1, second: -1, seed: 4 });
+    y.grounded = false; y.b.vh = 1; y.b.h = y.groundAt(y.b.s, y.b.u) + h0; const vh0 = y.vhDbg = 0; y.dive(); const vd = y.b.vh; let k = 0; while (y.stompTotal === 0 && !y.grounded && k++ < 90) step(x);
+    ok('an aimed dive from ' + h0 + ' m at a critter ' + ds + ' m ahead stomps it (vh ' + vd.toFixed(1) + ', ' + k + ' frames)', y.stompTotal === 1 && y.diveN === 1);
+  }
+  e.diveAir = true; e.handle({ type: 'critter', stomp: true, id: 99, kind: 'x' });
+  ok('dive-stomp: bounce 12, diveN 1, mom up', e.b.vh >= 12 && e.diveN === 1 && !e.diveAir && e.mom >= 0.12 - 1e-9 && !e.duckOnLand);
+  e.diveAir = true; e.handle({ type: 'critter', stomp: true, id: 98, kind: 'x' });
+  ok('the next dive-stomp bounces 0.8 higher and is labelled', e.b.vh >= 12.8 - 1e-9 && e.diveN === 2 && d.tags.some((t) => t.main === 'ÇAK x2'));
+  const d2 = make({ seed: 45 }), f = d2.runner; goLive(d2);
+  f.grounded = false; f.b.vh = -6; f.b.h = f.groundAt(f.b.s, f.b.u) + 0.5; f.dive(); const m0 = f.mom; let k0 = 0; while (!f.grounded && k0++ < 60) step(d2); step(d2, 1);
+  ok('a dive with nothing under it keeps the slam + duck and pays a little momentum', f.duckT > 0 && f.b.vh === 0 && !f.diveAir && f.mom > m0);
+  // growth payoff, gear shift
+  const g = make({ seed: 46 }), t = g.runner; goLive(g);
+  t.tier = 1; t.grow = 0.99; t.addSnow(0.05);
+  ok('tier-up: the ball swells 25% past its new size, held breath, tag', t.tier === 2 && t.rShown >= t.b.r * 1.2 && t.warpT > 0 && g.tags.some((x) => x.main === 'BÜYÜDÜN!' && x.sub === 'BOY 3'));
+  step(g, 30); ok('and eases back within half a second', Math.abs(t.rShown - t.b.r) < 0.02);
+  t.b.s = 400; t.progression(DT);
+  ok('a speed step is a gear shift: lens stretch, held beat, kick, lines', t.speedTier === 1 && t.fovP >= 4 && t.warpT > 0 && t.kick >= 3 && t.gearT > 0);
+  // opening shot + Yeti presence
+  const o = make({ seed: 47 }), u = o.runner; step(o, 6);
+  const Y = u.yeti; u.ctx.camera.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(Y.mesh); let lo = 9, hi = -9;
+  for (const x of [bb.min.x, bb.max.x]) for (const yy of [bb.min.y, bb.max.y]) for (const z of [bb.min.z, bb.max.z]) { const pr = new THREE.Vector3(x, yy, z).project(u.ctx.camera); lo = Math.min(lo, pr.y); hi = Math.max(hi, pr.y); }
+    ok('opening shot: countdown, camera high and wide, the whole Yeti in frame (>= 25% of the view height)', u.introK === 1 && Y.group.visible && Y.fit >= 0.65 && (hi - lo) / 2 >= 0.25 && lo >= -1.15 && hi <= 1);      // (the sim camera has no +9 degrees of FOV boost: the Yeti fits at 0.67 here and ~0.94 in the browser, where open_0..2 show it whole)
+  let kk = 0; while (u.introE < 2.4 && kk++ < 400) step(o);
+  const want = 7.6 + 2.9 * u.rShown - u.closeK * 1.2 + clamp0((u.b.vs - 17.5) / 12.5);
+  ok('by ~2.4 s after go it is the normal chase rig (introK 0, back distance within 0.05 m)', u.introK === 0 && Math.abs(u.camBackS - want) < 0.05);
+  const rt = make({ seed: 48 }); let roars = 0; rt.ctx.audio = new Proxy({}, { get: (_, k2) => (k2 === 'roar' ? () => { roars++; } : () => {}) });
+  rt.runner.start(49, null, { retry: true }); const wr = rt.runner;
+  ok('retry: 0.2 s hold, short quick shot, no roar sound', wr.countT === 0.2 && wr.introK0 === 0.5 && roars === 0);
+  goLive(rt); step(rt, 40); ok('and the retry shot is over 0.5 s after the start', wr.introK === 0);
+  const pr = make({ seed: 49 }), w = pr.runner; goLive(pr); w.introK0 = 0; w.introK = 0; w.gap = 16; w.time = 10; w.yetiHoldT = 99; step(pr, 4);
+  ok('first 20 s: the Yeti stays in the picture even with the gap at 16 (visual only)', w.yeti.group.visible && w.gapV <= 12 && w.gap <= 9);
+  const g0 = w.gap, v0 = w.gapV; w.lungeCd = 0; let vmax = 0; for (let i = 0; i < 70; i++) { step(pr); vmax = Math.max(vmax, w.gapV); }
+  ok('lunge: it swells toward the camera for ~0.9 s, this.gap never changes', vmax >= v0 + 0.5 && w.gap === g0);
+  { const dv = make({ seed: 52 }), q = dv.runner; goLive(dv); q.introK0 = 0; q.introK = 0; q.yetiHoldT = 99; q.tipsSeen = {}; q.obstacles.critters.reset?.();
+    q.obstacles.critters.spawnGroup({ species: 'penguin', s: q.b.s + 16, lane: 1, n: 1, spacing: 2, vc: 0.2, hopTo: -1, second: -1, seed: 5 }); step(dv, 3);
+    ok('dive lesson: the first critter ahead (< 26 m) gets the gold ring', !!q.cring && q.cring.visible); }
+  w.mom = 0.8; w.lungeT = 0; w.lungeCd = 99; step(pr, 120); ok('while blasting it falls away (visual)', w.yFall > 2.9);
+  const lv = (() => { try { return levelById(1); } catch { return null; } })();
+  if (lv) { const c = make({ seed: 50, level: lv }).runner; ok('campaign levels have none of it (no meter, no shot, plain pace)', c.introK0 === 0 && (c.addMom(1), c.mom === 0)); }
+}
+function clamp0(x) { return Math.max(0, Math.min(1, x)); }
 
 console.log(`${n} checks: ${fails ? fails + ' failed' : 'ok'}`);
 process.exit(fails ? 1 : 0);

@@ -343,6 +343,8 @@ const MISSION_TPL = [
   { id: 'buffs', group: 'buffs', modes: 'endless', scope: 'sum', icon: '🃏', goals: [2, 3, 5, 8, 12, 18], text: (g) => `${g} buff kartı topla`,
     on: { buff: inc, endless_end: (d, v) => v + Math.max(0, nz(d.buffs) - RT.buffs) } },
   { id: 'jump', group: 'jump', modes: 'endless', scope: 'sum', icon: '🦘', goals: [5, 15, 30, 50, 80, 120], text: (g) => `${g} kez zıpla`, on: { jump: inc } },
+  // the first run's mission 1 (no later set offers it: legacy): perfect bunny hops, counted by the runner ('hop' event)
+  { id: 'hop', legacy: true, group: 'jump', modes: 'endless', scope: 'sum', icon: '🐇', goals: [3, 5, 8, 12, 18, 25], text: (g) => `${g} tavşan zıplaması yap`, on: { hop: inc } },
   { id: 'close', group: 'close', modes: 'endless', scope: 'sum', icon: '😅', goals: [1, 2, 3, 5, 8, 12], text: (g) => `Yeti'den ${g} kez kıl payı kaç`, on: { close_call: inc } },
   { id: 'smash', group: 'smash', modes: 'endless', scope: 'sum', icon: '🔨', goals: [10, 20, 35, 60, 100, 150], text: (g) => `${g} engel kır`, on: { smash: inc } },
   { id: 'power', group: 'power', modes: 'endless', scope: 'sum', icon: '⚡', goals: [1, 3, 4, 6, 8, 10], text: (g) => `${g} güçlendirme topla`, on: { powerup: inc } },
@@ -724,7 +726,7 @@ function pickMission(exclude) {
 
 function genMissions() {
   // first set ever: things a new player already does in run 1 (cards only appear from run 3, so never a card mission here)
-  if (S.m.n === 0 && !S.m.cur.length) return [{ id: 'jump', g: 5, v: 0, d: 0 }, { id: 'turn', g: 3, v: 0, d: 0 }, { id: 'stomp', g: 3, v: 0, d: 0 }];
+  if (S.m.n === 0 && !S.m.cur.length) return [{ id: 'hop', g: 3, v: 0, d: 0 }, { id: 'turn', g: 3, v: 0, d: 0 }, { id: 'stomp', g: 3, v: 0, d: 0 }];
   const prevIds = new Set(S.m.cur.map((m) => m.id));
   const groups = new Set();
   const out = [];

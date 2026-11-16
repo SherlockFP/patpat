@@ -171,6 +171,7 @@ export function deathGoalKind(ng, score, best, row) {
 // the track generator, the obstacle spawner and the runner all ask chapterAt(s) and always agree. Rule fields are read by track.js
 // (set: forced set piece, plain: only plain pieces, gap: gap-piece chance, slalom) and obstacles.js (dens, pat / own: row-pattern weights,
 // fog / wind: chance on plain pieces, pads: jump-pad chance, slide: ice strips, bonus: coin rain with no rows); runner.js (spd, pin, duel, lights).
+// (first 8 are fixed: Yamaç, Orman, Sakura, Buz Tüneli, Volkan, Ray, Çığ, Düello)
 // Replaced by a chapter of existing pieces (a whole new system each): "Gece Koşusu" (no night grade) -> YAY TARLASI, "Kızak" (rideable sled) -> BUZ KAYDIRAĞI.
 export const CHAPTERS = [
   { id: 'yamac', name: 'YAMAÇ', unlock: 0, intro: 'Zıpla, eğil, şerit değiştir.' },
@@ -196,12 +197,19 @@ export const CHAPTERS = [
   { id: 'hareket', name: 'HAREKETLİ ENGELLER', unlock: 0, ground: { tileA: 0xeed89c, tileB: 0xd8bf80, edge: 0xffd36a, glow: 0xfff0b0, under: 0x7a6038 }, intro: 'Engeller yana kayıyor: boşluğu kolla.', plain: 1, zone: 'movers', sig: 'mover', word: 'KAY!', look: { sky: 'dawn', tint: 0xffd36a, tk: 0.2 } },
   { id: 'heyelan', name: 'HEYELAN', unlock: 0, ground: { tileA: 0x92929c, tileB: 0x777782, edge: 0xd8d8e4, glow: 0xffd8a8, under: 0x34343e }, intro: 'Kayalar yağıyor: kırmızı daireden uzak dur.', plain: 1, dens: 0.5, rain: 1, word: 'KAYA!', look: { sky: 'canyon', tint: 0x8a6a50, tk: 0.3 } },
   { id: 'turbo', name: 'HIZ ŞERİDİ', unlock: 0, ground: { tileA: 0x2ab4d6, tileB: 0x1c98c0, edge: 0xffffff, glow: 0x7af4ff, under: 0x0e4a6a }, intro: 'Hız şeritleri: hızlan, ama engellere dikkat.', plain: 1, spd: 1.12, pads: 0.5, dens: 0.8, boost: 0.8, word: 'HIZ!', look: { sky: 'night', tint: 0x00e5ff, tk: 0.25 } },
+  // Themed chapters: `biome` pins the track biome (props, music, look) for the chapter; the sky backdrop is one of the AI panoramas in public/sky.
+  // VOLKAN: lava cracks (gap pieces) to jump + falling embers (the rain hook), red-black track.  SAKURA: calm fast flow, spring pads and long flake arcs to hop along (hops).
+  // NEON ŞEHİR: dense traffic (oncoming trains in neon colours) + speed strips.  UZAY: half gravity, long jumps over gaps (floating platforms), dark track with bright edges.
+  { id: 'volkan', name: 'VOLKAN', unlock: 0, biome: 'volcano', ground: { tileA: 0x2c1f22, tileB: 0x1d1416, edge: 0xff5a1a, glow: 0xff8a2a, under: 0x1a0805 }, intro: 'Yerde lav çatlakları: zıpla. Gökten kor yağıyor.', plain: 1, gap: 0.3, rain: 1, dens: 0.6, len: 500, pat: { low: 2, single: 1.2, duck: 0.6, phrase: 1, _: 0.7 }, word: 'LAV!', look: { sky: 'volcano', tint: 0xff5a2a, tk: 0.25 } },
+  { id: 'sakura', name: 'SAKURA', unlock: 0, biome: 'sakura', ground: { tileA: 0xf4b6cc, tileB: 0xe79ab8, edge: 0xffe6f0, glow: 0xffd0e4, under: 0x8a3a5a }, intro: 'Sakura akışı: yaylara bas, kar tanesi yaylarında zıpla zıpla hızlan.', plain: 1, pads: 0.7, hops: 1, spd: 1.1, len: 500, boost: 0.4, pat: { rest: 3, single: 0.7, low: 0.9, _: 0.35 }, word: 'AKIŞ!', look: { sky: 'sakura', tint: 0xffa8c8, tk: 0.2 } },
+  { id: 'neon', name: 'NEON ŞEHİR', unlock: 0, biome: 'neon', ground: { tileA: 0x1b1440, tileB: 0x120d30, edge: 0x00e5ff, glow: 0xff3ad8, under: 0x07041a }, intro: 'Yoğun trafik: karşıdan araçlar geliyor, hız şeritlerini kap.', plain: 1, nojunc: 1, len: 450, pat: { oncoming: 6, train: 4, mover: 1, _: 0.4 }, own: ['oncoming'], sig: 'oncoming', boost: 0.9, word: 'TRAFİK!', look: { sky: 'neon', tint: 0xff3ad8, tk: 0.25 } },
+  { id: 'uzay', name: 'UZAY', unlock: 0, biome: 'moon', ground: { tileA: 0x1a1c34, tileB: 0x12142a, edge: 0x7af4ff, glow: 0xb89bff, under: 0x04050c }, intro: 'Düşük yerçekimi: uzun uçuşlar, yüzen platformlar arası boşluklar.', plain: 1, lowg: 1, gap: 0.3, pads: 0.5, dens: 0.6, len: 450, word: 'UZAY!', look: { sky: 'space', tint: 0x8a6aff, tk: 0.22 } },
 ];
 export const CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
-export const CHAPTER_FIXED = ['yamac', 'orman', 'tunel', 'ray', 'cig', 'duello'];
+export const CHAPTER_FIXED = ['yamac', 'orman', 'sakura', 'tunel', 'volkan', 'ray', 'cig', 'duello'];
 // The tour: chapters 1-6 are fixed (a duel at 6); then every new rule once. After it (n > TOUR.length) REMIX chapters join two rule sets (A x B) without repeating the previous id.
-export const TOUR = ['yamac', 'orman', 'tunel', 'ray', 'cig', 'duello', 'ekspres', 'ay', 'lazer', 'kopru', 'fuze', 'hareket', 'heyelan', 'turbo', 'rampa', 'sis', 'yay', 'ruzgar', 'kaydirak'];
-export const REMIX_POOL = ['ekspres', 'kopru', 'lazer', 'fuze', 'hareket', 'heyelan', 'turbo', 'ay', 'sis', 'ruzgar', 'rampa', 'yay', 'kaydirak', 'ray', 'tunel'];
+export const TOUR = ['yamac', 'orman', 'sakura', 'tunel', 'volkan', 'ray', 'cig', 'duello', 'ekspres', 'ay', 'neon', 'lazer', 'kopru', 'uzay', 'fuze', 'hareket', 'heyelan', 'turbo', 'rampa', 'sis', 'yay', 'ruzgar', 'kaydirak'];      // (SAKURA 3rd and VOLKAN 5th: two themed chapters inside the first 3 km)
+export const REMIX_POOL = ['ekspres', 'volkan', 'sakura', 'neon', 'uzay', 'kopru', 'lazer', 'fuze', 'hareket', 'heyelan', 'turbo', 'ay', 'sis', 'ruzgar', 'rampa', 'yay', 'kaydirak', 'ray', 'tunel'];
 export const BONUS_EVERY = 4;       // an ALTIN DAMAR interlude after every 4th chapter (it is not numbered)
 export const BONUS_SECS = 10;
 const ch1 = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7 + 7.7) * 43758.5453; return x - Math.floor(x); };

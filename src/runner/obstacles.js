@@ -284,8 +284,8 @@ function makeGeometries() {
 
 // pool: key -> [geometry key, material key, capacity]
 const GLB_PROPS = { glbSnowman: 'prop_snowman', glbSign: 'prop_sign', glbCrate: 'prop_crate', glbSled: 'prop_sled', glbLog: 'prop_logpile', glbPine: 'prop_pine', glbRockBig: 'prop_rock_big', glbRockSmall: 'prop_rock_small', glbCabin: 'prop_cabin', glbBarrier: 'prop_barrier', glbLoco: 'train_loco', glbLocoIce: 'train_loco_ice', glbCarCyan: 'train_car_cyan',
-  glbCarYellow: 'train_car_yellow', glbCarOrange: 'train_car_orange', glbCarIce: 'train_car_ice', glbRide: 'train_ride', glbRideIce: 'train_ride_ice' };
-const GLB_CAP = { glbSnowman: 30, glbSign: 30, glbCrate: 80, glbSled: 40, glbLog: 30, glbPine: 70, glbRockBig: 40, glbRockSmall: 70, glbCabin: 20, glbBarrier: 60, glbLoco: 16, glbLocoIce: 16, glbCarCyan: 40, glbCarYellow: 40, glbCarOrange: 40, glbCarIce: 40, glbRide: 40, glbRideIce: 40 };
+  glbCarYellow: 'train_car_yellow', glbCarOrange: 'train_car_orange', glbCarIce: 'train_car_ice', glbRide: 'train_ride', glbRideIce: 'train_ride_ice', glbFence: 'prop_fence', glbLogFallen: 'prop_log_fallen', glbSkier: 'critter_skier' };
+const GLB_CAP = { glbSnowman: 30, glbSign: 30, glbCrate: 80, glbSled: 40, glbLog: 30, glbPine: 70, glbRockBig: 40, glbRockSmall: 70, glbCabin: 20, glbBarrier: 60, glbLoco: 16, glbLocoIce: 16, glbCarCyan: 40, glbCarYellow: 40, glbCarOrange: 40, glbCarIce: 40, glbRide: 40, glbRideIce: 40, glbFence: 120, glbLogFallen: 24, glbSkier: 12 };
 const POOLS = {
   box: ['box', 'lit', 1500], cyl: ['cyl', 'lit', 320], ball: ['ball', 'lit', 520], pine: ['pine', 'lit', 70], plow: ['plow', 'lit', 24],
   rockS: ['rockS', 'lit', 70], rockS2: ['rockS2', 'lit', 70], rockB: ['rockB', 'lit', 40], rockB2: ['rockB2', 'lit', 40], cone: ['cone', 'lit', 140], dome: ['dome', 'lit', 60], cactus: ['cactus', 'lit', 50],
@@ -869,12 +869,18 @@ function crateBuild(ob, hexA, hexB) {
 function fenceBuild(ob, post, rail) {
   const w = ob.uMax - ob.uMin, uc = (ob.uMax + ob.uMin) / 2, n = Math.ceil(w / 1.1) + 1;
   ob.hu = w / 2; ob.u = uc;
+  if (this.pool.glbFence) {   // Blender section: posts at +-0.45, so tile every 0.9 m and neighbouring posts coincide
+    const m = Math.max(1, Math.ceil(w / 0.9)), st = w / m;
+    for (let k = 0; k < m; k++) this._part(ob, 'glbFence', 0xffffff, ob.uMin + st * (k + 0.5), 0, 0, 0, st / 0.9, 1, 1);
+    return;
+  }
   for (let k = 0; k < n; k++) this._part(ob, 'box', post, ob.uMin + (w * k) / (n - 1), 0.47, 0, 0, 0.13, 0.95, 0.13);
   this._part(ob, 'box', rail, uc, 0.35, 0, 0, w, 0.1, 0.06); this._part(ob, 'box', rail, uc, 0.72, 0, 0, w, 0.1, 0.06);
 }
 function logBuild(ob, hexA, hexB) {
   const len = ob.uMax - ob.uMin, uc = (ob.uMax + ob.uMin) / 2;
   ob.hu = len / 2; ob.u = uc;
+  if (this.pool.glbLogFallen) { this._part(ob, 'glbLogFallen', 0xffffff, uc, 0, 0, 0, len / 3.0, 1, 1); return; }
   this._part(ob, 'cyl', hexA, uc, 0.42, 0, PI / 2, 0.84, len, 0.84);
   this._part(ob, 'cyl', hexB, uc + len * 0.2, 0.2, 0, PI / 2, 0.45, len * 0.45, 0.45, 0, 0, 0.55);
 }
@@ -1237,8 +1243,9 @@ KIND.moving = {
     if (ob.type === 'skier') {
       ob.tough = 1; ob.color = ob.suit; ob.ht = 1.8; ob.rad = 0.45; ob.hc = 0.9;
       const mk = (key, hex, ou, h, sx, sy, sz, oz = 0) => { const p = this._part(ob, key, hex, ob.u + ou, h, 0, 0, sx, sy, sz, 0, 0, oz, ob.fm); p.du = ou; };
-      mk('box', ob.suit, 0, 0.9, 0.4, 0.9, 0.3); mk('ball', 0xf2c9a0, 0, 1.55, 0.5, 0.5, 0.5); mk('box', COL.dark, -0.16, 0.05, 0.1, 0.05, 1.5); mk('box', COL.dark, 0.16, 0.05, 0.1, 0.05, 1.5);
-      mk('box', COL.red, 0, 1.78, 0.45, 0.12, 0.45);
+      if (this.pool.glbSkier) mk('glbSkier', 0xffffff, 0, 0, 1, 1, 1);
+      else { mk('box', ob.suit, 0, 0.9, 0.4, 0.9, 0.3); mk('ball', 0xf2c9a0, 0, 1.55, 0.5, 0.5, 0.5); mk('box', COL.dark, -0.16, 0.05, 0.1, 0.05, 1.5); mk('box', COL.dark, 0.16, 0.05, 0.1, 0.05, 1.5);
+      mk('box', COL.red, 0, 1.78, 0.45, 0.12, 0.45); }
     } else if (ob.type === 'sled') {
       ob.tough = 2; ob.color = COL.red; ob.ht = 1.2; ob.hs = 1.0; ob.hu = 0.55; ob.hc = 0.6;
       sledParts.call(this, ob, 0);
@@ -1542,8 +1549,8 @@ const HARD_PAT = { double: 1, train: 1, mover: 1, rolling: 1, beat: 1, swing: 1,
 const SIG_AT = { oncoming: 0, missile: 0 };      // metres into a chapter at which its signature row may start (the train / missile row places its hazard ~40 m ahead of the row, the rest sit on the row)
 const LETHAL_KIND = { oncoming: 1, slidewall: 1, missile: 1 };
 const SINGLE_VERB = { single: 1, low: 1, duck: 1, rest: 1 };            // round sections (loop, corkscrew, helix, half-pipe, tube): one verb per row
-// first 20 s: something every ~2.5 s (was every ~3.5 s from the 5 s mark): a block at 3.5 s, a critter, a hurdle, a pad jump over a flake arc (~11 s), a parade to stomp, a BOOST strip (the first speed-rush, ~16 s), a duck bar
-const TEACH = [{ s: 34, pat: 'single' }, { s: 96, pat: 'critter' }, { s: 132, pat: 'low' }, { s: 172, pat: 'pad' }, { s: 220, pat: 'parade' }, { s: 262, pat: 'boost' }, { s: 306, pat: 'duck' }];
+// first 20 s: something every ~2.5 s (was every ~3.5 s from the 5 s mark): a block at 3.5 s, a critter, a hurdle and a second one a hop later (bunny hop), a pad jump over a flake arc (~11 s), a parade to stomp, a BOOST strip (the first speed-rush, ~16 s), a duck bar
+const TEACH = [{ s: 34, pat: 'single' }, { s: 96, pat: 'critter' }, { s: 132, pat: 'low' }, { s: 146, pat: 'low' }, { s: 172, pat: 'pad' }, { s: 220, pat: 'parade' }, { s: 262, pat: 'boost' }, { s: 306, pat: 'duck' }];
 const TEACH_END = 320;
 // patterns that can never leave a free lane out of reach when the previous row is < 0.5 s behind (see _rows: tightRow)
 const TIGHT_OK = ['single', 'low', 'duck', 'slide', 'swing', 'ice', 'conveyor', 'rail', 'rest', 'laser', 'critter', 'icegate'];
@@ -2450,8 +2457,11 @@ Object.assign(Obstacles.prototype, {
           if (plan.zone === 'coinRain') this._coinRain(plan, route, s0 + 3, s1 - 2);
           else {
             const tA = padFlight ? s0 + 7 + padFlight + 5 : s0 + 3;
-            if (!early && !plan.gates) { av = this._trails(plan, route, tA, s1 - 3); trailed = true; }
-            this._flakeRuns(plan, route, tA + 1, s1 - 3, arcs, av);
+            if (cd && cd.hops && kind === 'straight' && !early && !plan.gates && !padFlight) this._hopLine(plan, route, tA + 4, s1 - 3);      // SAKURA: back-to-back flake arcs, one per bunny hop
+            else {
+              if (!early && !plan.gates) { av = this._trails(plan, route, tA, s1 - 3); trailed = true; }
+              this._flakeRuns(plan, route, tA + 1, s1 - 3, arcs, av);
+            }
           }
           break;
         }
@@ -3003,6 +3013,12 @@ Object.assign(Obstacles.prototype, {
       if (y > -0.2) this._pickup('flake', s + vs * t, u, 0.75 + Math.max(0, y));
     }
     return vs * tf;
+  },
+
+  /** SAKURA: a chain of flake arcs, each one a normal hop long, touching end to end (jump the moment you land); an arc that would cross a row is left out */
+  _hopLine(plan, route, sA, sB) {
+    const T = this.track, fl = T.speedAt(sA) * ((2 * AIR_VH) / AIR_G);
+    for (let s = sA; s + fl < sB; s += fl) if (!plan.rows.some((r) => r.s > s - 4 && r.s < s + fl + 4)) this._arcFlakes(plan, s, route(s + fl * 0.5), AIR_VH);
   },
 
   _rowArcs(plan) {

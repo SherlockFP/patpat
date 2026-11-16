@@ -228,6 +228,7 @@ export class UI {
     this.turnCue(0);
     this.hungerHide();
     this.cigReset();
+    this.runnerMom(0, false);
     this.el.stomp.classList.add('hidden');
     this.el.cigBanner.classList.remove('on'); this.el.cigBanner.classList.add('hidden');
     this.el.buffFly.innerHTML = '';
@@ -923,6 +924,18 @@ export class UI {
     if (on === this.surgeOn) return;
     this.surgeOn = on;
     this.el.yeti.classList.toggle('surge', on);
+  }
+
+  // Momentum meter (Rush): a chunky bar on the left edge with a bolt badge, k 0..1 in three colour steps, blast = full and draining (white-hot, gold edge glow + streaks via body.blast). No text.
+  runnerMom(k, blast) {
+    const el = this.el.mom || (this.el.mom = document.getElementById('hud-mom'));
+    if (!el) return;
+    el.style.setProperty('--m', k.toFixed(2));
+    el.classList.toggle('on', k > 0.02 || !!blast);
+    el.classList.toggle('hot', k > 0.9 && !blast);
+    el.classList.toggle('blast', !!blast);
+    el.classList.toggle('s1', k >= 0.34 && k < 0.67); el.classList.toggle('s2', k >= 0.67);
+    document.body.classList.toggle('blast', !!blast);
   }
 
   runnerFlow(lvl, frac) {

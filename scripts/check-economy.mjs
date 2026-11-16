@@ -68,7 +68,7 @@ ok('economy is not trivial: at most 6 purchases in session 1 and 14 by session 5
 // ---- level-gated unlocks (new save): Bölümler 2, ÇIĞ 3, Günlük 4, Arena 5, Sezon 6; reachable at a sane pace
 ok('unlock levels are 2/3/4/5/6', UNLOCK_LV.map === 2 && UNLOCK_LV.cig === 3 && UNLOCK_LV.daily === 4 && UNLOCK_LV.arena === 5 && UNLOCK_LV.season === 6 && UNLOCK_LV_MAX === 6);
 ok('Bölümler open by run 2, ÇIĞ by 4, Günlük by 7, Arena by 10, Sezon by 15', lvAt.map <= 2 && lvAt.cig <= 4 && lvAt.daily <= 7 && lvAt.arena <= 10 && lvAt.season <= 15, JSON.stringify(lvAt));
-ok('the first mission set is jump / turn / stomp (never a card mission: cards start in run 3)', (() => { store.clear(); meta.init(mkSave()); const r = meta.missions(); return r.length === 3 && r.map((x) => x.id).sort().join() === 'jump,stomp,turn'; })());
+ok('the first mission set is bunny hop / turn / stomp (never a card mission: cards start in run 3)', (() => { store.clear(); meta.init(mkSave()); const r = meta.missions(); return r.length === 3 && r.map((x) => x.id).sort().join() === 'hop,stomp,turn'; })());
 ok('a new save starts with the five systems closed', (() => { store.clear(); meta.init(mkSave()); return Object.keys(UNLOCK_LV).every((k) => !meta.unlocked(k)); })());
 ok('any other id is always open', meta.unlocked('shop') === true);
 

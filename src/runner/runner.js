@@ -13,7 +13,7 @@ import { RhythmLane } from './rhythm.js';
 import { patchMaterial } from '../shaders.js';
 import { nfBall, nearFade } from './nearfade.js';
 import { ppView, ppOcc } from './ppview.js';
-import { cloneYeti } from '../glb.js';
+import { cloneYeti, GLB } from '../glb.js';
 import { isScoreRecord, gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionResultText, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
 import { starProgress } from '../campaign.js';
 
@@ -43,6 +43,7 @@ export const RCFG = {
   jumpPadV: 11,
   coyote: 0.12,
   jumpBuf: 0.15,         // a jump pressed this long before landing still fires at touchdown
+  hopPre: 0.12, hopPost: 0.12,   // perfect bunny hop: the jump was pressed up to this long before touchdown / after it
   landTol: 0.45,         // m: a falling ball this close above the surface lands on it
   laneW: 2.4,            // 3 lanes at u = -2.4, 0, +2.4 (Subway Surfers style)
   laneStiff: 400,        // lane-change spring: ~0.2 s per lane at every speed
@@ -146,10 +147,12 @@ const _x = new THREE.Vector3();
 const _ax = new THREE.Vector3();
 const _upC = new THREE.Vector3();
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const _tp = new THREE.Vector3();
 const _yp = new THREE.Vector3();
 const _goal = { mode: 'cp', val: 0, frac: 0 };
 const _lst = {};   // live campaign stats scratch (starProgress)
+const BIO_IX = {}; Biomes.BIOMES.forEach((b, i) => { BIO_IX[b.id] = i; });
 const _bi = { biome: null, index: 0, t: 0, next: null };   // biomeAt() scratch: read it right away, never keep it
 const RAGE_SKIP = new Set(['zipline', 'rail', 'loop', 'corkscrew']); // sections where the Yeti keeps its boulders
 const GLOW_KINDS = new Set(['star', 'x2', 'superjump', 'crystal', 'timewarp', 'ghost', 'risk', 'clone', 'helmet', 'magnet', 'rocket', 'cannon']);
@@ -261,6 +264,7 @@ export class Runner {
     Biomes.setBiomeOverride?.(level ? level.biome : null);
     // RUSH BÖLÜMLERİ (goals.js CHAPTERS): a pure plan of (seed, best distance); the track and the obstacles read it through track.chapterAt. A daily uses best 0 so everyone gets the same chapters.
     const chp = this.chapters = !level && !this.tut ? opts.chapterPlan || new ChapterPlan(seed, dly ? 0 : (save.runnerBestDist?.() ?? 0), speedAt) : null;       // (opts.chapterPlan: a hand-made plan for tests)
+    Biomes.setBiomeMap?.(chp ? (s) => { const bm = chp.at(s).def.biome; return bm ? BIO_IX[bm] : -1; } : null);      // a themed chapter (volkan / sakura / neon / uzay) pins its biome: props, music and look follow
     this.track = new Track(scene, {
       seed,
       chapterAt: chp ? (s) => chp.at(s) : null,
@@ -342,6 +346,11 @@ export class Runner {
     this.slowUntil = -1;
     this.slowScale = 1;
     this.warpT = 0;
+    // ---- Sonic layer (Rush only): bunny-hop chain, momentum -> BLAST, dive bounce, hold jump, Yeti lunge, opening shot ----
+    this.hopN = 0; this.hopV = 0; this.hopWinT = 0; this.holdT = 0; this.diveAir = false; this.diveN = 0; this._tagSeen = 0;
+    this.mom = 0; this.momIdle = 0; this.blastT = 0; this._momQ = -1; this.gearT = 0; this.yFall = 0; this.topV = 0; this.gapV = 0;
+    this.lungeT = 0; this.lungeCd = rand(7, 10);
+    this.introK0 = level || this.tut ? 0 : opts.retry ? 0.5 : 1; this.introK = this.introK0 > 0 ? 1 : 0; this.introE = 0; this._introPuff = this.introK0 === 1;
 
     // ---- the Yeti ----
     this.gap = RCFG.yetiStart;
@@ -394,7 +403,7 @@ export class Runner {
     // endless Rush: nothing kills in one touch (only gaps and the Yeti); campaign keeps its level gates
     this.lethalOn = level ? { base: RCFG.lethal && lid >= 16, car: RCFG.lethal && lid >= 30, wall: RCFG.lethal && lid >= 60 } : { base: false, car: false, wall: false };
     this.state = 'play';
-    this.countT = opts.retry ? 0.4 : 0.9;     // play within 0.9 s of opening, a retry within 0.4 s (silent): the world waits, no 3-2-1
+    this.countT = this.introK0 === 1 ? 0.6 : this.introK0 > 0 ? 0.2 : opts.retry ? 0.4 : 0.9;     // play within 0.9 s of opening, a retry within 0.4 s (silent): the world waits, no 3-2-1
     this.countQuiet = !!opts.retry;
     this.layer = 0; this.layerCrash0 = 0;
     this.speedTier = 0;
@@ -561,6 +570,8 @@ export class Runner {
     ui.hideRunnerRevive?.();
     ui.turnCue?.(0, 0);
     ui.stompCombo?.(0);
+    ui.runnerMom?.(0, false);
+    if (this.introK0 === 1) this.introRoar();
     ui.hunger?.(this.hungerFrac(), false);
     if (level) ui.runnerGoal?.(null); // campaign has its own finish-line progress bar
     this.hintOn = false;
@@ -683,6 +694,7 @@ export class Runner {
       }
       dt = 0;
     }
+    if (play && this.introK0 > 0) this.introTick(rdt);
     if (this._introPend && this.countT <= 0 && this.introEl) {
       this._introPend = false; const ie = this.introEl; ie.style.visibility = ''; ie.style.animation = 'none'; void ie.offsetWidth; ie.style.animation = '';
       setTimeout(() => { if (this.introEl === ie) ie.classList.add('badge'); }, 1500);
@@ -713,7 +725,7 @@ export class Runner {
     this.ctx.ball.setRadius(this.rShown);
     this.placeBall(false, dt);
     this.updatePenguins(dt);
-    this.updateYeti(dt);
+    this.updateYeti(this.countT > 0 ? rdt : dt);      // (the opening shot: the Yeti roars and runs in real time while the world waits)
     this.ctx.fx.update(dt, this.ctx.ball);
     this.updateCamera(rdt);
   }
@@ -809,7 +821,10 @@ export class Runner {
     this.duckT -= dt;
 
     // ---- speed: downhill pace + size bonus; rocket overrides ----
-    const top = speedAt(b.s) * this.mutSpd * (1 + this.tier * RCFG.sizeSpeed) * (this.rocketT > 0 ? 1.35 : 1) * (this.riskT > 0 ? 1.45 : 1) * (this.cardRiskT > 0 ? 1.04 : 1) * (this.slideT > 0 ? (this.abil === 'buzejder' ? 1.4 + 0.05 * this.cs : 1.2) : 1) * (this.rhythm ? this.rhythm.speedK : 1) * this.chapSpd;
+    const top0 = speedAt(b.s) * this.mutSpd * (1 + this.tier * RCFG.sizeSpeed) * (this.rocketT > 0 ? 1.35 : 1) * (this.riskT > 0 ? 1.45 : 1) * (this.cardRiskT > 0 ? 1.04 : 1) * (this.slideT > 0 ? (this.abil === 'buzejder' ? 1.4 + 0.05 * this.cs : 1.2) : 1) * (this.rhythm ? this.rhythm.speedK : 1) * this.chapSpd;
+    // momentum (+15% at a full meter), BLAST (+30%) and the hop chain only ADD to the pace; the Yeti logic keeps reading the plain pace (top0), so a surge never reads as a stumble
+    const top = this.level ? top0 : (top0 * (this.blastT > 0 ? 1.3 : 1 + 0.15 * this.mom) + this.hopV);
+    this.topV = top;
     if (b.vs < top) b.vs = Math.min(top, b.vs + RCFG.accel * dt);
     else b.vs = Math.max(top, b.vs - RCFG.accel * 0.6 * dt);
     this.invulnT -= dt;
@@ -852,10 +867,12 @@ export class Runner {
     if (this.grounded) {
       this.groundT += dt;
       if (this.stompN && this.groundT > 0.25) { this.stompN = 0; ui.stompCombo?.(0); }
+      if (this.groundT > 0.25) { this.hopN = 0; this.diveN = 0; }      // standing on the snow breaks the hop / dive chains
     } else this.groundT = 0;
 
     // ---- Yeti: right behind you at the start and while you stumble, otherwise it falls back ----
-    this.yetiTick(dt, top);
+    this.yetiTick(dt, top0);
+    this.sonicTick(dt);
 
     this.bossTick(dt);
     this.progression(dt); this.perkTick();
@@ -867,8 +884,8 @@ export class Runner {
     if (this.dblT > 0) this.dblT -= dt;
     if (this.turboT > 0) this.turboT -= dt; else this.turboN = 0;
     this.score += b.vs * dt * this.mult * (this.dblT > 0 ? 2 : 1);
-    music.setBpm(bpmAt(b.s));
-    music.setIntensity(clamp(0.55 + b.s / 4000 + (this.stumbleT > 0 ? 0.35 : 0), 0.55, 1));
+    music.setBpm(bpmAt(b.s) + (this.blastT > 0 ? 10 : 0));
+    music.setIntensity(this.blastT > 0 ? 1 : clamp(0.55 + b.s / 4000 + (this.stumbleT > 0 ? 0.35 : 0), 0.55, 1));
     this.ctx.audio.setRoll(this.grounded ? clamp(b.vs / RCFG.maxSpeed, 0, 1) * 0.7 : 0, clamp(b.r / 1.5, 0, 1) * 0.5);
     this.updateHud();
 
@@ -987,7 +1004,22 @@ export class Runner {
     this.diveT = 0.7;
     if (!this.grounded && !this.zip) {
       // Slam: drop to the snow fast and duck on landing (the low-bar phrase right after a log needs it).
-      if (b.vh > RCFG.diveV) b.vh = RCFG.diveV;
+      let dv = RCFG.diveV;
+      if (!this.level) {
+        this.diveAir = true;
+        // homing: a critter 1-12 m ahead within one lane pulls the dive into its lane, and when its head is in reach the slam is AIMED (the fall speed that arrives on top of it
+        // after ds / vs seconds, never faster than the plain slam), so the dive-stomp lands where the ball was aimed and cannot tunnel through the critter's thin stomp window
+        const c = this.obstacles.critters?.nextAhead(b.s + 1);
+        if (c && c.s - b.s < 12) {
+          const da = this.laneSnap(c.cu / RCFG.laneW) - this.lane;
+          if (Math.abs(da) <= 1) {
+            if (da) this.laneChange(da);
+            const t = Math.max(0.05, (c.s - b.s - 0.3) / Math.max(10, b.vs)), need = ((c.ht || 0.5) * 0.9 - b.h + 0.5 * RCFG.gravity * (this.lowG ? 0.5 : 1) * t * t) / t;
+            if (need <= -1) dv = Math.max(RCFG.diveV, need);
+          }
+        }
+      }
+      if (b.vh > dv) b.vh = dv;
       this.duckOnLand = true;
       this.ctx.audio.whoosh();
     } else if (this.grounded) {
@@ -1000,12 +1032,13 @@ export class Runner {
   // Jump buffer: a press shortly before landing (or while a gap edge is still ahead) still counts.
   tickJump(dt) {
     const b = this.b;
+    if (this.hopWinT > 0) this.hopWinT -= dt;
     if (this.jumpBufT > 0) {
       let fired = false;
       if (this.grind) { this.grind = null; fired = true; this.jump(RCFG.jumpV, false); }       // hop off the rail
       else if (!this.zip && this.edgeS < 0 && (this.grounded || this.coyoteT > 0)) {
         fired = true;
-        if (!this.edgeAssist()) this.jump(RCFG.jumpV, false);
+        if (!this.edgeAssist()) this.jump(RCFG.jumpV, false, this.hopWinT > 0);      // a press within 80 ms AFTER touchdown is a perfect hop too
       }
       else if (this.airJ > 0 && !this.grounded && !this.zip && this.coyoteT <= 0 && this.edgeS < 0 && this.b.vh < 6) { fired = true; this.airJ--; this.jump(RCFG.jumpV * 0.9, true); }
       if (fired) this.jumpBufT = 0; else this.jumpBufT -= dt;
@@ -1598,9 +1631,10 @@ export class Runner {
     if (layer > this.layer) this.layerUp(layer);
     const tier = Math.floor((speedAt(b.s) - RCFG.startSpeed) / 3.2);
     if (tier > this.speedTier) {
-      this.speedTier = tier;       // a speed step: a felt kick and a puff of wind, no flash and no text
+      this.speedTier = tier;       // a speed step (GEAR SHIFT): a felt kick, a lens stretch, a wind rush that rises a semitone per gear, no flash and no text
       this.kick += 3;
       this.trauma = Math.min(1, this.trauma + 0.12);
+      if (!this.level && tier > 0) { this.fovPunch(4); this.warpT = Math.max(this.warpT, 0.12); this.gearT = 0.6; audio.gear?.(tier); platform.haptic('medium'); }
     }
     this.gustTick(dt);
     this.stormTick(dt);
@@ -1854,7 +1888,7 @@ export class Runner {
     if (this.cmbN) { this.cmbN = 0; this.cmbAt = 0; this.ctx.ui?.combo?.(0); }
     this.cmbT = 0;
     this.cmbLvl = 0;
-    if (!timeout) { this.pTurns = 0; this.flowStateEnd(); }
+    if (!timeout) { this.pTurns = 0; this.flowStateEnd(); this.momCrash(); }
   }
 
   // The HUD combo chip grows in tiers (5 / 10 / 20 / 50): the world answers each one with the same step, and from tier 2 on
@@ -2351,7 +2385,7 @@ export class Runner {
     const look = seg.bonus ? null : def.look;      // chapter look: sky backdrop + radio tint (the km / 500 m palette remix stays out of its way)
     const sky = seg.bonus ? null : look ? look.sky : CH_SKY[seg.id] || null;
     this._lookP = { sky, look, bi: biomeAt(this.b.s, this._ba || (this._ba = {})).index, s: this.b.s };
-    if (!sky) this._lookApply();      // the procedural sky matches the track at once; a backdrop sky waits for the next biome portal (sunset sky over a snow chute looked wrong)
+    if (!sky || def.biome) this._lookApply();      // the procedural sky matches the track at once; a backdrop sky waits for the next biome portal (sunset sky over a snow chute looked wrong)
     this.ctx.audio.milestone?.(2);
     if (!def.parts && !this.chapterSeen(seg.id)) {
       this.markChapterSeen(seg.id);
@@ -2515,6 +2549,7 @@ export class Runner {
       b.vs = Math.max(b.vs, Math.min(speedAt(b.s) + 4, b.vs + 3 * dt));
       this.score += 30 * dt * this.mult;
       this.addFlow(1.5 * dt);
+      this.addMom(0.15 * dt);
       if (Math.random() < dt * 30) this.burst(1, 0xffd060, 2);
       if (b.s >= this.grind.s1) this.endGrind();
     } else if (this.rocketT > 0) {
@@ -2548,6 +2583,7 @@ export class Runner {
       } else {
         this.holeRun = 0;
         if (ds > 1e-4) this.lastSlope = (surf - this.lastSurf) / ds;       // (a frozen step — countdown — must not fake a slope)
+        if (this.lastSlope < -0.1) this.addMom(0.04 * dt);       // downhill feeds the momentum
         b.h = surf;
         this.lastSurf = surf;
       }
@@ -2604,13 +2640,26 @@ export class Runner {
     return c === -Infinity ? y : Math.max(a, c);
   }
 
-  jump(vh, fromRamp) {
+  // hop = a PERFECT bunny hop (pressed <=0.10 s before touchdown or <=0.08 s after): each one in a row springs a little higher, adds a little speed, pays momentum and flow.
+  // Slide-jump: a jump out of a duck keeps the arc but adds a speed pop (it stays a full jump: logs are 0.85 m, a lower arc would not clear them).
+  jump(vh, fromRamp, hop = false) {
     const b = this.b;
+    let hopN = 0, slide = false;
+    this.hopWinT = 0;
     if (!fromRamp) {
       this.jumps++;
       this.ctx.meta?.track?.('jump', {});
       if (this.superT > 0) vh *= RCFG.superJumpK;
       if (this.buffs.has('yay')) vh *= 1.35;
+      if (!this.level) {
+        this.holdT = 0.1;
+        if (hop) {
+          hopN = this.hopN = Math.min(12, this.hopN + 1);
+          vh *= 1 + 0.02 * Math.min(hopN, 8);
+          this.hopV = Math.min(3, this.hopV + 0.35);
+          this.addMom(0.03 + 0.01 * Math.min(hopN, 6)); this.addFlow(1);
+        } else if (this.duckT > 0) { slide = true; this.hopV = Math.min(3, this.hopV + 2.5); this.addMom(0.05); }
+      }
     }
     this.grounded = false;
     this.holeAir = false;
@@ -2621,9 +2670,18 @@ export class Runner {
     this.lastSlope = 0;
     this.squash = -0.45; this.sqV = 0; // stretch up
     this.mistBurst(6, 0xffffff, 2.5, 1);
-    if (this.ctx.audio.hop) this.ctx.audio.hop(fromRamp ? 0.8 : 0.6); else this.ctx.audio.whoosh();
+    if (this.ctx.audio.hop) this.ctx.audio.hop(fromRamp ? 0.8 : 0.6, hopN); else this.ctx.audio.whoosh();
     this.ctx.platform.haptic(fromRamp ? 'medium' : 'light');
+    if (hopN) {
+      this.ctx.meta?.track?.('hop', {});
+      this.fovPunch(1 + 0.4 * Math.min(hopN, 6)); this.ringT = this.ringPos ? 0.3 : 0; this.ringGold = true;
+      if (hopN >= 3 && hopN % 3 === 0) this.skillTag('TAVŞAN x' + hopN, '', Math.min(3, hopN >> 2), 4);       // (the chip beside the ball counts every hop; the callout marks 3 / 6 / 9)
+      else if (hopN === 1) this.firstTag(1, 'TAVŞAN!', 1);
+    } else if (slide) { this.fovPunch(3); this.firstTag(2, 'KAY!', 1); }
   }
+
+  // The one-word label of a new mechanic: once per run (bit k of _tagSeen)
+  firstTag(k, text, lvl) { if (this._tagSeen & k) return; this._tagSeen |= k; this.skillTag(text, '', lvl, 4); }
 
   land(surf) {
     const b = this.b;
@@ -2635,6 +2693,7 @@ export class Runner {
     this.holeAir = false;
     this.holeRun = 0;
     this.groundT = 0;
+    this.hopWinT = RCFG.hopPost; this.ringT = this.ringPos ? 0.3 : 0; this.ringGold = false;
     b.h = surf;
     b.vh = 0;
     this.lastSurf = surf;
@@ -2657,12 +2716,18 @@ export class Runner {
       this.mistBurst(8, 0xffffff, 4, 1.2);
       this.ctx.audio.star?.(1);
       this.skillTag('BOŞLUĞU GEÇTİN!', '+' + Math.round(pts), 1, 5);
+      this.addMom(0.06);
     }
-    if (this.jumpBufT > 0 && !this.grind && !this.zip) { this.jumpBufT = 0; this.jump(RCFG.jumpV, false); }   // buffered jump fires at touchdown
+    if (!this.level && this.jumps > 0 && this.b.s < 300) this.tip('hop', 'İNİNCE HEMEN ZIPLA!', true);       // the bunny-hop lesson (first runs, once): lands from the first log, the next one is 14 m on
+    if (this.jumpBufT > 0 && !this.grind && !this.zip) {       // buffered jump fires at touchdown; pressed within the last 0.12 s = a perfect hop
+      const hop = this.jumpBufT >= RCFG.jumpBuf - RCFG.hopPre;
+      this.jumpBufT = 0; this.jump(RCFG.jumpV, false, hop);
+    }
   }
 
   // ---------- the core loop ----------
   addSnow(amount) {
+    let up = false;
     if (this.tier >= TIERS - 1) {
       // Max size: the meter fills first, only the overflow is pure score.
       const prev = this.grow;
@@ -2679,9 +2744,16 @@ export class Runner {
         this.ctx.platform.haptic('success');
         this.kick += 2;
         this.squash = Math.max(this.squash, 0.35);
+        up = true;
       }
     }
     this.syncRadius();
+    if (up && !this.level) {       // growth payoff: the ball swells past its new size and eases back, a ring, a held breath
+      this.rShown = this.b.r * 1.25;
+      this.mistBurst(16, 0xffffff, 6, 1.5); this.warpT = Math.max(this.warpT, 0.18); this.hitStop = Math.max(this.hitStop, 0.04);
+      this.fovPunch(5); this.addMom(0.05);
+      this.skillTag('BÜYÜDÜN!', 'BOY ' + (this.tier + 1), 3, 8);
+    }
   }
 
   // Smashing costs a little size (a fence is cheap, a cabin is not). Never fatal, never a stumble.
@@ -2704,9 +2776,10 @@ export class Runner {
     const giant = this.buffs.has('dev');
     const cn = this.cannonN > 0 && tough <= 5;     // KAR KANONU: a blocker that slips through is smashed by the next shot
     if (cn && this.rocketT <= 0) { this.cannonN--; if (this.cannonN <= 0) this.cannonT = 0; }
-    if (cn || this.rocketT > 0 || this.sizeNow() >= tough + RCFG.smashMargin || (giant && tough <= 3) || (this.rampT > 0 && tough <= 4)) {
+    if (cn || this.rocketT > 0 || this.sizeNow() >= tough + RCFG.smashMargin || (giant && tough <= 3) || (this.rampT > 0 && tough <= 4) || (this.blastT > 0 && tough <= 3)) {
       this.obstacles.resolve?.(e.id, true);
       this.smashes++;
+      if (tough >= 2) this.addMom(0.05);
       this.ctx.meta?.track?.('smash', { toughness: tough });
       const pts = 40 * tough * this.mult * (1 + 0.1 * Math.min(5, this.perm.smash || 0)) * (this.perk === 'cigguc' && this.tier >= 2 ? (this.buffs.has('dev') ? 2.6 : 1.6) : 1);
       this.score += pts;
@@ -2717,8 +2790,8 @@ export class Runner {
       this.kick += 1.5 + 0.5 * tough;
       this.squash = Math.max(this.squash, 0.35);
       if (this.rocketT <= 0 && tough >= 2 && this.time - this.lastSmashStop > 0.3) { this.hitStop = Math.max(this.hitStop, 0.025 + 0.01 * tough); this.lastSmashStop = this.time; }
-      b.vs *= this.rocketT > 0 ? 1 : 0.94;
-      this.debris(e, 14);
+      b.vs *= this.rocketT > 0 || this.blastT > 0 ? 1 : 0.94;      // (BLAST ploughs through at full speed)
+      this.debris(e, this.blastT > 0 ? 22 : 14);
       // Smashing makes you STRONGER: a little snow per toughness point (double in YIKIM MODU), a smash streak, a short 'GÜÇ!' flash.
       this.addSnow((0.04 + 0.03 * tough) * (this.rampT > 0 ? 2 : 1));
       this.ctx.ui.runnerSizeTick?.();
@@ -3133,6 +3206,7 @@ export class Runner {
         this.nearT = 2.6;
         this.addFury(0.125);
         this.addFlow(3);
+        this.addMom(0.1);
         const bonus = Math.round(80 * this.mult * (this.perk === 'yakin' ? 3 : 1) * (this.pulseT > 0 ? 2 : 1));
         this.score += bonus;
         if (this.perk === 'yakin') this.addFlow(2);
@@ -3184,6 +3258,8 @@ export class Runner {
         if (b.vs < (e.minSpeed || 0)) b.vs = e.minSpeed * 1.05; // the boost strips guarantee entry speed
         this.float('TAKLA!', 'big');
         this.score += 150 * this.mult;
+        if (this.mom >= 0.5 && !this.level) { this.score += 300 * this.mult; audio.chime?.(); }
+        this.addMom(0.2);
         break;
       case 'grind':
         if (e.active && !this.grind) {
@@ -3214,13 +3290,14 @@ export class Runner {
           b.vs = Math.max(b.vs, Math.min(speedAt(b.s) * 1.3, b.vs + 7 * (e.power || 1)));
           this.gap = Math.min(RCFG.yetiMax, this.gap + 4);
           this.kick += 5;
+          this.addMom(e.onBeat ? 0.35 : 0.25);
           if (e.value) {
             this.turboN++; this.turboT = 3;
             b.vs += 3 * Math.min(4, this.turboN); this.gap = Math.min(RCFG.yetiMax, this.gap + 2);
             this.score += 50 * this.turboN * this.mult;
             if (this.turboN >= 2) this.float(`TURBO x${this.turboN}!`, 'big');
           }
-        } else { this.jump(RCFG.jumpPadV * (e.onBeat ? 1.15 : 1) * (e.power || 1), true); this.kick += 3; }
+        } else { this.jump(RCFG.jumpPadV * (e.onBeat ? 1.15 : 1) * (e.power || 1), true); this.kick += 3; if (e.onBeat) this.addMom(0.1); }
         if (e.onBeat) {
           this.perfects++;
           this.addFlow(5);
@@ -3510,16 +3587,20 @@ export class Runner {
       this.holeAir = false;
       this.coyoteT = 0;
       this.duckT = 0;
-      b.vh = (this.jumpBufT > 0 ? RCFG.stompV + 3 : RCFG.stompV) + (this.abil === 'kirpi' ? 2 + 0.4 * this.cs : 0);      // a jump pressed just before = a higher bounce (Mario)
+      const dive = this.diveAir && !this.level;       // a DIVE-stomp (down-swipe in the air): bounces higher each time in a row
+      if (dive) { this.diveN = Math.min(6, this.diveN + 1); this.diveAir = false; this.duckOnLand = false; }
+      b.vh = (dive ? Math.min(16.4, 12 + 0.8 * (this.diveN - 1)) : RCFG.stompV) + (this.jumpBufT > 0 ? 3 : 0) + (this.abil === 'kirpi' ? 2 + 0.4 * this.cs : 0);      // a jump pressed just before = a higher bounce (Mario)
       this.jumpBufT = 0;
       const n = this.stompN;
       this.addFlakes(n);
-      this.score += 100 * n * this.mult;
+      this.score += 100 * n * this.mult + (dive ? 50 * this.diveN * this.mult : 0);
       this.addFlow(2);
+      this.addMom(dive ? 0.12 : 0.08);
       this.kick += 1.5;
       this.squash = -0.2; this.sqV = 0;
       this.trauma = Math.min(1, this.trauma + 0.1);
-      if (audio.stomp) audio.stomp(Math.min(6, n - 1)); else audio.pop(0.6, Math.min(8, n + 2));
+      if (audio.stomp) audio.stomp(Math.min(6, n - 1 + (dive ? this.diveN : 0))); else audio.pop(0.6, Math.min(8, n + 2));
+      if (dive) { this.mistBurst(10, 0xffffff, 5, 1.2); this.hitStop = Math.max(this.hitStop, 0.03); this.fovPunch(2 + Math.min(4, this.diveN)); if (this.diveN >= 2) this.skillTag('ÇAK x' + this.diveN, '', Math.min(3, this.diveN - 1), 5); else this.firstTag(4, 'ÇAK!', 2); }
       platform.haptic('light');
       ui.stompCombo?.(n);              // (the HUD counts the 'stomp' mission event itself; endless_end carries the run total)
       this.burst(10 + Math.min(2, n), 0xfff2b0, 3 + Math.min(3, n * 0.5));
@@ -3531,8 +3612,8 @@ export class Runner {
     }
     obs.killCritter?.(e.id);
     this.burst(8, 0xffffff, 3);
-    if (this.rocketT > 0 || this.buffs.has('dev')) {
-      // flying / giant: you just plough through it
+    if (this.rocketT > 0 || this.buffs.has('dev') || this.blastT > 0) {
+      // flying / giant / BLAST: you just plough through it
       this.score += 50 * this.mult;
       audio.crash(0.3);
       return;
@@ -3972,7 +4053,7 @@ export class Runner {
     const playing = this.state === 'play' && this.countT <= 0;
     const speedK = clamp((b.vs - RCFG.startSpeed) / (RCFG.refSpeed - RCFG.startSpeed), 0, 1);
     if (playing && this.grounded && !this.grind) {
-      const rate = (0.35 + speedK * 0.9) * Math.min(3, dt * 60);
+      const rate = (0.35 + speedK * 0.9) * (this.blastT > 0 ? 2 : 1) * Math.min(3, dt * 60);
       if (Math.random() < rate) {
         const side = Math.random() < 0.5 ? -1 : 1;
         _tp.copy(pos).addScaledVector(f.right, side * this.rShown * 0.8).addScaledVector(f.up, -this.rShown * 0.7);
@@ -3993,7 +4074,7 @@ export class Runner {
     }
     // Ribbon trail pressed into the snow (uses the equipped trail's material).
     this.updateTrail(f, pos);
-    this.ctx.ui.speedLines?.(playing && this.camLoopK < 0.2 && !ROUND_KINDS.has(this.track.pieceAt(b.s)?.kind) ? Math.min(1.4, Math.pow(Math.max(0, speedK - 0.2) / 0.8, 1.3) + (this.rocketT > 0 ? 0.5 : 0) + (b.vs > RCFG.maxSpeed ? 0.3 : 0) + 0.3 * this.flowK) : 0);
+    this.ctx.ui.speedLines?.(playing && this.camLoopK < 0.2 && !ROUND_KINDS.has(this.track.pieceAt(b.s)?.kind) ? Math.min(1.4, Math.pow(Math.max(0, speedK - 0.2) / 0.8, 1.3) + (this.rocketT > 0 ? 0.5 : 0) + (b.vs > RCFG.maxSpeed ? 0.3 : 0) + 0.3 * this.flowK + 0.5 * this.mom + (this.gearT > 0 ? this.gearT * 0.67 : 0)) : 0);
   }
 
   trailPush(x, y, z, rx, ry, rz, w, gap) {
@@ -4025,7 +4106,7 @@ export class Runner {
       this.tn = 0;
     }
     const P = this.tpt, G = this.tgap;
-    const hw = this.rShown * 0.5;
+    const hw = this.rShown * (0.5 + 0.4 * this.mom + (this.blastT > 0 ? 0.3 : 0));       // the ribbon widens with momentum
     if (!this.grounded) {
       if (this.tn && !G[this.tn - 1]) this.trailPush(0, 0, 0, 0, 0, 0, 0, true);
     } else {
@@ -4073,6 +4154,32 @@ export class Runner {
   // Floating callouts: at most about one per second (a higher-priority one may cut in after 0.35 s), spawned just BELOW the
   // ball over the trail — never on the strip of track the player is reading.
   // ---- first-encounter tips: once ever per mechanic (localStorage), max one per 8 s, never in danger ----
+  tipSeen(key) {
+    if (!this.tipsSeen) { try { this.tipsSeen = JSON.parse(localStorage.getItem('patpat.rush.tips') || '{}') || {}; } catch (e) { this.tipsSeen = {}; } }
+    return !!this.tipsSeen[key];
+  }
+
+  // DIVE lesson (new players, once): the first critter ahead gets a pulsing gold ring; on the ground the prompt is one word (ZIPLA!), in the air above it one word + arrow (↓ ÇAK!)
+  diveCue(dt) {
+    const C = this.obstacles && this.obstacles.critters;
+    const c = C && this.diveN === 0 && !this.level && this.state === 'play' && this.countT <= 0 && this.b.s < 1500 && !this.tipSeen('dive') ? C.nextAhead(this.b.s) : null, ds = c ? c.s - this.b.s : 99;
+    const on = !!c && ds > 1.5 && ds < 26;
+    if (on) {
+      if (this.grounded && ds < 20) this.tip('hopc', 'ZIPLA!', false);
+      else if (!this.grounded && ds < 12) this.tip('dive', '↓ ÇAK!', false);
+    }
+    if (on && !this.cring) {
+      this.cring = new THREE.Mesh(new THREE.RingGeometry(0.78, 1, 32), new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      this.cring.renderOrder = 3; this.cring.frustumCulled = false; this.ctx.scene.add(this.cring);
+    }
+    if (!this.cring) return;
+    this.cring.visible = on;
+    if (!on) return;
+    const sf = this.groundAt(c.s, c.u);
+    this.track.toWorld(c.s, c.u, (sf === -Infinity ? 0 : sf) + 0.08, _v); this.track.frame(c.s, _f2);
+    this.cring.position.copy(_v); this.cring.quaternion.setFromUnitVectors(Z_AXIS, _f2.up); this.cring.scale.setScalar(1.1 + 0.25 * Math.sin(this.time * 9));
+  }
+
   tip(key, text, slow) {
     if (this.state !== 'play' || this.tipCd > 0 || this.countT > 0 || this.bannerT > 0 || this.hintOn || this.ctx.ui.annBusy?.() || (this.zone && this.zone.announced && this.b.s - this.zone.from < 60) || (this.time - this.floatT < 1.5 && this.floatPri >= 2)) return false;
     if ((this.ctx.ui._cmN || 0) > 3) return false;     // no tips in a combo / at speed
@@ -4165,7 +4272,7 @@ export class Runner {
   // lvl 0..3 = heat (colour), prio: 3 small stuff, 5 skill, 7 multiplier step, 9 milestones.
   skillTag(main, sub, lvl, prio) {
     if (this.state !== 'play' || this.countT > 0 || typeof document === 'undefined') return;
-    if (this.quietRun && !/DÖNÜŞ/.test(main)) return;
+    if (this.quietRun && !/DÖNÜŞ|^TAVŞAN|^KAY/.test(main)) return;
     if (prio < 7 && this.ctx.ui.annBusy?.()) return;      // a banner / toast / chapter name owns the top: no second callout under it
     if (this.time - this.floatT < 0.9 && prio < 7) return;    // a centre float is showing: one transient message at a time
     if (this.time < this.tagT && prio < this.tagPrio) return;
@@ -4189,7 +4296,9 @@ export class Runner {
     const W = window.innerWidth, H = window.innerHeight;
     _v2.copy(this.ctx.ball.group.position).project(this.ctx.camera);
     el.style.left = clamp((_v2.x * 0.5 + 0.5) * W, W * 0.26, W * 0.74) + 'px';
-    el.style.top = clamp((-_v2.y * 0.5 + 0.5) * H + H * 0.13, H * 0.3, H * 0.92) + 'px';       // a hand's width below the ball, off the road ahead
+    // anchored on the ball's live screen circle (ppView): the callout's rising animation (up to 1.12 of its height) must stay clear of the circle's bottom edge
+    const rc = ppView.on ? (1 - ppView.y) * 0.5 * H + ppView.ry * H * 0.5 : (-_v2.y * 0.5 + 0.5) * H + H * 0.06;
+    el.style.top = clamp(rc + (sub ? 78 : 58), H * 0.3, H * 0.94) + 'px';       // below the ball, off the road ahead
     const mt = main.startsWith('ÇARPAN x');      // the multiplier call-out (+ why it grew) sits up in the sky, smaller: never under the ball or over its trail
     if (mt) el.style.top = Math.round(H * 0.34) + 'px';
     el.style.fontSize = mt ? 'clamp(15px,4.4vw,21px)' : '';
@@ -4207,13 +4316,168 @@ export class Runner {
     if (this.time - this.floatT >= 0.9) { this.floatPend = null; this._floatNow(p.text, p.cls, p.pri); }
   }
 
-  roar(quiet = false) {
+  // ---- SONIC LAYER (Rush only; every method is a no-op in a campaign level) ----
+  // Momentum 0..1: skill fills it (near miss, stomps, perfect hops, boost pads, rails, downhill), 4 s without a gain drains it, a crash keeps 40%.
+  // Full = BLAST for 6 s: +30% pace, tough <= 3 things are ploughed through, the meter drains with the clock. Below that it adds up to +15% pace.
+  addMom(a) {
+    if (this.level || this.state !== 'play' || this.blastT > 0) return;
+    this.mom = Math.min(1, this.mom + a); this.momIdle = 0;
+    if (this.mom >= 0.999999) this.blastStart();
+  }
+
+  blastStart() {
     const { audio, platform } = this.ctx;
-    if (audio.roar) audio.roar(quiet ? 0.45 : clamp((9 - this.gap) / 5, 0.5, 1));
+    this.blastT = 6; this.mom = 1;
+    this.hitStop = Math.max(this.hitStop, 0.05); this.warpT = Math.max(this.warpT, 0.12);
+    this.kick += 4; this.fovPunch(5); this.trauma = Math.min(1, this.trauma + 0.2);
+    this.mistBurst(24, 0xffd060, 6, 1.3);
+    audio.milestone?.(5); audio.whoosh?.(); platform.haptic('success');
+    this.queueBanner('PATLAMA!', 5, 1.2, true);
+  }
+
+  momCrash() {
+    if (this.level) return;
+    const was = this.blastT > 0 || this.mom > 0.3;
+    this.mom *= 0.4; this.blastT = 0; this.momIdle = 0; this.hopN = 0; this.hopV = 0; this.diveN = 0; this.diveAir = false;
+    if (was) this.ctx.audio.bump?.(0.3);       // the meter deflates with a dull thud
+  }
+
+  // BLAST look beyond the HUD: a gold ribbon trail and a soft additive halo round the ball (one sprite, made on the first BLAST)
+  blastLook(dt) {
+    const on = this.blastT > 0;
+    if (this.trail && this._trailBl !== on) {
+      this._trailBl = on;
+      const ca = this.trail.geometry.attributes.color, A = ca.array;
+      if (!this.trailCol0) this.trailCol0 = A.slice();
+      if (on) for (let i = 0; i < A.length; i += 3) { A[i] = 1; A[i + 1] = 0.82; A[i + 2] = 0.3; } else A.set(this.trailCol0);
+      ca.needsUpdate = true;
+    }
+    if (!this.halo && on) {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 4, 32, 32, 32);
+      g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,200,80,0.7)'); g.addColorStop(1, 'rgba(255,160,40,0)');
+      x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+      this.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+      this.halo.renderOrder = 3; this.ctx.scene.add(this.halo);
+    }
+    const h = this.halo;
+    if (!h) return;
+    const m = h.material;
+    m.opacity += ((on ? 0.6 + 0.25 * Math.sin(this.time * 18) : 0) - m.opacity) * Math.min(1, dt * 10);
+    h.visible = m.opacity > 0.01;
+    if (h.visible) { h.position.copy(this.ctx.ball.group.position); h.scale.setScalar(this.rShown * 5.4); }
+  }
+
+  // HOP TIMING: a ring on the snow under the falling ball closes onto the landing spot; it turns gold for the last hopPre seconds (jump NOW = a perfect hop).
+  // After touchdown it flashes out (white; gold when the next jump was a perfect hop). A chain chip 'x3' rides beside the ball (never on it) while hopN >= 2.
+  hopRing(dt) {
+    const b = this.b, play = this.state === 'play' && this.countT <= 0 && !this.zip && !this.grind;
+    let k = 0, hot = false, rad = 0;
+    if (play && !this.grounded && b.vh < -1.5) {
+      const surf = this.groundAt(b.s, b.u), h = b.h - surf, g = RCFG.gravity * (this.lowG ? 0.5 : 1);
+      if (surf !== -Infinity && h > 0.1 && h < 6) {
+        const tl = (b.vh + Math.sqrt(b.vh * b.vh + 2 * g * h)) / g;
+        if (tl < 0.45) {
+          k = 0.85; hot = tl <= RCFG.hopPre; rad = (1.15 + 3 * tl) * this.rShown; this.ringT = 0;
+          this.track.toWorld(b.s, b.u, surf + 0.07, _v); this.track.frame(b.s, _f2); _q.setFromUnitVectors(Z_AXIS, _f2.up);
+          this.ringPos = this.ringPos || new THREE.Vector3(); this.ringPos.copy(_v); this.ringQ = this.ringQ || new THREE.Quaternion(); this.ringQ.copy(_q);
+        }
+      }
+    }
+    if (!k && this.ringT > 0 && this.ringPos) { this.ringT -= dt; const f = Math.max(0, this.ringT / 0.3); k = 0.9 * f; rad = this.rShown * (1.15 + 2.4 * (1 - f)); hot = this.ringGold; }
+    if (k > 0 && !this.ring) {
+      this.ring = new THREE.Mesh(new THREE.RingGeometry(0.82, 1, 40), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      this.ring.renderOrder = 3; this.ring.frustumCulled = false; this.ctx.scene.add(this.ring);
+    }
+    if (this.ring) {
+      this.ring.visible = k > 0.01;
+      if (k > 0.01) { this.ring.material.opacity = k; this.ring.material.color.setHex(hot ? 0xffe066 : 0xe8f6ff); this.ring.position.copy(this.ringPos); this.ring.quaternion.copy(this.ringQ); this.ring.scale.setScalar(rad); }
+    }
+    // chain chip
+    const n = play ? this.hopN : 0;
+    if (n >= 2 && !this.chip) {
+      const el = this.chip = document.createElement('div');
+      el.style.cssText = 'position:fixed;left:0;top:0;z-index:31;pointer-events:none;white-space:nowrap;font-weight:900;font-size:clamp(24px,7vw,34px);line-height:1;letter-spacing:.02em;opacity:0;transition:opacity .15s;' +
+        'text-shadow:0 3px 0 var(--ink,#17345c),2px 2px 0 var(--ink,#17345c),-2px 2px 0 var(--ink,#17345c),2px -2px 0 var(--ink,#17345c),-2px -2px 0 var(--ink,#17345c)';
+      document.body.appendChild(el);
+    }
+    const c = this.chip;
+    if (!c) return;
+    if (n !== this._chipN) {
+      this._chipN = n;
+      if (n >= 2) { c.textContent = 'x' + n; c.style.color = n >= 7 ? '#ff9a3a' : n >= 4 ? '#ffe066' : '#ffffff'; c.style.transform = 'scale(1.35)'; this._chipPop = 0.12; }
+    }
+    c.style.opacity = n >= 2 ? '1' : '0';
+    if (n >= 2) {
+      if (this._chipPop > 0 && (this._chipPop -= dt) <= 0) c.style.transform = 'scale(1)';
+      const W = window.innerWidth, H = window.innerHeight, bx = (ppView.x + 1) * 0.5 * W, by = (1 - ppView.y) * 0.5 * H, rp = ppView.ry * H * 0.5;
+      c.style.left = (bx + rp + 12 > W - 70 ? bx - rp - 70 : bx + rp + 12) + 'px'; c.style.top = clamp(by - rp * 0.4, H * 0.25, H * 0.9) + 'px';
+    }
+  }
+
+  sonicTick(dt) {
+    if (this.level) return;
+    const b = this.b;
+    if (this.hopN === 0 && this.hopV > 0) this.hopV = Math.max(0, this.hopV - 1.2 * dt);
+    if (this.gearT > 0) this.gearT -= dt;
+    // hold-long jump: a finger still down 0.10 s after the take-off stretches the arc (peak 1.3 -> ~1.8 m, 0.61 -> ~0.74 s in the air)
+    if (this.holdT > 0 && (this.holdT -= dt) <= 0 && !this.grounded && !this.zip && b.vh > 2 && this.ctx.input.down) {
+      b.vh += 2.2; this.fovPunch(2); this.mistBurst(4, 0xffffff, 2, 0.8); this.ctx.audio.hop?.(0.3, 5); this.firstTag(8, 'SÜZÜL!', 1);
+    }
+    if (this.diveAir && this.grounded) { this.diveAir = false; this.mistBurst(10, 0xffffff, 5, 1.2); this.addMom(0.03); this.kick += 1; }      // a dive with nothing under it: a shock ring
+    if (this.blastT > 0) {
+      this.blastT -= dt; this.mom = Math.max(0, this.blastT / 6);
+      if (this.blastT <= 0) { this.blastT = 0; this.mom = 0; this.ctx.audio.whoosh?.(); }
+    } else if (this.mom > 0 && (this.momIdle += dt) > 4) this.mom = Math.max(0, this.mom - 0.03 * dt);
+    this.blastLook(dt); this.hopRing(dt); this.diveCue(dt);
+    const q = Math.round(this.mom * 50) + (this.blastT > 0 ? 100 : 0);
+    if (q !== this._momQ) { this._momQ = q; this.ctx.ui.runnerMom?.(this.mom, this.blastT > 0); }
+    // the Yeti falls back visibly while you blast; every 7-10 s of clean running it lunges into the bottom edge of the picture (visual only: this.gap never changes)
+    this.yFall += ((this.mom >= 0.6 || this.blastT > 0 ? 3 : 0) - this.yFall) * Math.min(1, dt * 2);
+    if (this.lungeT > 0) this.lungeT -= dt;
+    else if ((this.lungeCd -= dt) <= 0) {
+      this.lungeCd = 1;
+      if (this.mom < 0.6 && this.blastT <= 0 && this.time > 6 && !this.boss && !this.zip && !this.grind && !this.jnNear && this.countT <= 0) {
+        this.lungeT = 0.9; this.lungeCd = rand(7, 10); this.roar(true, true);
+      }
+    }
+  }
+
+  // The opening shot (first run): the Yeti bursts out of the powder behind the ball with a roar while the world waits, then the camera eases to the normal chase rig
+  introRoar() {
+    const { audio, platform } = this.ctx, y = this.yeti;
+    audio.roar?.(1); platform.haptic('heavy');
+    this.trauma = 0.5;
+    if (y) { y.roar = 1; const ra = y.roarA; if (ra && !ra.isRunning()) { ra.reset().play(); ra.crossFadeFrom(y.runA, 0.12, false); } }
+  }
+
+  // front shot: the camera starts ahead of the ball looking back at the whole Yeti (hold), then swings round the ball into the chase rig (swing). introK = how front-facing (1 -> 0)
+  introTick(rdt) {
+    this.introE = this.introPin ?? this.introE + rdt;       // (real time, from the first frame: the world is frozen during the hold; introPin = a bench hook that holds the shot still)
+    const quick = this.introK0 < 1, hold = quick ? 0.2 : 0.6, q = clamp((this.introE - hold) / (quick ? 0.3 : 0.9), 0, 1);
+    this.introK = 1 - q * q * (3 - 2 * q);
+    if (q >= 1) { this.introK0 = 0; this.introK = 0; }
+  }
+
+  // camera override while introK > 0: orbit the chase offset round the ball (180 deg -> 0), height / radius / look blend from the front pose
+  introCam() {
+    const b = this.b, k = this.introK, ph = Math.PI * k, bp = this.ctx.ball.group.position, rf = 1 - 0.28 * k, cs = Math.cos(ph), sn = Math.sin(ph);
+    this.track.frame(b.s, _f2);
+    _ax.copy(_v).sub(bp);
+    const a = _ax.dot(_f2.tan), c = _ax.dot(_f2.right), h = _ax.dot(_f2.up) + (2.9 - _ax.dot(_f2.up)) * k;
+    _v.copy(bp).addScaledVector(_f2.tan, (a * cs - c * sn) * rf).addScaledVector(_f2.right, (a * sn + c * cs) * rf).addScaledVector(_f2.up, h);
+    _tp.copy(bp).addScaledVector(_f2.tan, -4.8).addScaledVector(_f2.up, 1.3);
+    _look.lerp(_tp, k);
+    _look.lerp(bp, sn * 0.25);       // mid-swing the ball stays in frame
+  }
+
+  roar(quiet = false, soft = false) {
+    const { audio, platform } = this.ctx;
+    if (audio.roar) audio.roar(soft ? 0.3 : quiet ? 0.45 : clamp((9 - this.gap) / 5, 0.5, 1));
     else { audio.bump(1); audio.crash(0.25); }
-    platform.haptic('heavy');
+    if (!soft) platform.haptic('heavy');
     if (this.yeti) { this.yeti.roar = quiet ? 0.7 : 1; const ra = this.yeti.roarA; if (ra && !ra.isRunning()) { ra.reset().play(); ra.crossFadeFrom(this.yeti.runA, 0.12, false); } }
-    this.trauma = Math.min(1, this.trauma + (quiet ? 0.15 : 0.3));
+    this.trauma = Math.min(1, this.trauma + (soft ? 0.06 : quiet ? 0.15 : 0.3));
   }
 
   updateYeti(dt) {
@@ -4223,10 +4487,23 @@ export class Runner {
     // front of the camera).
     // (It is also shown on the start line: the first metres extrapolate the track backwards so it looms right behind the ball.)
     // opening 3 s (visual only): it looms ~5 m in front of the camera, right behind the ball, so the first frames show what you run from
-    const loom = this.boss ? 0 : clamp(3.5 - this.time, 0, 1);
+    let loom = 0, edge = 0, lk = 0;
     let gapV = this.gap + (this.baitBonus || 0);
-    if (loom > 0) gapV += (Math.min(gapV, this.camBackS - 5) - gapV) * loom;
-    const show = this.state !== 'idle' && (this.boss ? this.b.s + this.boss.off > 1 : this.b.s - gapV > 1 || (gapV < 12 && this.b.s < 40));
+    if (this.level) { loom = this.boss ? 0 : clamp(3.5 - this.time, 0, 1); if (loom > 0) gapV += (Math.min(gapV, this.camBackS - 5) - gapV) * loom; }
+    else if (!this.boss) {
+      // Rush (all visual: this.gap decides the game). Opening shot: 4.8 m behind the ball, full size, while the camera is low and wide. Then for the first
+      // ~20 s it stays in the bottom edge of the picture instead of vanishing (breathing a little), lunges in every 7-10 s and falls back while you blast.
+      loom = this.introK;      // (front shot: 5.8 m behind the ball, full size, facing the camera)
+      edge = clamp((26 - this.time) / 6, 0, 1);
+      lk = this.lungeT > 0 ? Math.sin(Math.PI * (1 - this.lungeT / 0.9)) : 0;
+      if (edge > 0) gapV += (Math.min(gapV, this.camBackS - 4.3 + 0.9 * Math.sin(this.time * 1.9)) - gapV) * edge;
+      if (lk > 0) gapV += (this.camBackS - 3.5 - gapV) * lk;       // (the lunge: it swells toward the camera at the bottom edge)
+      gapV += this.yFall;
+      if (loom > 0) gapV += (5.8 - gapV) * loom;
+    }
+    this.gapV = gapV;
+    const ik = this.boss || this.level ? 0 : this.introK;
+    const show = ik > 0 || this.state !== 'idle' && (this.boss ? this.b.s + this.boss.off > 1 : this.b.s - gapV > 1 || (gapV < 12 && this.b.s < 40));
     y.group.visible = show;
     this.avalanche.group.visible = show;
     if (!show) return;
@@ -4235,7 +4512,7 @@ export class Runner {
     y.spr += ((this.pulseT > 0 ? 1 : 0) - y.spr) * Math.min(1, dt * 5);
     y.roar = Math.max(0, y.roar - dt * 2.2);
     const heat = Math.max(y.spr * 0.8, y.roar, clamp((9 - this.gap) / 5, 0, 0.6));
-    if (Math.abs(heat - y.heat) > 0.01) { y.heat = heat; y.mat.emissive.setRGB((y.mixer ? 0.12 : 0.03) + 0.14 * heat, y.mixer ? 0.1 : 0.05, (y.mixer ? 0.12 : 0.12) - 0.05 * heat); }
+    if (Math.abs(heat - y.heat) > 0.01) { y.heat = heat; y.mat.emissive.setRGB((y.mixer ? 0.17 : 0.03) + 0.14 * heat, y.mixer ? 0.17 : 0.05, (y.mixer ? 0.2 : 0.12) - 0.05 * heat); }
     if (this.boss) this.avalanche.group.visible = false;
     const gs = this.boss ? b.s + this.boss.off : b.s - Math.max(-0.5, gapV);
     const eat = this.baitT > 0 ? Math.min(1, (3 - this.baitT) * 5, this.baitT * 5) : 0;
@@ -4251,13 +4528,15 @@ export class Runner {
       const d3 = Math.hypot(dCam, this.camUpH);
       const open = clamp((2.8 - this.time) / 1.2, 0, 1);       // the opening ~2 s: the Yeti is bigger and further inside the lane, so the first frames show what chases you
       const calm = clamp((gapV - 6) / 3, 0, 1) * clamp((this.time - 2.5) / 2.5, 0, 1);      // not close (gap > ~9 m) after the opening 5 s: the claw shrinks and slides off the lane edge instead of cropping the bottom corner
-      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, (0.09 + 0.05 * loom) * (1 - 0.5 * calm) * (1 + 0.15 * open) * 0.6);   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
+      const fr = this.level ? (0.09 + 0.05 * loom) * (1 - 0.5 * calm) * (1 + 0.15 * open) * 0.6 : 0.054 + 0.07 * edge + 0.075 * lk + 0.03 * loom;       // (share of the view height: a corner at normal play, ~12% on the edge, 20% on a lunge, ~30% in the opening shot)
+      fit = yetiFit(d3, this.ctx.camera.fov, RCFG.yetiH, fr);   // (the opening 3 s: a bigger shape, so the first frame shows what chases you)   // (14% of the view height at most: the head never fills the bottom corner)
       const side = b.u > 0.01 ? -1 : 1, hw = (tr.halfWidth(Math.max(0, gs)) || 3.8) - 0.3;
-      uT = clamp(b.u + side * (3.4 - 0.8 * loom + 1.2 * calm + 0.4 * open) * yetiSide(dCam), -hw - 1.2 - 1.2 * calm, hw + 1.2 + 1.2 * calm);
-      if (dCam < 1.5) y.group.visible = false;      // right under / behind the camera: out of the picture anyway (and no draw call)
-      if (dCam < 5 || this.state === 'dying' || this.state === 'over') this.avalanche.group.visible = false;   // (the death view sits in front of the powder wall: it used to fill the screen white)   // its powder wall sits 6 m behind the Yeti: behind the camera too (3 draw calls saved while the Yeti is far)
+      uT = clamp(b.u + side * (3.4 - (this.level ? 0.8 : 1.2) * loom + 1.2 * calm + 0.4 * open) * (this.level ? yetiSide(dCam) : Math.max(yetiSide(dCam), loom)), -hw - 1.2 - 1.2 * calm, hw + 1.2 + 1.2 * calm);
+      if (dCam < 1.5 && ik <= 0) y.group.visible = false;      // right under / behind the camera: out of the picture anyway (and no draw call)
+      if ((dCam < 5 && ik <= 0) || this.state === 'dying' || this.state === 'over') this.avalanche.group.visible = false;   // (the death view sits in front of the powder wall: it used to fill the screen white)   // its powder wall sits 6 m behind the Yeti: behind the camera too (3 draw calls saved while the Yeti is far)
     }
-    y.u += (uT - y.u) * (this.time < 0.3 ? 1 : Math.min(1, dt * 2.5));   // (it starts already on its side of the track)
+    if (ik > 0) { fit += (1.25 - fit) * ik * ik; uT += (b.u - uT) * Math.sqrt(ik); }      // front shot: the whole Yeti at full size, centred in the ball's lane
+    y.u += (uT - y.u) * (ik > 0 || this.time < 0.3 ? 1 : Math.min(1, dt * 2.5));   // (it starts already on its side of the track)
     if (y.mixer) { y.runA.timeScale = 1 + 0.5 * y.spr; y.mixer.update(dt); }
     const hz = 7 + 4 * y.spr, run = Math.abs(Math.sin(y.t * hz)) * (1 - eat) * (1 + 0.5 * y.spr);
     const sf = tr.surfaceAt(gs, y.u);
@@ -4271,8 +4550,9 @@ export class Runner {
     _q2.setFromAxisAngle(_ax.set(1, 0, 0), lean);
     y.mesh.quaternion.copy(_q).multiply(_q2);
     y.mesh.position.copy(_v);
+    if (this._introPuff) { this._introPuff = false; for (let i = 0; i < 14; i++) { const a = i * 0.45; this.ctx.fx.puff(_v.x + Math.cos(a) * 1.4, _v.y + 0.3 + (i % 3) * 0.5, _v.z + Math.sin(a) * 1.4, Math.cos(a) * 3, 2.2, Math.sin(a) * 3, 1.1 + (i % 4) * 0.2, 1.1, 0xffffff, 0.7); } }      // (the opening shot: it bursts out of the powder)
     const rp = y.roar * (0.12 + 0.06 * Math.sin(y.t * 30));     // roar: a quick swell that rings out
-    y.fit += (fit - y.fit) * (this.time < 0.3 ? 1 : Math.min(1, dt * 6));   // (the first frame is already the small shape)
+    y.fit += (fit - y.fit) * (this.time < 0.3 || ik > 0 ? 1 : Math.min(1, dt * 6));   // (the first frame is already the small shape)
     const sc = y.scale * y.fit * (1 + Math.sin(y.t * 14) * 0.03 + eat * Math.sin(y.t * 16) * 0.06 + rp);
     y.mesh.scale.set(sc, sc * (1 - run * 0.06 - eat * Math.abs(Math.sin(y.t * 8)) * 0.12 + rp * 0.4), sc);
 
@@ -4282,9 +4562,9 @@ export class Runner {
     const as = gs - 6;
     tr.frame(Math.max(0, as), _f);
     if (as < 0) _f.pos.addScaledVector(_f.tan, as);
-    let k = 0;
+    const nv = av.meshes.length, kv = [0, 0, 0];
     for (let i = 0; i < av.count; i++) {
-      const row = i % 3;
+      const row = i % 3, vi = ((i / 3) | 0) % nv;
       const col = Math.floor(i / 3);
       const u = (col / (av.count / 3 - 1) - 0.5) * 20;
       const bob = Math.sin(av.t * 3 + i * 1.7) * 0.6;
@@ -4293,10 +4573,9 @@ export class Runner {
       _q.setFromAxisAngle(_f.right, av.t * 2 + i);
       _s.setScalar(size);
       _m.compose(_v, _q, _s);
-      av.mesh.setMatrixAt(k++, _m);
+      av.meshes[vi].setMatrixAt(kv[vi]++, _m);
     }
-    av.mesh.count = k;
-    av.mesh.instanceMatrix.needsUpdate = true;
+    for (let v = 0; v < nv; v++) { av.meshes[v].count = kv[v]; av.meshes[v].instanceMatrix.needsUpdate = true; }
   }
 
   // The chase camera rides the path (exactly `camBackS` behind the ball along the track — no world-space lag, so it never
@@ -4443,6 +4722,7 @@ export class Runner {
         }
       }
     }
+    if (this.introK > 0.001 && !dying) this.introCam();
     this.camPos.copy(_v);
     this.camLook.lerp(_look, snap ? 1 : 1 - Math.exp(-cdt * (10 - 3 * this.cornerK)));
     this.camUp.lerp(_x, snap ? 1 : 1 - Math.exp(-cdt * (7 + 9 * lk)));
@@ -4457,7 +4737,7 @@ export class Runner {
     const lean = this.jnLeanT > 0 ? this.jnLean * (this.jnLeanT / 0.45) : 0;
     this.tilt += (clamp(-b.vu * 0.006 - lean * 0.35, -0.052, 0.052) - this.tilt) * Math.min(1, dt * 8);     // <= 3 degrees
     cam.rotateZ(this.tilt);
-    if (playing || dying) { cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert(); _v2.copy(this.ctx.ball.group.position).applyMatrix4(cam.matrixWorldInverse); const dp = -_v2.z; _v2.applyMatrix4(cam.projectionMatrix); const th = Math.tan(cam.fov * 0.00872665); if (playing) nfBall.value.set(_v2.x, _v2.y, dp, r / (dp * th)); ppView.on = dp > 0.5 && this.ctx.ball.group.visible; ppView.st = this.state + (dying ? ':' + this.cause : ''); ppView.r = r; ppView.x = _v2.x; ppView.y = _v2.y; ppView.d = dp; ppView.th = th; ppView.ry = r / (dp * th); ppView.asp = cam.aspect; ppView.hy = Math.tan(Math.asin(cam.matrixWorld.elements[9])) / th; tr.toWorld(b.s + 150, 0, 0, _v2); _v2.project(cam); ppView.vy = _v2.y; } else ppView.on = false;
+    if (playing || dying) { cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert(); _v2.copy(this.ctx.ball.group.position).applyMatrix4(cam.matrixWorldInverse); const dp = -_v2.z; _v2.applyMatrix4(cam.projectionMatrix); const th = Math.tan(cam.fov * 0.00872665); if (playing) nfBall.value.set(_v2.x, _v2.y, dp, r / (dp * th)); ppView.on = dp > 0.5 && this.ctx.ball.group.visible; ppView.st = this.state + (dying ? ':' + this.cause : ''); ppView.r = r; ppView.x = _v2.x; ppView.y = _v2.y; ppView.d = dp; ppView.th = th; ppView.ry = r / (dp * th); ppView.asp = cam.aspect; ppView.hy = Math.tan(Math.asin(cam.matrixWorld.elements[9])) / th; tr.toWorld(b.s + 150, 0, 0, _v2); _v2.project(cam); ppView.vy = _v2.y; ppView.vs = b.vs; } else ppView.on = false;
     if (!playing || dying) nfBall.value.z = 0;   // (the shaders in nearfade.js fade what sits between camera and ball)
     // Trauma shake: smooth rotational noise that keeps running through hit-stop (peaks ≈ 3° at trauma 1).
     if (!snap && this.trauma > 0) {
@@ -4474,7 +4754,7 @@ export class Runner {
     // Sustained extras ease in and out here (and get low-passed again by main.js): the view keeps opening past the "fast" mark up
     // to top speed, and on boosts (turbo pads, ice slide, ÖFKE, FLOW STATE). The punch (perfect turn, near miss, stomp ...) is a
     // quick spike that decays on its own. Neither touches the camera's position, only its lens.
-    const xT = playing ? Math.min(7, 3 * clamp((b.vs - RCFG.refSpeed) / (RCFG.maxSpeed - RCFG.refSpeed), 0, 1) + 2.5 * this.flowK + (this.furyT > 0 ? 2 : 0) + (this.turboT > 0 ? 1.5 : 0) + (this.slideT > 0 ? 1.2 : 0)) : 0;
+    const xT = playing ? Math.min(9, 3 * clamp((b.vs - RCFG.refSpeed) / (RCFG.maxSpeed - RCFG.refSpeed), 0, 1) + 2.5 * this.flowK + (this.furyT > 0 ? 2 : 0) + (this.turboT > 0 ? 1.5 : 0) + (this.slideT > 0 ? 1.2 : 0) + (this.blastT > 0 ? 7 : 4.5 * this.mom)) : 0;
     this.fovX += (xT - this.fovX) * kfil(snap, dt, 3);
     this.fovP *= Math.exp(-4.5 * dt);
     if (this.fovP < 0.02) this.fovP = 0;
@@ -4482,7 +4762,7 @@ export class Runner {
     ud.fovKick = this.kick + this.fovP * 0.35;
     // main.js low-passes fovBoost at 4/s, which keeps only ~27% of a short pulse: until it applies fovKick itself (and sets
     // fovKickOk) the pulse is sent through fovBoost with a gain that survives that filter (a smash or near miss: ~1.5 degrees).
-    ud.fovBoost = -2 + speedK * 5 + this.fovX + (this.rocketT > 0 ? 6 : 0) + (this.riskT > 0 ? 4 : 0) + (ud.fovKickOk ? 0 : this.kick * 1.6 + this.fovP) - (this.state === 'dying' ? 5 * (this.deathZoom || 0) : 0);
+    ud.fovBoost = -2 + speedK * 5 + this.fovX + 4 * this.introK + (this.rocketT > 0 ? 6 : 0) + (this.riskT > 0 ? 4 : 0) + (ud.fovKickOk ? 0 : this.kick * 1.6 + this.fovP) - (this.state === 'dying' ? 5 * (this.deathZoom || 0) : 0);
   }
 
   dispose() {
@@ -4506,8 +4786,13 @@ export class Runner {
     ui.hungerHide?.();
     ui.turnCue?.(0, 0);
     ui.stompCombo?.(0);
+    ui.runnerMom?.(0, false);
     if (this.clone) { this.ctx.scene.remove(this.clone.mesh); this.clone = null; }
     if (this.ghostWas) this.setGhost(false);
+    if (this.cring) { this.ctx.scene.remove(this.cring); this.cring.geometry.dispose(); this.cring.material.dispose(); this.cring = null; }
+    if (this.ring) { this.ctx.scene.remove(this.ring); this.ring.geometry.dispose(); this.ring.material.dispose(); this.ring = null; }
+    this.chip?.remove(); this.chip = null;
+    if (this.halo) { this.ctx.scene.remove(this.halo); this.halo.material.map.dispose(); this.halo.material.dispose(); this.halo = null; }
     if (this.trail) { this.ctx.scene.remove(this.trail); this.trail.geometry.dispose(); this.trail = null; }
     if (this.shadow) { this.ctx.scene.remove(this.shadow); this.shadow.geometry.dispose(); this.shadow.material.map?.dispose(); this.shadow.material.dispose(); this.shadow = null; }
     if (this.ghostMesh) { this.ctx.scene.remove(this.ghostMesh); this.ghostMesh.geometry.dispose(); this.ghostMesh.material.dispose(); this.ghostMesh.children[0]?.material.map?.dispose(); this.ghostMesh = null; }
@@ -4532,7 +4817,7 @@ export class Runner {
     if (this.camNear0 !== null && cam.near !== this.camNear0) { cam.near = this.camNear0; cam.updateProjectionMatrix?.(); }
     if (this.ctx.ball) this.ctx.ball.group.visible = true;
     music.stop();
-    Biomes.setBiomeOverride?.(null);
+    Biomes.setBiomeOverride?.(null); Biomes.setBiomeMap?.(null);
     this.state = 'idle';
   }
 }
@@ -4547,6 +4832,7 @@ function makeYeti(scene, lib) {
   const mat = nearFade(new THREE.MeshLambertMaterial({ vertexColors: !!(gl || def), color: gl ? 0xffffff : 0x30508c, emissive: 0x0a1630, flatShading: true, side: THREE.DoubleSide }), 0.6, 1.4, { r: 0.12, w: 0.08, a: 1 });   // (near fade only when it is nearly inside the lens: no screen-door ghost on the Yeti)
   let mesh, mixer = null, runA = null, roarA = null, eg = null, em = null, eyes = null;
   if (gl) {
+    mat.color.setRGB(2, 1.95, 2);      // the baked fur is a mid tan: lift it to a pale icy cream so it reads as a Yeti, not a brown blob (colour channels may exceed 1)
     mesh = gl.model;
     mesh.traverse((o) => { if (o.isMesh) { o.material = mat; o.frustumCulled = false; } });
     mixer = new THREE.AnimationMixer(mesh);
@@ -4579,16 +4865,33 @@ function makeYeti(scene, lib) {
 
 function makeAvalanche(scene) {
   const group = new THREE.Group();
-  const geo = new THREE.IcosahedronGeometry(1, 1);
-  const mat = new THREE.MeshLambertMaterial({ color: 0xf4f9ff, flatShading: true });
-  const count = 36;
-  const mesh = new THREE.InstancedMesh(geo, mat, count);
-  mesh.frustumCulled = false;
-  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  group.add(mesh);
+  const geos = [], count = 36;
+  const src = GLB.prop_snowchunk;   // Blender file holds 3 snow-lump variants side by side at x = -3, 0, 3: split by triangle and recentre
+  if (src) {
+    const g = src.index ? src.toNonIndexed() : src, p = g.attributes.position, c = g.attributes.color, nm = g.attributes.normal;
+    for (let v = 0; v < 3; v++) {
+      const P = [], C = [], N = [], cx = (v - 1) * 3;
+      for (let i = 0; i < p.count; i += 3) {
+        const mx = (p.getX(i) + p.getX(i + 1) + p.getX(i + 2)) / 3;
+        if ((mx < -1.5 ? 0 : mx > 1.5 ? 2 : 1) !== v) continue;
+        for (let j = 0; j < 3; j++) { P.push(p.getX(i + j) - cx, p.getY(i + j) - 0.8, p.getZ(i + j)); C.push(c.getX(i + j), c.getY(i + j), c.getZ(i + j)); N.push(nm.getX(i + j), nm.getY(i + j), nm.getZ(i + j)); }
+      }
+      const o = new THREE.BufferGeometry();
+      o.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); o.setAttribute('color', new THREE.Float32BufferAttribute(C, 3)); o.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+      geos.push(o);
+    }
+  } else geos.push(new THREE.IcosahedronGeometry(1, 1));
+  const mat = new THREE.MeshLambertMaterial(src ? { vertexColors: true, flatShading: true } : { color: 0xf4f9ff, flatShading: true });
+  const meshes = geos.map((geo) => {
+    const m = new THREE.InstancedMesh(geo, mat, count);
+    m.frustumCulled = false;
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    group.add(m);
+    return m;
+  });
   group.visible = false;
   scene.add(group);
-  return { group, mesh, count, t: 0, dispose: () => { geo.dispose(); mat.dispose(); mesh.dispose(); } };
+  return { group, meshes, count, t: 0, dispose: () => { for (const m of meshes) { m.geometry.dispose(); m.dispose(); } mat.dispose(); } };
 }
 
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }

@@ -88,7 +88,7 @@ const DISC_F = 0.3;       // sun disc radius as a fraction of the sprite half si
 // tiny utils
 // ---------------------------------------------------------------------------------------------
 // chapter sky backdrops -> horizon tint (fog colour while it shows)
-const BACKDROPS = { dawn: 0xa9b6ee, night: 0x3a52c8, canyon: 0xe66e38 };
+const BACKDROPS = { dawn: 0xa9b6ee, night: 0x3a52c8, canyon: 0xe66e38, volcano: 0xbb361c, sakura: 0xe7c4bd, neon: 0x136f95, space: 0x092b87 };
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 function smooth(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
@@ -111,8 +111,10 @@ function vnoise(x, y) {
 }
 
 // Campaign levels are locked to one biome: setBiomeOverride(id) makes every s map to that biome (no portals).
-let OVR = -1, OVR_VER = 0;
-const biomeIdx = (s) => (OVR >= 0 ? OVR : s > 0 ? Math.floor(s / BIOME_LENGTH) : 0);
+let OVR = -1, OVR_VER = 0, MAP = null;
+// Rush chapters can pin a biome (setBiomeMap(fn): s -> biome index, or -1 for the normal 350 m cycle), so a chapter's props / music / look follow its theme.
+const biomeIdx = (s) => { if (OVR >= 0) return OVR; const m = MAP ? MAP(s) : -1; return m >= 0 ? m : s > 0 ? Math.floor(s / BIOME_LENGTH) : 0; };
+export function setBiomeMap(fn) { MAP = fn || null; }
 
 // ---------------------------------------------------------------------------------------------
 // biome definitions (plain data; hex colours)
@@ -2967,6 +2969,13 @@ export class Environment {
   _bblend(s, arr) {
     const n = arr.length;
     if (OVR >= 0) return arr[OVR % n];
+    if (MAP) {      // a chapter boundary can sit anywhere: find it by bisection and blend +-60 m round it
+      const a = biomeIdx(s - 60), b = biomeIdx(s + 60);
+      if (a === b) return arr[a % n];
+      let lo = s - 60, hi = s + 60;
+      for (let i = 0; i < 7; i++) { const m = (lo + hi) / 2; if (biomeIdx(m) === a) lo = m; else hi = m; }
+      return lerp(arr[a % n], arr[b % n], smooth(hi - 60, hi + 60, s));
+    }
     const kb = Math.round(s / BIOME_LENGTH), bs = kb * BIOME_LENGTH;
     if (kb >= 1 && s > bs - 60 && s < bs + 60) return lerp(arr[(kb - 1) % n], arr[kb % n], smooth(bs - 60, bs + 60, s));
     return arr[biomeIdx(s) % n];

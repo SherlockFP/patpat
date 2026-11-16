@@ -318,9 +318,9 @@ export const patterns = [
   P(/^(\S+)\/(\S+) ❄️ · bir sonraki koşuda!$/, '$1/$2 ❄️ · next run!'),
   P(/^Daha fazlası (\d+) koşu sonra açılıyor ✨$/, 'More unlocks in $1 runs ✨'), P(/^↻ Tekrar oyna: (.*)$/, '↻ Play again: $1'),
   // mission / achievement goal texts
-  P(/^Bir koşuda (\S+) kar tanesi topla$/, 'Collect $1 snowflakes in one run'), P(/^Bir koşuda (\S+) m koş$/, 'Run $1 m in one run'),
+  P(/^Bir koşuda (\S+) kar tanesi topla$/, 'Collect $1 flakes'), P(/^Bir koşuda (\S+) m koş$/, 'Run $1 m in one run'),
   P(/^Bir koşuda (\d+) yaratık ez$/, 'Squash $1 critters'), P(/^(\d+) kavşakta dön$/, 'Turn at $1 junctions'), P(/^(\d+) buff kartı topla$/, 'Collect $1 buff cards'),
-  P(/^(\d+) kez zıpla$/, 'Jump $1 times'), P(/^Yeti'den (\d+) kez kıl payı kaç$/, 'Narrowly dodge the Yeti $1 times'), P(/^(\d+) engel kır$/, 'Smash $1 obstacles'),
+  P(/^(\d+) kez zıpla$/, 'Jump $1 times'), P(/^(\d+) tavşan zıplaması yap$/, 'Bunny hop $1 times'), P(/^Yeti'den (\d+) kez kıl payı kaç$/, 'Narrowly dodge the Yeti $1 times'), P(/^(\d+) engel kır$/, 'Smash $1 obstacles'),
   P(/^(\d+) güçlendirme topla$/, 'Collect $1 power-ups'), P(/^Maksimum boyuta (\d+) kez ulaş$/, 'Reach max size $1 times'), P(/^(\d+) koşu tamamla$/, 'Complete $1 runs'),
   P(/^ÇIĞ'da (.*) bölgesine ulaş$/, 'Reach the $1 zone in AVALANCHE'), P(/^ÇIĞ'da bir koşuda (\S+) ton topla$/, 'Collect $1 tons in one AVALANCHE run'),
   P(/^ÇIĞ'da bir koşuda (\S+) m kay$/, 'Slide $1 m in one AVALANCHE run'), P(/^Çığ modunda (\S+) şey yut$/, 'Swallow $1 things in Avalanche mode'),

@@ -889,15 +889,27 @@ function nearMiss(closeness) {
   nz(v, whiteBuf, tk, 'highpass', 2600, 0, 0.8, 0, 0.22, 0.001, 0.014);
 }
 
-/** Player jump / hop: a quick soft air blip + a low thump. k 0..1. */
-function hop(k) {
+/** Player jump / hop: a quick soft air blip + a low thump. k 0..1; step = semitones up (a perfect-hop chain climbs one per hop, 0..12). */
+function hop(k, step) {
   if (!ready() || !throttle('hop', 0.09)) return;
   const a = clamp01(num(k, 0.6));
+  const f = Math.pow(2, Math.max(0, Math.min(12, num(step, 0))) / 12);
   const v = begin(P_FX, 0.3, MIX.hop);
   if (!v) return;
   const t = ctx.currentTime + 0.002;
-  nz(v, whiteBuf, t, 'bandpass', 450, 1700, 1.0, 0.1, 0.55 * (0.6 + 0.4 * a), 0.012, 0.13);
-  tone(v, 'sine', t, 190, 95, 0.09, 0.24 * a, 0.004, 0.1);
+  nz(v, whiteBuf, t, 'bandpass', 450 * f, 1700 * f, 1.0, 0.1, 0.55 * (0.6 + 0.4 * a), 0.012, 0.13);
+  tone(v, 'sine', t, 190 * f, 95 * f, 0.09, 0.24 * a, 0.004, 0.1);
+}
+
+/** Speed step (gear shift): a wind rush that sweeps up, one semitone higher per gear (n 0..8). */
+function gear(n) {
+  if (!ready() || !throttle('gear', 0.5)) return;
+  const k = Math.pow(2, Math.max(0, Math.min(8, Math.floor(num(n, 0)))) / 12);
+  const v = begin(P_FX, 1.0, MIX.whoosh);
+  if (!v) return;
+  const t = ctx.currentTime + 0.002;
+  swell(v, whiteBuf, t, 'bandpass', 400 * k, 2200 * k, 800 * k, 1.0, 0.6, 0.25, 0.9);
+  tone(v, 'sine', t, 140 * k, 260 * k, 0.4, 0.1, 0.01, 0.5);
 }
 
 function bump(intensity01) {
@@ -1622,6 +1634,8 @@ export const audio = {
   yetiNear: guard(yetiNear),
   /** Player jump: quick soft air blip + thump. k 0..1 */
   hop: guard(hop),
+  /** Speed step (gear shift) wind rush; n = gear 0..8 raises the pitch a semitone each. */
+  gear: guard(gear),
   bump: guard(bump),
   crash: guard(crash),
   /** Per-frame rolling rumble. speed01 = 0 silences it. */
