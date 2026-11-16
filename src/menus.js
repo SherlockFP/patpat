@@ -29,8 +29,8 @@ const STYLE_ID = 'freemon-menus-style';
 const VERSION = '1.0.0'; // keep in step with package.json and android/app/build.gradle versionName
 const PRIVACY_URL = PUBLIC_URL + 'privacy.html';
 const LEVELS_PER_ACT = 10;
-const ACT_SUF = ['i', 'yi', 'ü', 'ü', 'i', 'yı', 'yi', 'i', 'u', 'u']; // Turkish accusative: Act 1'i, 2'yi, 3'ü ...
 const WORD = 'PATPAT';
+const ACT_SUF = ['i', 'yi', 'ü', 'ü', 'i', 'yı', 'yi', 'i', 'u', 'u']; // Turkish accusative: Act 1'i, 2'yi, 3'ü ...
 // open-source notices shown in Settings (MIT needs the notice to ship with the app; the CC0 credits are courtesy)
 const LICENSES = [
   ['three.js', 'MIT License, Copyright (c) 2010-2026 three.js authors'],
@@ -1873,11 +1873,11 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
 
       // 5. letter hunt
       try {
-        const h = meta.letterHunt();
+        const h = meta.letterHunt(), WORD = getLang() === 'en' ? h.wordEn : h.word;
         sec('GÜNÜN KELİMESİ');
         const word = el('div', 'fm-word fm-td-word');
         h.found.forEach((got, i) => word.appendChild(el('div', `fm-chip${got ? ' got' : i === h.nextLetter ? ' next' : ''}`, got || i === h.nextLetter ? WORD[i] : '?')));
-        p.list.appendChild(rowOf('🔤', h.complete ? 'Bugün tamam!' : `${h.count}/${WORD.length} harf`, `Ödül: ${rewardLine(h.reward)} · seri ${h.streakDay}/7`, button('fm-btn sm', 'AÇ', () => openHunt()), word));
+        p.list.appendChild(rowOf('🔤', h.complete ? 'Bugün tamam!' : `${h.count}/${WORD.length} harf`, `Ödül: ${rewardLine(h.reward)} · seri ${h.streakDay}/5`, button('fm-btn sm', 'AÇ', () => openHunt()), word));
       } catch { /* ignore */ }
 
       // 6. next achievement
@@ -2219,7 +2219,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       link('🏆', 'Başarımlar', `${meta.doneCount()}/${ACHIEVEMENTS.length} açık${unclaimed ? ` · ${unclaimed} ödül seni bekliyor` : ''}`, unclaimed ? 'AL' : 'AÇ', unclaimed > 0, () => openAchievements());
       { const ss = meta.stamps(); link('🛂', 'Kış Pasaportu', `${ss.filter((x) => x.got).length}/${ss.length} damga`, 'AÇ', false, () => openPassport()); }
       const hh = meta.letterHunt();
-      link('🔤', 'Günün kelimesi', hh.complete ? 'Bugün tamam!' : `${hh.count}/${WORD.length} harf · koşarken harfleri topla`, 'AÇ', false, () => openHunt());
+      link('🔤', 'Günün kelimesi', hh.complete ? 'Bugün tamam!' : `${hh.count}/${hh.word.length} harf · koşarken harfleri topla`, 'AÇ', false, () => openHunt());
       link('⚡', 'Güçlendirmeler', 'Kar tanesiyle güçlen: dolaptan al', 'DOLAP', false, () => { if (cb.onShop) cb.onShop(); });
       if (cb.onDaily) link('🏔️', `Günün Dağı #${info.dailyNum}`, save.cigDailyOpen() ? (info.dailyBest > 0 ? `Rekorun: ${fmtTons(info.dailyBest)}` : 'Bugünün özel dağı') : "DAĞ 3'ü bitirince açılır", save.cigDailyOpen() ? 'OYNA' : '🔒', false, () => { if (!save.cigDailyOpen()) { toast({ icon: '🔒', title: "Günün Dağı için DAĞ 3'ü bitir", ms: 1800 }); return; } closePanel(true); try { meta.setMode('daily'); } catch { /* ignore */ } cb.onDaily(); });
     }
@@ -2403,7 +2403,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
   function openHunt() {
     sfx('click');
     const p = openPanel({ id: 'hunt', title: 'GÜNÜN KELİMESİ', pills: ['coins'] });
-    const h = meta.letterHunt();
+    const h = meta.letterHunt(), WORD = getLang() === 'en' ? h.wordEn : h.word;
     p.setSub(h.complete ? 'BUGÜN TAMAM!' : `${h.count}/${WORD.length} HARF`);
     const word = el('div', 'fm-word');
     h.found.forEach((got, i) => word.appendChild(el('div', `fm-chip${got ? ' got' : i === h.nextLetter ? ' next' : ''}`, got || i === h.nextLetter ? WORD[i] : '?')));
@@ -2416,7 +2416,7 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     p.list.appendChild(r);
     const sb = el('div', 'fm-streak');
     add(sb, el('div', 'fl', h.streak > 0 ? '🔥' : '🌱'),
-      add(el('div', ''), el('div', 'st', h.streak > 0 ? `${h.streak} günlük seri` : 'Seri yok'), el('div', 'sd', `Her gün tamamla, ödül büyüsün. Seri günü: ${h.streakDay}/7`)));
+      add(el('div', ''), el('div', 'st', h.streak > 0 ? `${h.streak} günlük seri` : 'Seri yok'), el('div', 'sd', `Her gün tamamla, ödül büyüsün. Seri günü: ${h.streakDay}/5`)));
     p.list.appendChild(sb);
     return p;
   }

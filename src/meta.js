@@ -11,12 +11,12 @@
 // Rewards that touch the shop economy (❄️, skins, trails) go through the `save` object handed to init().
 import { getLang } from './i18n.js';
 import { tierOf } from './runner/ladder.js';
+import { HUNT_LEN, HUNT_STREAK, huntWord } from './runner/hunt.js';
 import { SKINS, TRAILS, ABILITIES } from './skins.js';
 import { ACTS, CAMPAIGN_SIZE, LEVELS_PER_ACT, levelById, evalGoals, BONUS_COUNT, BONUS_STARS, bonusReward } from './campaign.js';
 
 const KEY = 'freemon.meta.v1';
 const MAX_MULT = 30;
-const WORD = 'PATPAT';
 const MAX_UP = 5;
 // Level curve retuned (was 260 / 1.8) so the level-gated unlocks (UNLOCK_LV) come at about run 1 / 3 / 5 / 8 / 10; old saves only ever gain levels.
 const XP_K = 50;
@@ -213,7 +213,7 @@ ach('hoard', 'Kış Hazırlığı', 'Aynı anda 5.000 ❄️ biriktir.', '🐿�
 ach('share', 'Sesini Duyur', 'Sonucunu paylaş.', '📣', 1, { coins: 50 }, ['share'], (S) => S.st.shares);
 ach('missions3', 'Görev Adamı', '3 görev seti tamamla.', '🎯', 3, { coins: 150, crystals: 1 }, ['@derive'], (S) => S.m.n);
 ach('mult10', 'Çarpan Ustası', 'Kalıcı skor çarpanını x10 yap.', '✖️', 10, { coins: 300, crystals: 2 }, ['@derive'], (S) => S.m.mult);
-ach('hunt1', 'Kelime Avcısı', 'PATPAT harflerini bir günde topla.', '🔤', 1, { coins: 150 }, ['@derive'], (S) => S.st.huntsDone);
+ach('hunt1', 'Kelime Avcısı', 'Günün kelimesinin harflerini bir günde topla.', '🔤', 1, { coins: 150 }, ['@derive'], (S) => S.st.huntsDone);
 
 // ---------------- GÖREVLER (challenges): mode-spread goals. The 8 marked "özel" unlock an exclusive skin/trail that is never
 // sold or rolled; the others pay ❄️ / 💎. The skins.js items point at these ids with unlock: { challenge: id }.
@@ -404,7 +404,7 @@ function fresh() {
     u: { magnet: 0, x2: 0, jump: 0, rocket: 0, topSize: 0, topMelt: 0, topMagnet: 0, flakes: 0, xp: 0, chest: 0 },
     lp: 1, sh: {}, shT: {}, ug: {}, // lp = highest player level whose level-up reward was claimed; sh = shards per KARAKTER; shT = towns that paid a shard; ug = unlocks kept from the run-count era
     m: { n: 0, mult: 1, cur: [], awarded: false, skipDay: '' },
-    h: { day: '', found: new Array(WORD.length).fill(0), done: false, last: '', streak: 0 },
+    h: { day: '', found: new Array(HUNT_LEN).fill(0), done: false, last: '', streak: 0 },
     g: { day: '', n: 0 },
     ss: { day: '', ids: [], got: {}, extra: 0 },
     ps: { last: '', streak: 0 }, // consecutive local days with at least one session (GÖREVLER: "7 gün üst üste oyna")
@@ -489,7 +489,7 @@ function sanitize(p) {
     s.h.last = typeof p.h.last === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.h.last) ? p.h.last : '';
     s.h.streak = Math.floor(nz(p.h.streak));
     s.h.done = !!p.h.done;
-    if (Array.isArray(p.h.found)) for (let i = 0; i < WORD.length; i++) s.h.found[i] = p.h.found[i] ? 1 : 0;
+    if (Array.isArray(p.h.found)) for (let i = 0; i < HUNT_LEN; i++) s.h.found[i] = p.h.found[i] ? 1 : 0;
   }
   if (isObj(p.c)) {
     const C = s.c;
@@ -823,22 +823,23 @@ function resetRunMissions() {
 
 // =================================================================================================== letter hunt
 
+// every finished word pays flakes + a chest; the 5th day of the streak pays a lot more (gems, a bigger sum)
 function huntReward(k) {
-  const r = { coins: 100 + 50 * k };
-  if (k === 7) { r.crystals = 1; r.boxes = 1; }
+  const r = { coins: 100 + 50 * k, boxes: 1 };
+  if (k === HUNT_STREAK) { r.coins = 600; r.crystals = 2; }
   return r;
 }
 
 function rollHunt(t = now()) {
   const H = S.h;
   const today = dateKey();
-  // The word changed length (FREEMON → PATPAT): re-arm today's hunt with the right number of tiles.
-  if (!Array.isArray(H.found) || H.found.length !== WORD.length) { H.found = new Array(WORD.length).fill(0); H.done = false; }
+  // An old save (6-letter word): re-arm today's hunt with the right number of tiles.
+  if (!Array.isArray(H.found) || H.found.length !== HUNT_LEN) { H.found = new Array(HUNT_LEN).fill(0); H.done = false; }
   if (H.day === today) return;
   if (H.day && dayDiff(H.day, today) < 0) return; // clock moved backwards: don't re-arm the hunt
   if (!H.last || dayDiff(H.last, today) > 1) H.streak = 0;
   H.day = today;
-  H.found = new Array(WORD.length).fill(0);
+  H.found = new Array(HUNT_LEN).fill(0);
   H.done = false;
 }
 
@@ -1543,10 +1544,10 @@ export const meta = {
     const count = found.filter(Boolean).length;
     const alive = H.last && dayDiff(H.last, today) <= 1;
     const streak = alive ? H.streak : 0;
-    const nextDayInStreak = H.done ? ((H.streak - 1) % 7) + 1 : (streak % 7) + 1;
+    const nextDayInStreak = H.done ? ((H.streak - 1) % HUNT_STREAK) + 1 : (streak % HUNT_STREAK) + 1;
     const nextLetter = H.done ? -1 : found.indexOf(false);
     return {
-      word: WORD, found, count, nextLetter, letter: nextLetter >= 0 ? WORD[nextLetter] : '',
+      word: huntWord(H.day || today), wordEn: huntWord(H.day || today, true), found, count, nextLetter, letter: nextLetter >= 0 ? huntWord(H.day || today)[nextLetter] : '', letterEn: nextLetter >= 0 ? huntWord(H.day || today, true)[nextLetter] : '',
       complete: !!H.done, streak, streakDay: nextDayInStreak, reward: huntReward(nextDayInStreak),
     };
   },
@@ -1558,10 +1559,10 @@ export const meta = {
     if (idx < 0) return null;
     H.found[idx] = 1;
     S.st.lettersFound++;
-    const res = { index: idx, letter: WORD[idx], count: idx + 1, complete: false, reward: null };
+    const res = { index: idx, letter: huntWord(H.day)[idx], letterEn: huntWord(H.day, true)[idx], word: huntWord(H.day), wordEn: huntWord(H.day, true), count: idx + 1, complete: false, reward: null };
     pushNotice({ kind: 'letter', letter: res.letter, count: res.count });
     fire('letter', res);
-    if (idx === WORD.length - 1) {
+    if (idx === HUNT_LEN - 1) {
       const today = dateKey();
       H.streak = H.last && dayDiff(H.last, today) === 1 ? H.streak + 1 : 1;
       H.last = today;
@@ -1569,7 +1570,7 @@ export const meta = {
       S.st.huntsDone++;
       res.complete = true;
       res.streak = H.streak;
-      res.reward = grant(huntReward(((H.streak - 1) % 7) + 1));
+      res.reward = grant(huntReward(((H.streak - 1) % HUNT_STREAK) + 1));
       addXp(40);
       derive(null);
       persistNow();

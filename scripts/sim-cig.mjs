@@ -69,7 +69,7 @@ export function simMountain(n, opts = {}) {
     plus.planTo(Math.min(world.genD, world.planEnd || Infinity) - 30);
     ball.tick(dt);
     ball.sync();
-    world.update(gdt, ball.d, CFG.viewAhead, CFG.viewBehind + 15, ball);
+    world.update(gdt, ball.d, Math.min(1500, 320 + 9 * ball.r), CFG.viewBehind + 15, ball);   // (main.js cigAhead(): the fog distance grows with the ball, so does what the world builds ahead)
     if (game.wave.on) { minGap = Math.min(minGap, ball.d - game.wave.d); maxVis = Math.max(maxVis, game.wave.vis || 0); }
     if (G.t <= 2 && G.t >= tNear) {   // the opening: something edible within 6 m of the ball, sampled every 0.1 s over the first 2 s
       tNear = G.t + 0.1;
@@ -80,7 +80,7 @@ export function simMountain(n, opts = {}) {
     }
   }
   const end = G.state === 'play' ? 'timeout' : G.cause;
-  const out = { n: plan.n, end, win: G.cause === 'win' || !!G.win, t: +game.stats.time.toFixed(1), par: plan.par, d: Math.round(ball.d), length: plan.length, hits: game.stats.hits, bounces: game.stats.bounces, gates: game.stats.gatesBroken, firstHud, rolled, eaten: game.stats.rolls, need: plan.stars[2].kind === 'rolls' ? plan.stars[2].count : 0, minGap: +minGap.toFixed(0), r: +ball.r.toFixed(2), near2, near6, maxVis: +maxVis.toFixed(2), townPct: game.stats.townPct || 0, finalR: G.finalR || ball.r };
+  const out = { n: plan.n, end, win: G.cause === 'win' || !!G.win, t: +game.stats.time.toFixed(1), par: plan.par, d: Math.round(ball.d), length: plan.length, hits: game.stats.hits, bounces: game.stats.bounces, gates: game.stats.gatesBroken, firstHud, rolled, eaten: game.stats.rolls, need: plan.stars[2].kind === 'rolls' ? plan.stars[2].count : 0, minGap: +minGap.toFixed(0), r: +ball.r.toFixed(2), near2, near6, maxVis: +maxVis.toFixed(2), townPct: game.stats.townPct || 0, finalR: G.finalR || ball.r, obs: plus.obs.list.length, obsHits: game.stats.obsHits, hk: game.stats.hk, near: game.stats.near, revived: !!G.revived };
   game.dispose?.(); plus.dispose(); world.dispose();
   return out;
 }

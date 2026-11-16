@@ -321,7 +321,7 @@ const cigHost = {
   burst(x, y, d, n, color, speed, size, up) { fx.burst(x, y, d, n, color, speed, size, up); },
   puff(x, y, z, vx, vy, vz, size, life, color, alpha) { fx.puff(x, y, z, vx, vy, vz, size, life, color, alpha); },
   text(str, at, cls) { popText(str, at, cls); },
-  toast(str, long) { if (ui.toastSoft) ui.toastSoft(str, long ? { long: true } : undefined); },
+  toast(str, long, pri) { if (ui.toastSoft) ui.toastSoft(str, long || pri >= 3 ? { long: !!long, prio: 3 } : undefined); },   // (danger = priority 3: it jumps the message lane: a hit, the avalanche, a second chance)
   shake(v) { G.shake += v; },
   debris(x, y, d, n) { fx.debris?.({ x, y, z: -d }, 0xb08a5a, n); },
   dust(x, y, d, r) { fx.dust?.({ x, y, z: -d }, r); },
@@ -991,12 +991,12 @@ function finishCigLevel() {
     save.recordRun(r.tons); notifSync(true);
     meta.track('cig_end', { level: n, stars: 0, tons: r.tons, pct: Math.min(0.99, peakD / plan.length), reached: false, daily, theme: scenery.theme.id, endless: false });
     meta.track('cig_progress', { tons: r.tons, dist: peakD });
-    const wave = G.cause === 'wave', bossF = G.cause === 'boss' && G.bossFail;
+    const wave = G.cause === 'wave', bossF = G.cause === 'boss' && G.bossFail, crash = G.cause === 'crash';
     const lb = G.lastBounce && G.lastBounce.i >= (G.gateIdx || 0) ? G.lastBounce : null;   // (only while that barrier is still the one that stopped you)
     const tip = bossF ? 'PATRON ' + fmtD(G.bossFail.need * 2) + ' m idi, sen ' + fmtD(G.bossFail.have * 2) + ' m. Yolda daha çok ye, daha büyük gel!' : lb ? 'KAPI ' + (lb.i + 1) + ': ' + fmtD(lb.need * 2) + ' m gerekiyordu, sen ' + fmtD(lb.have * 2) + ' m idin.'
-      : wave ? 'Durma: çığ arkandan geliyor.' : 'Küçükleri ye, durursan kar erir.';
+      : crash ? 'Kırmızı işaretlere dikkat: engellerin etrafından dolan.' : wave ? 'Durma: çığ arkandan geliyor.' : 'Küçükleri ye, durursan kar erir.';
     menus.showLevelFailed({
-      level: planAsLevel(plan), cause: G.cause, title: bossF ? 'PATRONA ÇARPTIN — daha büyük gel!' : wave ? 'ÇIĞ SENİ YAKALADI!' : 'ERİDİN!', icon: bossF ? '💥' : wave ? '🌨️' : '💧', tip,
+      level: planAsLevel(plan), cause: G.cause, title: bossF ? 'PATRONA ÇARPTIN — daha büyük gel!' : crash ? 'ÇARPTIN!' : wave ? 'ÇIĞ SENİ YAKALADI!' : 'ERİDİN!', icon: bossF || crash ? '💥' : wave ? '🌨️' : '💧', tip,
       distance: peakD, stats: { distance: peakD }, labels: { retry: '↻ TEKRAR DENE', map: 'KASABALAR' },
     }, {
       onRetry: () => startCigLevel(daily ? { daily: true } : n, { retry: true }),
@@ -1027,8 +1027,8 @@ function finishCig() {
   const wave = r.cause === 'wave';
   ui.showResult({
     endless: true,
-    title: wave ? 'ÇIĞ SENİ YAKALADI!' : 'ERİDİN!',
-    tip: wave ? 'Hızını koru ve yemeye devam et: durursan çığ yakalar.' : 'Beyaz olanları ye, turuncu ve kırmızılardan kaç. Yemezsen erirsin.',
+    title: wave ? 'ÇIĞ SENİ YAKALADI!' : r.cause === 'crash' ? 'ÇARPTIN!' : 'ERİDİN!',
+    tip: r.cause === 'crash' ? 'Kırmızı işaretlere dikkat: engellerin etrafından dolan.' : wave ? 'Hızını koru ve yemeye devam et: durursan çığ yakalar.' : 'Beyaz olanları ye, turuncu ve kırmızılardan kaç. Yemezsen erirsin.',
     tons: r.tons, dist: r.dist, distance: r.dist, best, isBest, newBest: isBest, cause: wave ? 'wave' : r.cause,
     tierName: r.tierName, coins, hasNext: false,
   }, audio);

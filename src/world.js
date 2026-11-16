@@ -968,7 +968,7 @@ export class World {
       case 'arena': return this.placeArena(it, gr, T, hw);
       case 'fork': return this.placeFork(it, gr, T, hw);
       case 'finish': this.addFinish(it.at); return 4;
-      case 'army': case 'mush': case 'strip': case 'cannon': case 'bridge': case 'pickup': case 'puddle': case 'salt': case 'rollers':
+      case 'army': case 'mush': case 'strip': case 'cannon': case 'bridge': case 'pickup': case 'puddle': case 'salt': case 'rollers': case 'obst':
         // CigPlus builds these (it owns the meshes); it receives a plain copy of the plan item
         this.specialQueue.push({ ...it });
         this.zones.push({ d0: it.start - 6, d1: it.start + it.len + 6, kind: it.kind === 'strip' || it.kind === 'pickup' ? 'plus' : it.kind });

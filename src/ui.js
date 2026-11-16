@@ -260,7 +260,7 @@ export class UI {
     this.el.buffFly.innerHTML = '';
     this._annReset();
     this.el.toastSoft.innerHTML = '';
-    this.el.toastSoft.classList.remove('res');
+    this._pillHome();
     clearTimeout(this._mutT); this._mutChip?.classList.add('hidden');      // (the weekly chip ends its fade at .35: never let it outlive the run)
     this.runnerTutor(null);
     this.hideRunnerRevive();
@@ -453,10 +453,19 @@ export class UI {
     setTimeout(() => gb.classList.remove('tick'), 520);
   }
 
+  // the toast box lives in the result card only while the Rush result shows; everywhere else it goes back to its overlay slot
+  _pillHome() {
+    const box = this.el.toastSoft;
+    box.classList.remove('res', 'inres');
+    if (!this._tsHome) this._tsHome = box.parentNode;
+    if (this._tsHome && box.parentNode !== this._tsHome) this._tsHome.appendChild(box);
+  }
+
   // PAYLAŞ 📸 share-card button under TEKRAR (created once, re-armed per result)
   shareCardBtn(o) {
     let b = document.getElementById('btn-card');
     if (!b) { b = document.createElement('button'); b.id = 'btn-card'; b.className = 'btn big'; this.el.retry.after(b); }
+    if (o.mode === 'YETİ RUSH') this.el.menuBtn.after(b); else this.el.retry.after(b);
     window.__cigUi = this;
     b.style.display = '';
     { const old = document.getElementById('btn-share'); if (old) old.style.display = 'none'; }   // the image card replaces the old text share
@@ -521,7 +530,12 @@ export class UI {
     let pbTop = null;
     if (pg && pg.pb && pg.pb.improved.length) { for (const x of pg.pb.improved) if (!pbTop || x.v / x.old > pbTop.v / pbTop.old) pbTop = x; row2.push(chip(`${PB_ICON[pbTop.k]} ${tr(PB_NAME[pbTop.k])} ▲`, ' cy')); }
     if (pg && pg.streak && pg.streak.n >= 2) row2.push(chip(`🔥 ${tr('REKOR SERİSİ')} ${pg.streak.n}`, ' fire'));
-    let html = row2.length ? `<div class="rx-row">${row2.join('')}</div>` : "";      // the flakes only: LEVEL / SEASON bars sit behind Details (one number to sell)
+    let html = row2.length ? `<div class="rx-row">${row2.join('')}</div>` : "";
+    if (p && p.mystery && p.mystery.length) {      // mystery boxes of this run: what was inside
+      const sum = { coins: 0, score: 0, gem: 0, chest: 0 }; for (const m of p.mystery) sum[m.k] += m.v;
+      const bits = [sum.coins ? `❄️ +${fmtN(sum.coins)}` : '', sum.score ? `★ +${fmtN(sum.score)}` : '', sum.gem ? `💎 +${sum.gem}` : '', sum.chest ? `🎁 +${sum.chest}` : ''].filter(Boolean).join(' · ');
+      html = `<div class="rx-mb"><span>🎁 ${tr('GİZEM KUTUSU')} ×${p.mystery.length}</span><b>${bits}</b></div>` + html;
+    }      // the flakes only: LEVEL / SEASON bars sit behind Details (one number to sell)
     let nup = null;
     try { nup = this.hooks?.nextPower?.() || null; } catch { nup = null; }
     this._nupAfford = !!(nup && nup.afford);
@@ -583,13 +597,14 @@ export class UI {
       const toGo = pg.lad.to >= MAX_TIER ? 0 : TIER_AT[pg.lad.to] - bestNow;
       html = `<div class="rx-lad${pg.lad.up ? ' up' : ''}" style="--lc:${col}"><span class="lb">${li ? li.icon + ' ' + UP(lgName(li)) : '❄️ ' + UP(tr('SIRA YOK'))}</span><span class="lp">${ladPips(bestNow, pg.lad.to)}</span>${toGo > 0 && !(near && near.k === 'ladder') ? `<small>${tr(fmtN(toGo) + ' kaldı')}</small>` : ''}</div>` + html;
     }
-    ex.innerHTML = html;
+    this._pillHome(); ex.innerHTML = html;
+    { const box = this.el.toastSoft, lad = ex.querySelector('.rx-lad'); box.classList.add('res', 'inres'); if (lad) lad.after(box); else ex.insertBefore(box, ex.firstChild); }   // the quest pill: one row after the league bar
     const qt = ex.querySelector('.rx-qtoggle');
     const afEl = ex.querySelector('.rx-aff');
     if (afEl && ai) afEl.onclick = () => { try { this.hooks?.shopItem?.(ai.kind, ai.id); } catch { /* optional */ } };
     const upEl = ex.querySelector('.rx-up');
     if (upEl) upEl.onclick = () => { try { this.hooks?.power?.(nup && nup.id); } catch { /* optional */ } };      // opens GÜÇ at that upgrade's row
-    if (qt) qt.onclick = () => { const l = ex.querySelector('.rx-qlist'); const open = l.classList.toggle('hidden'); qt.textContent = qt.textContent.replace(/^[▸▾]/, open ? '▸' : '▾'); };
+    if (qt) qt.onclick = () => { const l = ex.querySelector('.rx-qlist'); const open = l.classList.toggle('hidden'); qt.textContent = qt.textContent.replace(/^[▸▾]/, open ? '▸' : '▾'); const mid = ex.parentNode; if (!open && mid) mid.scrollTop = Math.max(0, qt.offsetTop - mid.offsetTop - 4); };
     ex.classList.toggle('hidden', !html);
     this.lastShareText = shareTxt;  // bottom PAYLAŞ uses it for the daily run
 
@@ -825,6 +840,10 @@ export class UI {
         try { const rows = meta.missionsReport().rows.slice(0, 3); pips = ' · ' + rows.map((m) => (m.done ? '●' : '○')).join(''); } catch { /* no pips */ }   // the set: how many of 3 are done (the multiplier pays when all are)
         this.timers.push(setTimeout(() => this.toastSoft(`${t.icon || '🎯'} ${tr('GÖREV TAMAM:')} ${tr(t.text)}${pips}`, { long: true }), 700 + n * 900)); n++;
       }
+      else if (x.kind === 'hunt') {
+        const r = x.reward || {};
+        this.timers.push(setTimeout(() => this.toastSoft(`🔤 ${tr('KELİME TAMAM!')}${r.coins ? ` · +❄️${fmtN(r.coins)}` : ''}${r.crystals ? ` +💎${r.crystals}` : ''}${r.boxes ? ' +🎁' : ''}`, { prio: 2 }), 700 + n * 900)); n++;
+      }
       else if (x.kind === 'missionset') {
         const t = x, r = x.reward || {};
         const gift = `${r.coins ? ` · +❄️${fmtN(r.coins)}` : ''}${r.crystals ? ` +💎${r.crystals}` : ''}${r.boxes ? ' +🎁' : ''}`;
@@ -910,7 +929,7 @@ export class UI {
     this.el.result.classList.remove('rec');
     this.el.result.querySelectorAll('.confetti,.coin-fly').forEach((n) => n.remove());
     this.clearTimers(); // pending "GÖREV TAMAM" toasts / count-ups belong to the result screen, not to the continued run
-    this.el.toastSoft.classList.remove('res');
+    this._pillHome();
     this.el.toastSoft.innerHTML = '';
     this.el.result.classList.add('hidden');
     this.el.flow.classList.remove('hidden');
@@ -1008,6 +1027,38 @@ export class UI {
     if (mode && (mChanged || pct !== this.gPct)) this.el.goalFill.style.width = `${pct}%`;
     if (text && !mChanged && pct > this.gPct) this.runnerGoalPop();   // mission progress moved: the pill pulses
     this.gMode = mode; this.gVal = val; this.gPct = pct; this.gTxt = text;
+  }
+
+  // ---- the Subway loop on the Rush HUD: x-identity + SET n/3, the daily word, a short centre card (start goal / ceremonies) ----
+  _hudEl(id, html) {
+    let el = this['_e' + id];
+    if (!el) { el = this['_e' + id] = document.createElement('div'); el.id = id; el.innerHTML = html; this.el.hud.appendChild(el); }
+    return el;
+  }
+  runnerIdent(mult, done, total, pop) {      // mult = the permanent mission-set multiplier (null hides it)
+    if (mult == null) { if (this._eIdent) this._eIdent.classList.add('hidden'); this._idK = ''; return; }
+    const el = this._hudEl('hud-ident', '<b></b><small></small>'), k = mult + ':' + done + ':' + total;
+    if (k !== this._idK) { this._idK = k; el.classList.remove('hidden'); el.firstChild.textContent = 'x' + mult; el.lastChild.textContent = tr('SET') + ' ' + done + '/' + total; }
+    if (pop) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+  }
+  runnerIdentBig(on) { if (this._eIdent) this._eIdent.classList.toggle('big', !!on); }
+  runnerHunt(h, found) {      // h = { word, found: [0|1 x5], next } or null; found = the index just collected
+    if (!h) { if (this._eHunt) this._eHunt.classList.add('hidden'); this._huK = ''; return; }
+    const el = this._hudEl('hud-hunt', ''), k = h.word + h.found.join('');
+    if (k !== this._huK) {
+      this._huK = k; el.classList.remove('hidden'); el.textContent = '';
+      for (let i = 0; i < h.word.length; i++) { const c = document.createElement('i'); c.textContent = h.word[i]; c.className = h.found[i] ? 'on' : i === h.next ? 'nx' : ''; el.appendChild(c); }
+    }
+    if (found >= 0 && el.children[found]) { const c = el.children[found]; c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop'); }
+  }
+  // a centre card: kind 'goal' (run start, 1.5 s: the one thing to chase) or 'cer' (a ceremony: set done, word done)
+  runnerCard(label, text, kind, ms, sub) {
+    const el = this._hudEl('hud-card', '<small></small><b></b><em></em>');
+    el.children[0].textContent = label || ''; el.children[1].textContent = text || ''; el.children[2].textContent = sub || '';
+    el.className = 'on ' + (kind || 'goal');
+    el.style.animationDuration = (ms || 1500) + 'ms';
+    el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+    clearTimeout(this._cardTm); this._cardTm = setTimeout(() => el.classList.remove('on'), ms || 1500);
   }
 
   // campaign live pips p = [0|1|2 x3] (2 met / 1 still possible / 0 lost); a small row under the top bar, created once

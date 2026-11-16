@@ -5,7 +5,7 @@ export const words = {
   'KIL PAYI SERİSİ': 'NEAR-MISS STREAK', 'PATLAMA': 'BLAST', 'BÖLÜM SAYISI': 'CHAPTERS', 'YENİ EN İYİ': 'NEW BEST',
   'REKOR SERİSİ': 'RECORD STREAK', 'SIRA YOK': 'UNRANKED', 'PODYUM': 'PODIUM', 'İLK 10!': 'TOP 10!', 'LİG': 'LEAGUE',
   'En iyi kişisel': 'Personal bests', 'MADALYA': 'MEDAL', 'Haftalık tablo': 'Weekly table', 'Sen': 'You',
-  'Rush madalyaları': 'Rush medals',
+  'Rush madalyaları': 'Rush medals', 'TERFİ': 'PROMOTED', 'HEDEF': 'GOAL', 'KELİME TAMAM!': 'WORD COMPLETE!', 'GÖREV SETİ TAMAM!': 'MISSION SET DONE!', 'GİZEM KUTUSU': 'MYSTERY BOX', 'Harf:': 'Letter:',
   '10 Bronz': '10 Bronze', '10 Gümüş': '10 Silver', '5 Altın': '5 Gold', 'Yeti Rush: 10 bronz madalya kazan.': 'Yeti Rush: earn 10 bronze medals.',
   'Yeti Rush: 10 gümüş madalya kazan.': 'Yeti Rush: earn 10 silver medals.', 'Yeti Rush: 5 altın madalya kazan.': 'Yeti Rush: earn 5 gold medals.', 'Yeti Rush: bir platin madalya kazan.': 'Yeti Rush: earn a platinum medal.',
   'Kartopu Ligi': 'Snowball League', 'Buz Ligi': 'Ice League', 'Çığ Ligi': 'Avalanche League', 'Yeti Avcısı Ligi': 'Yeti Hunter League', 'Efsane Lig': 'Legend League',
@@ -19,6 +19,7 @@ export const words = {
 const MED = { 'Bronz': 'Bronze', 'Gümüş': 'Silver', 'Altın': 'Gold', 'Platin': 'Platinum' };
 export const patterns = [
   [/^([\d.,]+) kaldı$/, '$1 to go'],
+  [/^([\d.,]+) puan$/, '$1 pts'],
   [/^([\d.,]+) puan kaldı$/, '$1 pts to go'],
   [/^▲ (.+) (I|II|III) · ([\d.,]+) kaldı$/, '▲ $1 $2 · $3 to go'],
   [/^#(\d+) (.+) · ([\d.,]+) puan$/, '$3 pts to #$1 $2'],

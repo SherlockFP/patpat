@@ -222,6 +222,11 @@ export const words = {
   // ---- KASABA (ÇIĞ finale) + ÇIĞ SONSUZ ladder
   'Dağın dibindeki KASABAYI yık! Küçükleri ye, büyü, kapıları kır: ⛔ boyuta ulaşmalısın.': 'Destroy the TOWN at the foot of the mountain! Eat small things, grow, smash the gates: reach the ⛔ size.',
   'KASABAYI YIK!': 'DESTROY THE TOWN!', '🍎 HER ŞEYİ YE, BÜYÜ!': '🍎 EAT EVERYTHING TO GROW!', 'Günün Kasabası': "Today's Town",
+  // ---- ÇIĞ ENGELLERİ (cigobs.js): one-word first-time labels, hit / near-miss / revive callouts, the crash result
+  'KAYA!': 'ROCK!', 'DUVAR!': 'WALL!', 'YARIK!': 'CREVASSE!', 'GÖL!': 'LAKE!', 'ÇİT!': 'FENCE!', 'PALET!': 'GROOMER!', 'KÜTÜK!': 'LOGS!', 'SARKIT!': 'ICICLE!',
+  'ÇARPTIN!': 'CRASH!', 'ÇOK BÜYÜK!': 'TOO BIG!', 'SON ŞANS!': 'LAST CHANCE!', 'ÇOK YAKIN!': 'CLOSE CALL!',
+  'ÇIĞ SENİ YAKALADI! İKİNCİ ŞANS': 'THE AVALANCHE GOT YOU! SECOND CHANCE',
+  'Kırmızı işaretlere dikkat: engellerin etrafından dolan.': 'Watch the red marks: steer around the obstacles.',
 };
 const w = (s) => words[s] || s;
 export const patterns = [

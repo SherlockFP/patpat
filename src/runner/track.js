@@ -220,7 +220,7 @@ export class Track {
     this._chapSetAt = 0;
     this._nextSet = this.level ? 300 : 340;   // earliest s of the next set piece (helix, loop, halfpipe ...); endless keeps the first 300 m for teaching rows
     this._lastSet = '';
-    this._rs = (this.seed | 0) ^ 0x5bd1e995; this._nextRound = 300; this._roundN = 0; this._lastRound = ''; this._dbl = false; this._ringY = 0; this._ringEnd = -1;     // round clock (loops / corkscrews / helixes / half-pipes) and the double-loop state
+    this._rs = (this.seed | 0) ^ 0x5bd1e995; this._nextRound = 300; this._roundN = 0; this._lastRound = ''; this._rUsed = []; this._dblAt = -1e9; this._dbl = false; this._ringY = 0; this._ringEnd = -1;     // round clock (loops / corkscrews / helixes / half-pipes) and the double-loop state
     // Temple Run junctions: earliest corner of the next one (endless: ~350 m, tutorial: 300 m), live junction list (junctionAt), blocked ranges
     this._juncs = []; this._jid = 0;
     this._nextCorner = this.tutorial ? 300 : 640;      // first corner at ~45 s
@@ -532,7 +532,7 @@ export class Track {
 const SET = { waves: 250, helix: 350, skiJump: 450, iceBridge: 400, halfpipe: 500, chasm: 650, tube: 700, zipline: 800, corkscrew: 500, loop: 300 };
 const SET_W = { waves: 1.2, helix: 1.0, skiJump: 1.0, iceBridge: 0.9, halfpipe: 1.0, chasm: 0.8, tube: 0.8, zipline: 0.7, corkscrew: 0.7, loop: 1.6 };
 const SET_LEN = { waves: 90, helix: 200, skiJump: 60, iceBridge: 60, halfpipe: 60, chasm: 55, tube: 60, zipline: 70, corkscrew: 50, loop: 125 };
-const ROUND_SET = { loop: 1, corkscrew: 1, helix: 1, halfpipe: 1 };     // round set pieces: in endless Rush they come from the round clock (_pickRound), every chapter, one per ~450-650 m
+const ROUND_SET = { loop: 1, corkscrew: 1, helix: 1, halfpipe: 1 };     // round set pieces: in endless Rush they come from the round clock (_pickRound), every chapter, one per ~1500 m (3-4 in 6 km), a different kind each time
 const HAZARD = { narrow: 1, gapRamp: 1, gapJump: 1, hexHoles: 1, split: 1, stairs: 1, waves: 1, helix: 1, skiJump: 1, iceBridge: 1, halfpipe: 1, chasm: 1, tube: 1, zipline: 1, corkscrew: 1, loop: 1, junction: 1 };
 const NEEDS_FLAT = { gapRamp: 1, gapJump: 1, slalom: 1, skiJump: 1, chasm: 1, loop: 1 };
 // downhill run: mean pitch ~ -9 deg, from -4 (flats before jumps / clusters) to -16 (plunges)
@@ -594,16 +594,18 @@ Object.assign(Track.prototype, {
     return this._roundDef(seg) && sEst >= seg.s0 + 30 && sEst + len + 25 <= seg.s1 && !this.zoneAt(sEst) && !this.zoneAt(sEst + len);
   },
 
-  /** the round clock fired: the first one is always a loop (a new player meets it in the first minute); later ones mix, a loop most often, a double loop once the run is long */
+  /** the round clock fired: the first one is always a loop (a new player meets it in the first minute); later ones rotate through loop / corkscrew / helix / half-pipe (every kind once before one repeats, never the same twice in a row); a double loop is rare (>= 3 km in, >= 5 km apart) */
   _pickRound(sEst, seg) {
-    const rr = () => (this._rs = (Math.imul(this._rs, 1664525) + 1013904223) >>> 0) / 4294967296, hk = sEst * this.hardness, w = { loop: 12, helix: 1, corkscrew: 1, halfpipe: 0.9 };
+    const rr = () => (this._rs = (Math.imul(this._rs, 1664525) + 1013904223) >>> 0) / 4294967296, hk = sEst * this.hardness, w = { loop: 1, helix: 1, corkscrew: 1, halfpipe: 1 };
     let tot = 0, kind = null;
     if (!this._roundN) kind = this.allows('loop') ? 'loop' : null;
-    else { for (const k in w) { if ((k === this._lastRound && k !== 'loop') || !this.allows(k) || hk < SET[k] || !this['_spec_' + k] || sEst + SET_LEN[k] + 25 > seg.s1) w[k] = 0; tot += w[k]; } let r = rr() * tot; for (const k in w) { r -= w[k]; if (r <= 0 && w[k] > 0) { kind = k; break; } } }     // (the piece is queued behind the current plain one, so it starts flat)
+    else { if (Object.keys(w).every((k) => this._rUsed.includes(k))) this._rUsed = [this._lastRound];     // a full turn of the wheel: start the next one (the last kind sits it out)
+      for (const k in w) { if (k === this._lastRound || this._rUsed.includes(k) || !this.allows(k) || hk < SET[k] || !this['_spec_' + k] || sEst + SET_LEN[k] + 25 > seg.s1) w[k] = 0; tot += w[k]; } let r = rr() * tot; for (const k in w) { r -= w[k]; if (r <= 0 && w[k] > 0) { kind = k; break; } } }     // (the piece is queued behind the current plain one, so it starts flat)
     if (!kind) return null;
-    const dbl = kind === 'loop' && this._roundN >= 1 && hk >= 800 && sEst + 2 * SET_LEN.loop + 25 <= seg.s1 && rr() < 0.75;
-    this._dbl = dbl; this._roundN++; this._lastRound = kind; this._lastSet = kind;
-    this._nextRound = sEst + SET_LEN[kind] * (dbl ? 2 : 1) + (100 + 120 * rr()) / Math.sqrt(this.hardness);     // (start to start ~210-330 m inside the eligible chapters; about one per 700 m over a whole run, the signature chapters are skipped)
+    const dbl = kind === 'loop' && this._roundN >= 1 && sEst >= 3000 && sEst - this._dblAt >= 5000 && sEst + 2 * SET_LEN.loop + 25 <= seg.s1 && rr() < 0.6;
+    if (dbl) this._dblAt = sEst;
+    this._dbl = dbl; this._roundN++; this._lastRound = kind; this._lastSet = kind; this._rUsed.push(kind);
+    this._nextRound = sEst + 700 + 250 * rr();     // (start to start 700-950 m, but the signature chapters are skipped: 3-4 round pieces per 6 km, one per ~1500 m)
     return kind;
   },
 

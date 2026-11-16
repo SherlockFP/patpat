@@ -19,6 +19,8 @@
 //   14 cig mountain 1 start/mid/town/end (cig_1_*.png)             15 cig mountain 12 start/mid/end (cig_12_*.png)
 //   29 borrowed mechanics: mech_burst/dash/board/drift/chase/crowd_0..1.png + rush_ch_halka/gp/gokyuzu/magara.png (needs ?debug hooks)
 //   31 wardrobe v2: shop_<en|tr>_<skin|trail|hop|stomp|blast|yeti|death|emote|power|pazar>.png, shop_*_3d_trail / _dene / _3d_yeti, text audit   32 equipped cosmetics in play: cos_*.png
+//   35 ÇIĞ hazards (needs ?debug hooks): obs_rock/wall/crev/lake/fence/groomer/logs/icicle.png (each on the mountain that teaches it), obs_hit / obs_near / obs_caught (+ _tr), obs_caught_end, obs_rival
+//   34 Rush Subway loop (EN + TR): run-start goal card, x-identity + SET n/3, daily word letters (pickup, chips lit, word done), mystery box + result reveal, set ceremony: loop_card/hud/letter/set/word/res(_tr).png, HUD overlap assert (needs ?debug hooks)
 //   33 Rush goal layer: goal_res_promo/weak/weak_tr/near/record/record_tr/ladder.png (result cards), goal_menu, goal_passport, rush_goal_pin/rival/chase/pass/gold.png (needs ?debug hooks)   28 Sonic ring: loop_0..5.png (entry / 3 o'clock / top / 9 o'clock / exit / chase back), loopb_* (2nd run), cork_0..1, helix_0..1, dloop_0..6 (double loop) (ball visible, ring in frame)   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   21 rush camera sweep (flat frames)   22 new chapters ekspres/ay/lazer/kopru/fuze/hareket/heyelan/turbo/volkan/sakura/neon/uzay: rush_ch_<id>.png (name strip + one-word label) and mech_<id>.png (the mechanic in view, needs ?debug hooks)   24 menu text: after every bottom-nav panel and after a Rush death -> MENU no toast / hint / float / banner / HUD text is left on screen   30 cig polish (needs ?debug hooks): cig_wave / cig_unlock / cig_crush_0..1 / cig_theme_6..36.png   25 AI UI icons: icons_rush_buff.png, icons_perk.png, icons_cig.png (images decoded, not emoji)   10 is the final blank-frame check (always printed)
 import { spawn, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
@@ -620,6 +622,77 @@ async function cigPolish(ctx) {
   for (const gp of [150, 80, 40]) { await ev(`(()=>{const g=cig.game;g.wave.d=cig.ball.d-${gp}})()`); await ev('__simF(0.4)'); await shot('cig_wave_' + gp, ctx); }
 }
 
+// ÇIĞ ENGELLERİ (needs ?debug hooks): one frame per hazard kind (obs_<kind>.png, each on the mountain where it is taught), a hit, a near miss, the rival ball, the
+// avalanche catching you (second chance, then over) in EN, and the hit / near miss / avalanche HUD in TR (obs_*_tr.png)
+async function cigObstacles(ctx) {
+  const start = async (n, lang, wait = 0) => {
+    const sv = save(); sv.cig.lv.cleared = 39;
+    await load('?debug&cig=' + n, seedOf(sv, { patpat_lang: lang }));
+    await waitFor(`window.cig&&cig.G.mode==='cig'&&cig.G.state==='play'`, 25000, 'mountain ' + n + ' playing');
+    await ev('cig.game.auto=true;cig.game.bot.mode="idle";window.__simF=(s)=>{cig.sim(s);window.__gl?.flush?.()};try{cig.ui.hint(false)}catch(e){}');
+    if (wait) await sleep(wait);   // (the intro chip owns the message lane for ~3 s: let it go so the callouts of the frame show)
+  };
+  const first = (k) => `(()=>{const o=cig.plus.obs.list.filter((o)=>o.k==='${k}'&&!o.gone)[0];return o?{d:o.d,x:o.sh[0]?o.sh[0].x:0,rx:o.sh[0]?o.sh[0].rx:0,pr:o.pr}:null})()`;
+  const toObs = async (n, k, before) => {
+    const it = await ev(`(()=>{const P=cig.plan(${n});return P.items.find((i)=>i.kind==='obst'&&i.k==='${k}')})()`);
+    if (!it) { ctx.fail(`mountain ${n} has no ${k} item`); return null; }
+    await ev(`cig.warp(${Math.max(130, it.start - 90)})`); await ev('__simF(0.4)');
+    const o = await ev(first(k));
+    if (!o) { ctx.fail(`mountain ${n}: no ${k} obstacle built`); return null; }
+    await ev(`cig.warp(${o.d - before})`); await ev('__simF(0.3)');
+    return o;
+  };
+  const KINDS = [['rock', 2, 55], ['wall', 4, 60], ['crev', 5, 60], ['lake', 6, 70], ['fence', 7, 55], ['groomer', 9, 60], ['logs', 11, 75], ['icicle', 13, 60]];
+  for (const [k, n, before] of KINDS) {
+    await start(n, 'en');
+    const o = await toObs(n, k, before);
+    if (!o) continue;
+    await ev('__simF(0.25)'); await shot('obs_' + k, ctx);
+    const st = await ev(`(()=>({cnt:cig.plus.obs.list.length,vis:cig.plus.solid.n+cig.plus.glow.n}))()`);
+    if (st.cnt > 0 && st.vis > 0) ctx.pass(`${k} on mountain ${n}: ${st.cnt} hazards built, ${st.vis} vertices drawn`); else ctx.fail(`${k}: nothing drawn ${JSON.stringify(st)}`);
+  }
+  // a hit (idle ball rolls into the first rock), a near miss (the ball is put a hair beside the rock), the rival, the avalanche
+  for (const lang of ['en', 'tr']) {
+    const sfx = lang === 'tr' ? '_tr' : '';
+    await start(4, lang, 3400);
+    let o = await toObs(4, 'wall', 40);
+    if (o) {
+      await ev(`(()=>{const x=${o.x}+${o.rx}-0.5*cig.ball.r;cig.ball.x=x;cig.game.G.targetX=x;cig.game.G.combo=0;cig.game.G.comboT=0;cig.G.cmTier=0})()`);   // (inside the left slab, at the edge of the gap)
+      const hit = await ev('(()=>{for(let i=0;i<120&&cig.game.stats.obsHits<1&&cig.G.state==="play";i++)__simF(0.05);return cig.game.stats.obsHits})()');
+      await ev('__simF(0.1)'); await sleep(2400); await shot('obs_hit' + sfx, ctx);
+      const tx = await ev(`(document.getElementById('toast-soft')||{}).innerText||''`) + ' | ' + await ev(`JSON.stringify({cur:cig.game._mCur&&cig.game._mCur.key,q:(cig.game._mq||[]).map((m)=>m.key),ch:Object.fromEntries(Object.entries(cig.ui._chs||{}).map(([k,v])=>[k,{cur:v.cur&&v.cur.text,q:v.q.map((r)=>r.text)}])),t:+cig.G.t.toFixed(1)})`);
+      if (hit >= 1) ctx.pass(`${lang} wall hit: obsHits ${hit}, state ${await ev('cig.G.state')}, toast "${String(tx).replace(/s+/g, ' ')}"`); else ctx.fail('idle ball never hit the wall');
+    }
+    await start(2, lang, 3400);
+    o = await toObs(2, 'rock', 60);
+    if (o) {
+      await ev('(()=>{cig.game.G.combo=0;cig.game.G.comboT=0;cig.G.cmTier=0})()');
+      const near = await ev(`(()=>{const b=cig.ball;for(let i=0;i<160&&cig.game.stats.near<1&&cig.G.state==="play";i++){const x=${o.x}+${o.rx}+0.82*b.r+0.35*b.r;b.x=x;b.vx=0;cig.game.G.targetX=x;__simF(0.05)}return {n:cig.game.stats.near,h:cig.game.stats.obsHits}})()`);
+      await ev('__simF(0.1)'); await sleep(2400); await shot('obs_near' + sfx, ctx);
+      if (near.n >= 1) ctx.pass(`${lang} near miss: ${JSON.stringify(near)}`); else ctx.fail(`${lang} near miss not seen: ${JSON.stringify(near)}`);
+    }
+    await start(12, lang, 3400);
+    await ev('cig.game.bot.mode="greedy";cig.game.bot.noise=0;cig.game.bot.latency=0.1;__simF(9);cig.game.bot.mode="idle"');   // the avalanche starts after 6 s
+    await ev('(()=>{const g=cig.game;g.wave.d=cig.ball.d+5})()'); await ev('__simF(0.1)');
+    const rv = await ev('(()=>({rev:cig.game.G.revived,st:cig.G.state,gap:+(cig.ball.d-cig.game.wave.d).toFixed(0)}))()');
+    await ev('__simF(0.2)'); await sleep(2400); await shot('obs_caught' + sfx, ctx);
+    if (rv.rev && rv.st === 'play' && rv.gap > 40) ctx.pass(`${lang} avalanche second chance: ${JSON.stringify(rv)}`); else ctx.fail(`${lang} no second chance: ${JSON.stringify(rv)}`);
+    if (lang === 'en') {
+      await ev('(()=>{const g=cig.game;g.wave.d=cig.ball.d+5})()'); await ev('__simF(0.1)');
+      const end = await ev('(()=>({st:cig.G.state,cause:cig.G.cause}))()');
+      await sleep(900); await shot('obs_caught_end', ctx);
+      if (end.cause === 'wave') ctx.pass('second catch ends the run: ' + JSON.stringify(end)); else ctx.fail('second catch did not end the run: ' + JSON.stringify(end));
+    }
+  }
+  await start(7, 'en');
+  const rv = await ev(`(()=>{const P=cig.plan(7);return P.items.find((i)=>i.kind==='rival')})()`);
+  if (rv) {
+    await ev(`cig.warp(${rv.start - 30})`); await ev('__simF(0.6)'); await shot('obs_rival', ctx);
+    const r = await ev('(()=>{const e=cig.world.enemies.find((p)=>p.enemy&&p.enemy.rival&&p.alive);return e?{r:+e.r.toFixed(2),ball:+cig.ball.r.toFixed(2),d:Math.round(e.d-cig.ball.d)}:null})()');
+    if (r) ctx.pass('rival ball in view: ' + JSON.stringify(r)); else ctx.fail('no rival ball on mountain 7');
+  } else ctx.fail('mountain 7 has no rival item');
+}
+
 async function endlessDaily(ctx) {
   const base = seedOf();
   await load('?debug&auto&cig=endless', base);
@@ -1180,6 +1253,9 @@ async function cosPlay(ctx) {
 
 // scenario 33: Rush goal layer. Result cards (promotion ceremony, weak run, near miss, record + streak + PB, top ladder), in EN and TR; menu league badge; passport medal stamps;
 // in-run: rival pin + overtake ticker, record-chase countdown + flag, the pass moment, the gold trail with +10% pops. Needs ?debug hooks for the in-run part.
+// result screen layout: title, badge, score, delta, goal line, league bar, quest pill, next-upgrade card and the buttons never overlap, and none is cut at a screen edge
+const RES_SEL = { title: '#res-title', badge: '#res-badge', score: '#res-pct', tons: '#res-tons', sub: '#res-sub', lad: '#res-extra .rx-lad', pill: '#toast-soft .ts', up: '#res-extra .rx-up', retry: '#btn-retry', card: '#btn-card', menu: '#btn-menu' };
+const resultOverlaps = () => ev(`(()=>{const S=${JSON.stringify(RES_SEL)},mid=document.querySelector('.res-mid').getBoundingClientRect(),R={},bad=[];for(const k in S){const e=document.querySelector(S[k]);if(!e||(!e.textContent.trim()&&k!=='card'&&k!=='lad'))continue;let b=e.getBoundingClientRect();if(!(b.width>0&&b.height>0))continue;if(b.left<-1||b.right>innerWidth+1)bad.push(k+' off-screen');if(e.closest('.res-mid')){const t=Math.max(b.top,mid.top),bo=Math.min(b.bottom,mid.bottom);if(!document.querySelector('.res-mid').scrollTop&&(k==='pill'||k==='lad')&&(b.top<mid.top-1||b.bottom>mid.bottom+1))bad.push(k+' cut by the card');if(bo<=t)continue;b={left:b.left,right:b.right,top:t,bottom:bo}}R[k]=b}const K=Object.keys(R);for(let i=0;i<K.length;i++)for(let j=i+1;j<K.length;j++){const a=R[K[i]],b=R[K[j]];if(a.left<b.right-1&&b.left<a.right-1&&a.top<b.bottom-1&&b.top<a.bottom-1)bad.push(K[i]+'/'+K[j])}return bad})()`);
 async function goals(ctx) {
   const { weekKey } = await import('../src/runner/rivals.js');
   const { dayNum } = await import('../src/runner/ladder.js');
@@ -1198,6 +1274,8 @@ async function goals(ctx) {
     if (details) { await ev(`document.querySelector('.rx-qtoggle')&&document.querySelector('.rx-qtoggle').click()`); await sleep(300); }
     await shot(name, ctx);
     if (second) { await sleep(second); await shot(name + '_b', ctx); }
+    const ov = await resultOverlaps();
+    if (ov.length) ctx.fail(`${name}: result elements overlap or clip: ${ov.join(', ')}`); else ctx.pass(`${name}: result elements do not overlap`);
     const m = await ev(`(()=>{const q=(s)=>document.querySelector(s),rb=q('#result .btn.retry'),r=rb&&rb.getBoundingClientRect(),ex=q('#res-extra');const lines=[q('#res-tons'),q('#res-sub')].map((e)=>e?e.textContent.trim():'').filter(Boolean);return{lad:!!q('.rx-lad'),ladTxt:(q('.rx-lad')||{}).innerText||'',retryIn:!!r&&r.bottom<=innerHeight&&r.top>0,pulse:!!rb&&rb.classList.contains('pulse'),badge:(q('#res-badge')||{}).textContent||'',lines,coin:(q('.rx-coin')||{}).textContent||'',chips:[...document.querySelectorAll('.rx-row .rx-c')].map((e)=>e.textContent.trim())}})()`);
     return m;
   };
@@ -1223,6 +1301,12 @@ async function goals(ctx) {
   // 5) top of the ladder
   m = await result('en', 'goal_res_ladder', { score: 120000, dist: 3000, over: { best: 90000, lad: { t: 15 }, topS: [90000, 80000, 70000] } });
   if (m.lad && /LEGEND/i.test(m.ladTxt)) ctx.pass(`ladder top: ${m.ladTxt.replace(/\s+/g, ' ')}`); else ctx.fail('ladder top: ' + JSON.stringify(m));
+  // 5b) short screen 360x640, record card EN + TR
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 640, deviceScaleFactor: 1, mobile: true });
+  try {
+    await result('en', 'goal_res_short', { score: 4700, dist: 900, set: 'r.maxChain=15;r.stompTotal=14', over: { rs: { k: dayNum() - 1, n: 1 } } });
+    await result('tr', 'goal_res_short_tr', { score: 4700, dist: 900, set: 'r.maxChain=15;r.stompTotal=14', over: { rs: { k: dayNum() - 1, n: 1 } } });
+  } finally { await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); }
   // 6) menu: league badge + weekly place on the record card
   await load('', mk('en'));
   await sleep(3500); await shot('goal_menu', ctx);
@@ -1263,6 +1347,66 @@ async function goals(ctx) {
   await sleep(1300); await shot('rush_goal_gold', ctx);
   const ps = await ev(`(()=>{const r=cig.runner;return{passed:r.passedScore,coins:r.coins,pops:r._rcPop,toast:(document.getElementById('toast-soft')||{}).innerText||''}})()`);
   if (ps.passed && ps.coins - c0 >= 50 && ps.pops >= 1) ctx.pass(`record pass: +${ps.coins - c0} flakes so far, ${ps.pops} x +10% pop, toast "${ps.toast.replace(/\s+/g, ' ').trim()}"`); else ctx.fail('record pass: ' + JSON.stringify(ps));
+}
+
+// scenario 34: the Subway loop. A returning player (8 runs) so the HUD is the full one; a letter / box is dropped in front of the ball.
+const HUD_SEL = { score: '#hud-tons', mult: '.cmb', ident: '#hud-ident', hunt: '#hud-hunt', strip: '#hud-goal', coins: '#hud-coins' };
+const hudOverlaps = () => ev(`(()=>{const S=${JSON.stringify(HUD_SEL)},R={},bad=[];for(const k in S){const e=document.querySelector(S[k]);if(!e||e.classList.contains('hidden')||!e.textContent.trim())continue;const cs=getComputedStyle(e);if(cs.display==='none'||cs.visibility==='hidden'||+cs.opacity<0.05)continue;const b=e.getBoundingClientRect();if(b.width>0&&b.height>0)R[k]=b}const K=Object.keys(R);for(let i=0;i<K.length;i++)for(let j=i+1;j<K.length;j++){const a=R[K[i]],b=R[K[j]];if(a.left<b.right-1&&b.left<a.right-1&&a.top<b.bottom-1&&b.top<a.bottom-1)bad.push(K[i]+'/'+K[j])}return bad})()`);
+async function loopHud(ctx) {
+  const mk = (lang) => {
+    const sv = save3(), d = new Date();
+    sv.wheel = { seen: 1, day: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` };
+    sv.runner = { ...sv.runner, best: 4000, bestDist: 800, runs: 8, lad: { t: 6 }, topS: [4000, 3300, 2600] };
+    return seedOf(sv, { 'freemon.meta.v1': JSON.stringify({ st: { runs: 3, endlessRuns: 3 } }), patpat_lang: lang });
+  };
+  const start = async (lang) => { await load('?endless&notut&debug', mk(lang)); await waitFor(`${rushPlay}&&(${hudDist})>=0`, 30000, 'rush playing'); await ev('(()=>{const r=cig.runner;r.invulnT=999;r.yetiHoldT=99;r.pickDue=false})()'); };
+  const drop = (kind, ahead = 13) => ev(`(()=>{const r=cig.runner,o=r.obstacles;o._pickup('${kind}', r.b.s + ${ahead}, r.b.u, ${kind === 'mbox' ? 1.3 : 1.2}, ${kind === 'mbox' ? '{ sc: 1.5, rad: 1.1 }' : '{ rad: 1.0 }'});o._sortPicks()})()`);
+  const txt = (sel) => ev(`(document.querySelector('${sel}')||{}).textContent||''`);
+  for (const lang of ['en', 'tr']) {
+    const L = lang === 'en' ? '' : '_tr';
+    await start(lang);
+    await waitFor(`document.getElementById('hud-card')&&document.getElementById('hud-card').classList.contains('on')`, 6000, 'goal card'); await sleep(350); await shot('loop_card' + L, ctx);
+    const card = (await txt('#hud-card b')).trim(), cardOn = await ev(`document.getElementById('hud-card').classList.contains('on')`);
+    const g1 = await ev('(cig.runner._g1||{}).kind||""'), strip = ((await txt('#hud-goal .goal-lbl')) || '').trim();
+    if (cardOn && /^🔤 (Letter|Harf): .\b/.test(card) && g1 === 'letter') ctx.pass(`${lang} start card names the one goal: "${card}"`); else ctx.fail(`${lang} start card: on=${cardOn} "${card}" g1=${g1}`);
+    await sleep(1800);
+    const cardOff = await ev(`!document.getElementById('hud-card').classList.contains('on')`);
+    const id = (await txt('#hud-ident')).replace(/\s+/g, ' ').trim(), word = await ev(`[...document.querySelectorAll('#hud-hunt i')].map((e)=>e.textContent).join('')`);
+    const pinned = ((await txt('#hud-goal .goal-lbl')) || '').trim();
+    await shot('loop_hud' + L, ctx);
+    if (cardOff && /^x\d+\s?SET \d\/3$/.test(id) && word.length === 5) ctx.pass(`${lang} HUD: identity "${id}", word "${word}", goal strip "${pinned}" (card gone after 1.5 s)`); else ctx.fail(`${lang} HUD: cardOff=${cardOff} ident="${id}" word="${word}"`);
+    if (/^🔤 (Letter|Harf): /.test(pinned) && pinned.replace(/\s·.*$/, '') === card.replace(/\s·.*$/, '')) ctx.pass(`${lang} the pinned goal is the card's goal`); else ctx.fail(`${lang} pinned "${pinned}" differs from the card "${card}"`);
+    const ov = await hudOverlaps(); if (ov.length) ctx.fail(`${lang} HUD elements overlap: ${ov.join(', ')}`); else ctx.pass(`${lang} HUD: score / multiplier / identity / word / goal strip / flakes do not overlap`);
+    // a letter in front of the ball: seen, then taken -> chip lit, next goal named
+    await drop('dletter', 16); await sleep(250); await shot('loop_letter' + L, ctx);
+    await waitFor(`cig.runner.ctx.meta.letterHunt().count>=1`, 6000, 'letter taken').catch(() => {});
+    await sleep(500);
+    const lit = await ev(`document.querySelectorAll('#hud-hunt i.on').length`), cnt = await ev(`cig.runner.ctx.meta.letterHunt().count`);
+    if (cnt === 1 && lit === 1) ctx.pass(`${lang} daily letter taken: 1/5 saved, 1 chip lit`); else ctx.fail(`${lang} daily letter: count ${cnt}, lit ${lit}`);
+    // the set ceremony
+    await ev(`cig.runner._setCeremony({ multiplier: 8, reward: { coins: 160 } })`); await sleep(400); await shot('loop_set' + L, ctx);
+    const cer = (await txt('#hud-card')).replace(/\s+/g, ' ').trim();
+    if (/x8/.test(cer) && /160/.test(cer)) ctx.pass(`${lang} set ceremony card: "${cer}"`); else ctx.fail(`${lang} set ceremony: "${cer}"`);
+    await sleep(2200);
+    if (lang === 'en') {
+      // mystery box on a risky line: taken, revealed on the result; then the rest of the word -> the word ceremony pays flakes + a chest
+      await drop('mbox', 14); await sleep(200); await shot('loop_box', ctx);
+      await waitFor(`cig.runner.mystery.length>=1`, 6000, 'mystery box taken').catch(() => {});
+      const my = await ev(`JSON.stringify(cig.runner.mystery)`);
+      if (/"k":"(coins|score|gem|chest)"/.test(my)) ctx.pass('mystery box taken: ' + my); else ctx.fail('mystery box not taken: ' + my);
+      await ev(`(()=>{const m=cig.runner.ctx.meta;for(let i=0;i<3;i++)m.collectLetter();cig.runner._huntSync(2)})()`);
+      await drop('dletter', 16); await waitFor(`cig.runner.ctx.meta.letterHunt().complete`, 5000, 'word complete').catch(async () => { await drop('dletter', 16); await waitFor(`cig.runner.ctx.meta.letterHunt().complete`, 6000, 'word complete (retry)').catch(() => {}); });
+      await sleep(500); await shot('loop_word', ctx);
+      const wc = (await txt('#hud-card')).replace(/\s+/g, ' ').trim(), hh = await ev(`(()=>{const h=cig.runner.ctx.meta.letterHunt();return{c:h.complete,s:h.streak}})()`);
+      if (hh.c && /WORD COMPLETE/.test(wc) && /❄️ \+\d+/.test(wc)) ctx.pass(`word ceremony: "${wc}", streak ${hh.s}`); else ctx.fail(`word ceremony: "${wc}" ${JSON.stringify(hh)}`);
+      await sleep(2300);
+    }
+    await ev(`(()=>{const r=cig.runner;r.invulnT=0;r.cause='yeti';r.state='over';r.showResult(false)})()`); await sleep(1700);
+    await shot('loop_res' + L, ctx);
+    const mb = (await txt('#res-extra .rx-mb')).replace(/\s+/g, ' ').trim(), ro = await resultOverlaps();
+    if (lang === 'en') { if (/MYSTERY BOX ×1/.test(mb)) ctx.pass('result reveals the mystery box: "' + mb + '"'); else ctx.fail('result mystery box row: "' + mb + '"'); }
+    if (ro.length) ctx.fail(`${lang} loop result overlaps: ${ro.join(', ')}`); else ctx.pass(`${lang} loop result: no overlap`);
+  }
 }
 
 async function main() {
@@ -1353,6 +1497,8 @@ async function main() {
   await scenario(26, 'sonic layer (opening shot, bunny hop, dive-stomp, BLAST)', 70000, sonic);
   await scenario(27, 'Blender props in place (prop_*.png)', 40000, props);
   await scenario(33, 'rush goals: ranks, medals, rivals, record chase (goal_*, rush_goal_*)', 110000, goals);
+  await scenario(34, 'rush Subway loop: goal card, x-identity, daily word, mystery box (loop_*)', 90000, loopHud);
+  await scenario(35, 'cig hazards: obs_<kind>, hit, near miss, rival, avalanche second chance (EN + TR)', 150000, cigObstacles);
 }
 
 async function run() {

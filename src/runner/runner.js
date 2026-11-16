@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { t, getLang } from '../i18n.js';
 const UP = (s) => { const x = t(s); return x.toLocaleUpperCase(getLang() === 'en' ? 'en-US' : 'tr-TR'); };
+const UPL = (s) => s.toLocaleUpperCase(getLang() === 'en' ? 'en-US' : 'tr-TR');
 const NUM = (n) => Math.round(n).toLocaleString(getLang() === 'en' ? 'en-US' : 'tr-TR');
 import { Track, flightDist, LANES, setLanes } from './track.js';
 import { Obstacles } from './obstacles.js';
@@ -20,6 +21,7 @@ import { starProgress } from '../campaign.js';
 import { REC_POP, pbBeats, PB_NAME, PB_ICON, recPops, recMetres, beatHz, RECORD_NEAR } from './ladder.js';
 import { rivalScores, rivalName, nextAbove, weekDay, weekKey } from './rivals.js';
 import { rollWeek, settleRun } from './progress.js';
+import { pickGoal1, goal1Text, mboxRoll } from './hunt.js';
 
 // YETİ RUSH — endless Temple-Run-style downhill run (RUNNER.md).
 // Core loop: the ball's SIZE is its health AND its hunger. It melts all the time; snow piles refill it, so you steer for
@@ -394,6 +396,7 @@ export class Runner {
     this.sledT = 0;
     this.sledCdT = 0;
     this.boxes = 0;
+    this.mystery = [];
     this.crystals = 0;
     this.jumps = 0;
     this.smashes = 0;
@@ -570,6 +573,7 @@ export class Runner {
     this.mutChip();
     this.ctx.meta?.track?.('run_start', { mode: 'endless' });
     this.obstacles.setNextLetter?.(this.ctx.meta?.letterHunt?.()?.nextLetter ?? null);
+    this._loopInit();
     this.yetiN = 0; this.dblT = 0; this.turboN = 0; this.turboT = 0;
     this.swallowN = 0; this.crowd = false; this.endChase(false); this.chase = null; this._chaseSeg = null; this.chaseK = 0; this.boardOn = false; this.dashT = 0; this.drift = 0; this.driftHold = 0; this.driftT = 0; this.driftK = 0; this.burstN = 0; this.burstGot = 0; this.burstT = 0;      // FLAKE BURST: flakes dropped by the last hit / picked up again / seconds left to pick them up
     this._secPc = null;
@@ -614,6 +618,7 @@ export class Runner {
     this.starPips = this.starPips || [1, 1, 1];
     if (!level && !this.hintOn) this.goalIntro();
     else if (!level) this._mrow = this._missionNow();      // (first runs show a hint instead of the intro line: the mission pill is still there from frame one)
+    if (!level) this._loopTick(true);      // (after the mission row exists: an open mission keeps the strip)
     this.updateHud();
     this.placeBall(true);
   }
@@ -2394,7 +2399,7 @@ export class Runner {
     const bi = biomeAt(this.b.s, _bi);
     if (!this.level) {
       if (bi.biome.id !== this._pcId) { this._pcId = bi.biome.id; this.postcard(bi.biome); }
-      if (this.time >= this._msT) { this._msT = this.time + 0.5; this._mrow = this._missionNow(); this.obstacles.critMul = this._mrow && this._mrow.id === 'stomp' ? 0.5 : 1; }   // (a fresh row list twice a second)
+      if (this.time >= this._msT) { this._msT = this.time + 0.5; this._mrow = this._missionNow(); this.obstacles.critMul = this._mrow && this._mrow.id === 'stomp' ? 0.5 : 1; this._loopTick(); }   // (a fresh row list twice a second)
     } else if (this.time >= (this._msT || 0)) this.updateStars();
     const prog = this.level ? clamp(this.b.s / this.level.length, 0, 1) : bi.t;
     const key = this.level ? this.level : bi.biome;
@@ -2438,6 +2443,17 @@ export class Runner {
         this.goalStrip('rec', q, h.goalFrac, this._recQT);
         return;
       }
+    }
+    const g1 = this._g1, rvHot = this.rvOn && this._rvI >= 0 && this.score >= 100 && this._rvSc[this._rvI] - this.score <= 150 && this._rvSc[this._rvI] - this.score < (this.passedScore || this.bestScore < 100 ? Infinity : this.bestScore - this.score);
+    if (g1 && !this.quietRun && !(rvHot && g1.kind === 'letter')) {      // (a rival about to be passed beats the letter for those seconds)      // the ONE named goal (daily letter / rival / next league step): the same line the start card showed
+      let q, frac;
+      if (g1.kind === 'letter') { const d = this.obstacles.aheadOf('dletter', s); q = d < 0 ? -1 : Math.ceil(d / 10) * 10; frac = d < 0 ? 0 : clamp(1 - d / 260, 0, 1); }
+      else { q = Math.max(10, Math.ceil((g1.target - this.score) / 10) * 10); frac = clamp(this.score / g1.target, 0, 1); }
+      const k = g1.kind + q;
+      if (k !== this._g1K) { this._g1K = k; this._g1T = this._g1Text(g1, q); }
+      h.goalKind = g1.kind; h.goalText = this._g1T; h.goalFrac = frac;
+      this.goalStrip('rec', Math.max(1, q), frac, this._g1T);
+      return;
     }
     const rvGap = this.rvOn && this._rvI >= 0 ? this._rvSc[this._rvI] - this.score : Infinity;
     if ((!m || rvGap <= 150) && rvGap < (this.passedScore || this.bestScore < 100 ? Infinity : this.bestScore - this.score) && this.score >= 100) {      // the next bot above you is closer than the record: pin it
@@ -2597,7 +2613,7 @@ export class Runner {
 
   // The mission strip's row: the closest open one; a mission that has not moved for 120 m is rotated out for the rest of the run.
   _missionNow() {
-    const rows = this.ctx.meta?.missions?.();
+    const rows = this._mRows = this.ctx.meta?.missions?.();
     let m = (this._nRuns < 2 && this._mSkip !== 'jump' && rows && rows.find((r) => r.id === 'jump' && r.value < r.goal)) || pickMission(rows, this._mSkip);      // first runs: the first goal is the jump (the one control the pill can teach)
     if (m) {
       const k = m.id + ':' + m.value;
@@ -2605,6 +2621,71 @@ export class Runner {
       else if (this.b.s - this._mPs > 120) { this._mSkip = m.id; this._mPk = null; m = pickMission(rows, m.id) || m; }
     }
     return m;
+  }
+
+  // ---- the Subway loop: mission-set multiplier identity, the daily word, mystery boxes, ONE named goal ----
+  _loopInit() {
+    const meta = this.ctx.meta, ui = this.ctx.ui;
+    for (const u of this._unsubs || []) u();
+    this._unsubs = [];
+    this.mystery = []; this._g1 = null; this._g1K = ''; this._idMult = -1; this._huntJust = false;
+    if (this.level || this.quietRun || !meta || !meta.letterHunt) { ui.runnerHunt?.(null); ui.runnerIdent?.(null); this.obstacles.setHunt?.(-1, ''); return; }
+    this._huntSync(-1);
+    if (meta.on) this._unsubs.push(meta.on('missionset', (d) => this._setCeremony(d)), meta.on('hunt', (d) => this._huntDone(d)));
+    ui.runnerIdentBig?.(true); this.after(2.6, () => ui.runnerIdentBig?.(false));
+  }
+  // the daily word on the HUD and the track (i = the letter that was just found, -1: none)
+  _huntSync(i) {
+    const H = this._hunt = this.ctx.meta.letterHunt(), en = getLang() === 'en', ui = this.ctx.ui;
+    this.obstacles.setHunt(H.complete ? -1 : H.nextLetter, H.complete ? '' : en ? H.letterEn : H.letter);
+    ui.runnerHunt?.(H.complete && !this._huntJust ? null : { word: en ? H.wordEn : H.word, found: H.found, next: H.nextLetter }, i);
+  }
+  _huntDone(res) {
+    const ui = this.ctx.ui, r = res.reward || {};
+    this._huntJust = true;
+    ui.flash?.('gold'); this.ctx.audio.milestone?.(5); this.ctx.platform.haptic('success');
+    ui.runnerCard?.(t('KELİME TAMAM!'), getLang() === 'en' ? res.wordEn : res.word, 'cer', 2600, `${r.coins ? '❄️ +' + NUM(r.coins) : ''}${r.boxes ? ' 🎁' : ''}${r.crystals ? ' 💎 +' + r.crystals : ''}${res.streak > 1 ? ' · 🔥 ' + res.streak : ''}`);
+    this.after(4, () => { this._huntJust = false; this._huntSync(-1); });
+  }
+  _setCeremony(d) {
+    const r = d.reward || {};
+    this.ctx.ui.runnerCard?.(t('GÖREV SETİ TAMAM!'), 'x' + d.multiplier, 'cer', 2200, `${r.coins ? '❄️ +' + NUM(r.coins) : ''}${r.crystals ? ' 💎 +' + r.crystals : ''}${r.boxes ? ' 🎁' : ''}`);
+    this.ctx.ui.flash?.('gold'); this.ctx.audio.milestone?.(5); this.ctx.platform.haptic('success');
+    this.kick += 2;
+  }
+  _g1Text(g, q) {
+    if (g.kind === 'letter') return `🔤 ${t('Harf:')} ${g.letter}${q > 0 ? ' · ' + q + ' m' : ''}`;
+    return goal1Text(g, this.score, NUM, t, UPL);
+  }
+  // two times a second: the x-identity + SET n/3, and the named goal (replaced by the next one the moment it is done)
+  _loopTick(first) {
+    const meta = this.ctx.meta, ui = this.ctx.ui;
+    if (this.level || this.quietRun || !meta) return;
+    let done = 0; const rows = this._mRows; if (rows) for (let i = 0; i < rows.length; i++) if (rows[i].done) done++;
+    const m = meta.multiplier?.() ?? 1;
+    ui.runnerIdent?.(m, done, 3, !first && m > this._idMult && this._idMult > 0); this._idMult = m;
+    const g = this._g1, want = this._g1Pick();
+    const same = !!g && !!want && g.kind === want.kind && (g.kind === 'letter' ? g.i === want.i : g.kind === 'rival' ? g.place === want.place : g.tier === want.tier);
+    if (!same) {
+      if (g && g.kind === 'ladder' && this.score >= g.target) ui.toastSoft?.('★ ' + goal1Text(g, g.target, NUM, t, UPL).replace(/:.*$/, ''), { prio: 2 });
+      this._g1 = want; this._g1K = '';
+    }
+  }
+  _g1Pick() {
+    const H = this._hunt, en = getLang() === 'en', sc = Math.max(this.bestScore, this.score);
+    const i = this.rvOn ? nextAbove(this._rvSc, sc) : -1;
+    const g = pickGoal1({ letter: H && !H.complete && H.nextLetter >= 0 ? (en ? H.letterEn : H.letter) : '', best: this.bestScore, score: this.score, scoreGoals: !this._mrow && (this.passedScore || this.bestScore < 100), rvNext: i >= 0 ? { place: i + 1, name: rivalName(this._rvWk, i + 1), score: this._rvSc[i] } : null });
+    if (g && g.kind === 'letter') g.i = H.nextLetter;
+    return g;
+  }
+  // run start, 1.5 s: the one thing to chase, in the same words as the pinned strip
+  _goalCard() {
+    if (this.state !== 'play' || this.level || this.quietRun) return;
+    this._loopTick();
+    const g = this._g1, ui = this.ctx.ui;
+    if (g) { this.updateGoal(); ui.runnerCard?.(t('HEDEF'), this._g1T || this._g1Text(g, -1), 'goal', 1500); return; }
+    const m = this._mrow;
+    if (m) ui.runnerCard?.(t('HEDEF'), `${m.icon ? m.icon + ' ' : ''}${t(m.text)} ${m.value}/${m.goal} → x${nextMult(this.ctx.meta?.multiplier?.() ?? 1)}`, 'goal', 1500);
   }
 
   // Run start, runs 3+: one 2-second line "GÖREV: 3 yaratık ez (1/3) · ÇARPAN x4" (the open mission closest to done and what the set pays).
@@ -2615,6 +2696,7 @@ export class Runner {
     this._msT = this.time + 0.5;
     const ui = this.ctx.ui;
     this.hintOn = true;
+    if (this._nRuns >= 2) this.after(0.45, () => this._goalCard());
     ui.hint?.(true, t("YETİ'DEN KAÇ!"));   // (frame one: ONE goal, the top pill; the bottom line only says why you run. This week's twist follows from run 4 on)
     this.after(2, () => {
       if (this._mutLine && this._nRuns >= 3 && !this.jnOpen) { ui.hint?.(true, t(this._mutLine)); this.after(2, () => { this.hintOn = false; if (!this.jnOpen) ui.hint?.(false); }); return; }
@@ -3630,6 +3712,20 @@ export class Runner {
         this.score += 500 * this.mult; this.addFlakes(25);
         this.float('KAR SAVAŞI! +500', 'big'); audio.milestone?.(3);
         break;
+      case 'dletter': {      // the daily word: the next letter in order
+        const res = this.ctx.meta?.collectLetter?.();
+        audio.milestone(4); platform.haptic('success');
+        if (res) { const w = getLang() === 'en' ? res.wordEn : res.word; this.float(w.slice(0, res.count).split('').join(' ') + ' _'.repeat(w.length - res.count), 'big'); this.score += 100 * this.mult; }
+        this._huntSync(res ? res.index : -1);
+        break;
+      }
+      case 'mbox': {      // mystery box: a small random prize, paid now, revealed on the result screen
+        const r = mboxRoll(Math.random());
+        if (r.k === 'coins') this.addFlakes(r.v); else if (r.k === 'score') this.score += r.v; else if (r.k === 'gem') { this.crystals++; this.ctx.meta?.addCrystals?.(r.v); } else this.ctx.meta?.addBoxes?.(r.v);
+        this.mystery.push(r);
+        audio.milestone(3); platform.haptic('success'); this.float('🎁 ?', 'big');
+        break;
+      }
       case 'letter': {
         if (this.yetiN < 4 && e.letter === 'YETİ'[this.yetiN]) {
           this.yetiN++;
@@ -4109,6 +4205,7 @@ export class Runner {
       missions: mrows,
       layer: this.layer + 1,
       boxes: this.boxes,
+      mystery: this.mystery.slice(),
       seasonTokens: this.seasonTokens || 0,
       reviveCost: this.reviveCost,
       coinRevive: this.coinRev ? 50 : 0,

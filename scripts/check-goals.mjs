@@ -7,6 +7,8 @@ import { rivalScores, rivalName, placeOf, nextAbove, settle, placePrize, weekKey
 import { rollWeek, settleRun } from '../src/runner/progress.js';
 import { recordEqDist, isScoreRecord } from '../src/runner/goals.js';
 import { weekInfo } from '../src/runner/runner.js';
+import { HUNT_TR, HUNT_EN, HUNT_LEN, HUNT_STREAK, huntWord, letterRisk, LETTER_H, mboxRoll, pickGoal1, goal1Text } from '../src/runner/hunt.js';
+import { meta } from '../src/meta.js';
 
 let n = 0;
 const ok = (name, c) => { n++; assert.ok(c, name); };
@@ -132,6 +134,49 @@ const mkSave = (init = {}) => {
 {
   const sv = mkSave(), d0 = JSON.stringify(sv.d), r = settleRun(sv, null, { score: 5200, dist: 900, bestBefore: 3000, wk, daily: true, hop: 9, stomp: 9, spd: 30, blast: 4, chap: 3 }, true);
   ok('dry settle (the revive preview) writes and pays nothing, shows no medal / promotion, still names ONE goal', JSON.stringify(sv.d) === d0 && r.coins === 0 && r.medal === 0 && !r.lad.up && !!r.near);
+}
+
+
+// ---- the Subway loop: daily word, letter difficulty, mystery box, the ONE named goal, mission-set multiplier, 5-day streak ----
+{
+  ok('hunt: 12 words per language, all ' + HUNT_LEN + ' letters, no duplicates', [HUNT_TR, HUNT_EN].every((L) => L.length === 12 && new Set(L).size === 12 && L.every((w) => [...w].length === HUNT_LEN)));
+  ok('hunt: the word is deterministic per day and differs on consecutive days', huntWord('2026-11-16') === huntWord('2026-11-16') && huntWord('2026-11-16') !== huntWord('2026-11-17') && huntWord('2026-11-16', true) !== huntWord('2026-11-17', true));
+  const seen = new Set(); for (let d = 0; d < 12; d++) seen.add(huntWord('2026-12-' + String(d + 1).padStart(2, '0')));
+  ok('hunt: 12 days show 12 different words', seen.size === 12);
+  ok('hunt: the same index in both languages (progress survives a language switch)', HUNT_TR.length === HUNT_EN.length && huntWord('2026-11-16') === HUNT_TR[(((Math.floor(Date.UTC(2026, 10, 16) / 86400000) * 5) % 12) + 12) % 12]);
+  ok('letters get harder: risk never drops, heights rise with risk, the last letter is the riskiest', [0, 1, 2, 3, 4].every((i) => i === 0 || letterRisk(i) >= letterRisk(i - 1)) && letterRisk(0) === 0 && letterRisk(4) === 2 && LETTER_H[0] < LETTER_H[1] && LETTER_H[1] < LETTER_H[2]);
+  const cnt = { coins: 0, score: 0, gem: 0, chest: 0 }; let bad = 0;
+  for (let i = 0; i < 10000; i++) { const r = mboxRoll(i / 10000); cnt[r.k]++; if (!(r.v > 0) || (r.k === 'coins' && (r.v < 30 || r.v > 90)) || (r.k === 'score' && (r.v < 300 || r.v > 800))) bad++; }
+  ok('mystery box: the same roll pays the same, small prizes only, mostly flakes, chests/gems rare (' + JSON.stringify(cnt) + ')', bad === 0 && mboxRoll(0.3).v === mboxRoll(0.3).v && cnt.coins > 5000 && cnt.gem + cnt.chest <= 1500 && cnt.chest <= 500 && cnt.coins + cnt.score + cnt.gem + cnt.chest === 10000);
+  const fmt = (n) => n.toLocaleString('tr-TR');
+  const rv = { place: 12, name: 'Mert', score: 4400 };
+  ok('named goal: the daily letter comes first', pickGoal1({ letter: 'T', best: 4000, score: 0, rvNext: rv }).kind === 'letter');
+  const g = pickGoal1({ letter: '', best: 4000, score: 0, rvNext: rv });
+  ok('named goal: a rival within 35% of the best is #12 Mert, 400 points away -> "#12 Mert: 400 puan"', g.kind === 'rival' && goal1Text(g, 4000, fmt) === '#12 Mert: 400 puan');
+  const g2 = pickGoal1({ letter: '', best: 4200, score: 0, rvNext: null });
+  ok('named goal: else the next league step -> "BUZ I: 300 kaldı" style line', g2.kind === 'ladder' && g2.target === 4500 && goal1Text(g2, 4200, fmt) === 'BUZ I: 300 kaldı');
+  ok('named goal: nothing near -> null (the mission strip speaks); reached goals are replaced', pickGoal1({ letter: '', best: 1000, score: 0, rvNext: { place: 3, name: 'X', score: 99999 } }) === null || pickGoal1({ letter: '', best: 1000, score: 0, rvNext: { place: 3, name: 'X', score: 99999 } }).kind === 'ladder');
+  ok('named goal: an open mission / a record still to beat keeps the strip (only the letter outranks them)', pickGoal1({ letter: '', best: 4000, score: 0, scoreGoals: false, rvNext: rv }) === null && pickGoal1({ letter: 'T', best: 4000, score: 0, scoreGoals: false, rvNext: rv }).kind === 'letter');
+  const g3 = pickGoal1({ letter: '', best: 4000, score: 4900, rvNext: { place: 11, name: 'Ece', score: 5100 } });
+  ok('named goal: once the rival is passed the next one is picked from the live score', g3.kind === 'rival' && g3.place === 11 && pickGoal1({ letter: '', best: 4000, score: 5200, rvNext: { place: 11, name: 'Ece', score: 5100 } }).kind === 'ladder');
+  // meta: the hunt over 6 days (the clock is faked), the 5-day streak pays more, the 5th letter ends the word
+  const realNow = Date.now, t0 = new Date(2026, 10, 16, 12).getTime();
+  try {
+    let day = 0; Date.now = () => t0 + day * 86400000;
+    const sv = mkSave(); meta.init(new Proxy(sv, { get: (o, k) => (k in o ? o[k] : () => 0) }));
+    let H = meta.letterHunt();
+    ok('meta hunt: the word of the day, 5 tiles, first letter next', H.word === huntWord('2026-11-16') && H.found.length === HUNT_LEN && H.nextLetter === 0 && H.letter === H.word[0] && H.letterEn === H.wordEn[0]);
+    const pays = [];
+    for (let d = 0; d < HUNT_STREAK + 1; d++) {
+      day = d; H = meta.letterHunt();
+      let last = null; for (let i = 0; i < HUNT_LEN; i++) { const r = meta.collectLetter(); ok('meta hunt: letter ' + (i + 1) + ' of day ' + (d + 1) + ' is ' + H.word[i], r && r.letter === H.word[i] && r.count === i + 1 && r.complete === (i === HUNT_LEN - 1)); last = r; }
+      pays.push(last.reward); ok('meta hunt: a finished word pays flakes + a chest', last.reward.coins > 0 && last.reward.boxes >= 1);
+      ok('meta hunt: nothing more to find today', meta.letterHunt().complete && meta.collectLetter() === null);
+    }
+    ok('meta hunt: the 5th day of the streak pays the big prize (gems + more flakes), day 6 starts over', pays[4].coins >= 2 * pays[3].coins && pays[4].crystals >= 1 && !pays[5].crystals && meta.letterHunt().streak === 6);
+    const m0 = meta.multiplier(), n0 = meta.missionSetsDone();
+    ok('meta: the mission-set multiplier is what the HUD identity shows (x' + m0 + ', set ' + n0 + ')', Number.isInteger(m0) && m0 >= 1 && m0 <= meta.maxMultiplier());
+  } finally { Date.now = realNow; }
 }
 
 console.log(`check-goals: OK (${n} checks)`);

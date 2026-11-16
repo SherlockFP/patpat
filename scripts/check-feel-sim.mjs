@@ -621,25 +621,29 @@ function junction(f, { secBefore = 0 } = {}) {
     }
     ok('chapter gates: ' + gated + ' of ' + tot + ' chapter starts have one within 120 m (>= 60%)', gated >= 0.6 * tot);
   }
-  // -- Sonic rings: round set pieces show up in every chapter without a signature hazard of its own. Over 0..6000 m of 12 normal plans: >= 6 round pieces incl. >= 3 loops,
-  //    the first loop before 700 m, none across a chapter border, every ring 11-16 m and completable at the plan pace (the strips' +30 % covers what the pace lacks) --
+  // -- Sonic rings: round set pieces are rare and never repeat back to back. Over 0..6000 m of 12 normal plans: 3-5 round pieces (loop / corkscrew / helix / half-pipe),
+  //    no two equal kinds adjacent (a double loop counts as one), a double loop only after 3 km and >= 5 km apart, the first loop before 700 m, none across a chapter border, every ring 11-16 m and completable at the plan pace (the strips' +30 % covers what the pace lacks) --
   {
-    const RND = { loop: 1, corkscrew: 1, helix: 1, halfpipe: 1, tube: 1 };
-    let minRound = 99, minLoops = 99, firstMax = 0, across = 0, badR = 0, badV = 0, dbl = 0, nLoops = 0, full = 0;
+    const RND = { loop: 1, corkscrew: 1, helix: 1, halfpipe: 1, tube: 1 }, TURN = { loop: 1, corkscrew: 1, helix: 1, halfpipe: 1 };
+    let minRound = 99, maxRound = 0, minLoops = 99, firstMax = 0, across = 0, badR = 0, badV = 0, dbl = 0, nLoops = 0, full = 0, adj = 0, dblEarly = 0, dblNear = 0;
     for (let seed = 1; seed <= 12; seed++) {
-      const r = make({ seed }).runner; r.track.ensure(6200);
+      const r = make({ seed }).runner; for (let g = 0; g < 8 && r.track.genEnd < 6200; g++) r.track.ensure(6200);   // (ensure() builds at most 64 pieces per call)
       const P = r.track.pieces.filter((p) => p.s0 < 6000), rd = P.filter((p) => RND[p.kind]), lp = P.filter((p) => p.kind === 'loop');
-      minRound = Math.min(minRound, rd.length); minLoops = Math.min(minLoops, lp.length); if (rd.length >= 6 && lp.length >= 3) full++; firstMax = Math.max(firstMax, lp.length ? lp[0].s0 : 9999);
+      const tr = P.filter((p) => TURN[p.kind]).filter((p, i, a) => !(p.kind === 'loop' && i && a[i - 1].kind === 'loop' && Math.abs(p.s0 - a[i - 1].s1) < 1));      // (a double loop is one round piece)
+      for (let i = 1; i < tr.length; i++) if (tr[i].kind === tr[i - 1].kind) adj++;
+      minRound = Math.min(minRound, tr.length); maxRound = Math.max(maxRound, tr.length); minLoops = Math.min(minLoops, lp.length); if (tr.length >= 3 && tr.length <= 5) full++; firstMax = Math.max(firstMax, lp.length ? lp[0].s0 : 9999);
       across += rd.filter((p) => p.kind !== 'tube' && r.chapters.at(p.s0) !== r.chapters.at(p.s1 - 0.1)).length;
       for (const p of lp) { nLoops++; const L = p.loop; if (L.R < 11 - 1e-6 || L.R > 16 + 1e-6) badR++; if (L.minSpeed > 1.3 * L.plannedSpeed) badV++; }
-      dbl += lp.filter((p, i) => i && Math.abs(p.s0 - lp[i - 1].s1) < 1).length;
+      const dl = lp.filter((p, i) => i && Math.abs(p.s0 - lp[i - 1].s1) < 1);
+      dbl += dl.length; dblEarly += dl.filter((p) => p.s0 < 3000).length; dblNear += dl.filter((p, i) => i && p.s0 - dl[i - 1].s0 < 5000).length;
     }
     // (the chapters with a signature hazard of their own, the coin rain and the boss stretch are skipped, so a plan with few eligible chapters falls a ring short: >= 6 incl. >= 3 loops in 9 of 12 plans, never below 5 / 1)
-    ok(`round set pieces in 0..6000 m: >= 6 incl. >= 3 loops in ${full} of 12 plans (need 9), fewest ${minRound} pieces (need 5) / ${minLoops} loops (need 1)`, full >= 9 && minRound >= 5 && minLoops >= 1);
+    ok(`round pieces in 0..6000 m: 3-5 in ${full} of 12 plans (need 9), fewest ${minRound} / most ${maxRound} (need 2..6), loops per plan >= ${minLoops} (need 1)`, full >= 9 && minRound >= 2 && maxRound <= 6 && minLoops >= 1);
+    ok(`never the same round kind twice in a row (${adj} repeats)`, adj === 0);
     ok(`the first loop comes before 700 m (latest ${Math.round(firstMax)} m)`, firstMax < 700);
     ok('no corkscrew / helix / half-pipe / loop across a chapter border', across === 0);
     ok(`all ${nLoops} rings are 11-16 m in radius and need at most 1.3x the planned pace (${badR} / ${badV} outside)`, badR === 0 && badV === 0);
-    ok(`double loops (two rings back to back) exist later in the run (${dbl})`, dbl >= 1);
+    ok(`double loops are rare: ${dbl} in 12 plans, ${dblEarly} before 3 km, ${dblNear} less than 5 km after another`, dbl <= 6 && dblEarly === 0 && dblNear === 0);
     // a ball that enters at plan speed gets through: the real runner, no input, nothing can hurt it but a fall
     const h = make({ seed: 3 }), r = h.runner; goLive(h);
     r.track.ensure(900);

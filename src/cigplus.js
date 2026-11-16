@@ -22,6 +22,7 @@ if (typeof window !== 'undefined') for (const ev of ['pointerdown', 'pointermove
 import { MOVE_ARMY, MOVE_NONE, clamp } from './world.js';
 import { setIcon } from './uiicons.js';
 import { RAMP_AIR_K, ROLL_EVERY, fmtD } from './cigplan.js';
+import { CigObs, obsItem, obsLen, OBS_AT } from './cigobs.js';
 
 const TAU = Math.PI * 2;
 const MOM_T = 7;   // seconds of clean rolling for full momentum (+35% top speed)
@@ -242,6 +243,29 @@ function buildTemplates() {
     m.at(0, 0.62, 0, { rz: Math.PI / 2 }).lathe([[0.34, -1.0], [0.34, 0.9], [0.44, 1.1], [0.14, 1.1]], 8, (j) => (j === 2 ? 0x1d222b : 0x2f3748)).reset();
     m.at(0, 0.0, 0).box(2.0, 0.3, 2.0, 0xff5a4a).reset();
   });
+  // ÇIĞ ENGELLERİ (cigobs.js): unit shapes, the colour is multiplied at emit time
+  T.cube = mk((m) => m.box(1, 1, 1, 0xffffff));
+  T.spike = mk((m) => m.lathe([[0.5, -0.5], [0, 0.5]], 5, (j, i) => (i % 2 ? 0xffffff : 0xdddddd)));
+  T.icicle = mk((m) => m.lathe([[0.5, 1], [0.38, 0.5], [0, 0]], 6, (j, i) => (i % 2 ? 0xe4f7ff : 0xa9dcff)));   // tip down at y 0, base at y 1
+  T.rock = mk((m) => {
+    const pal = [0x8a97a6, 0x6f7b89, 0x9aa7b5, 0x5f6b79];
+    m.lathe([[0, 0], [0.98, 0.0], [1.02, 0.38], [0.84, 0.78], [0.5, 1.0], [0, 1.06]], 7, (j, i) => pal[(i + j) % 4]);
+    m.at(0.1, 0.9, 0, { s: 0.5 }).lathe([[0.8, 0], [0.5, 0.3], [0, 0.4]], 7, 0xf4f9ff).reset();   // snow cap
+  });
+  T.groomer = mk((m) => {   // drives along +x (about 3.4 x 2 x 2)
+    m.at(-0.1, 0.62, 0).box(2.6, 0.8, 1.5, 0xff7a1f).reset();
+    m.at(-0.55, 1.34, 0).box(1.1, 0.7, 1.2, 0xaee0ff).reset();
+    m.at(-0.55, 1.78, 0).box(0.3, 0.16, 0.3, 0xff3b30).reset();
+    m.at(1.55, 0.62, 0).box(0.28, 0.9, 2.2, 0xffd23a).reset();
+    for (const z of [-0.95, 0.95]) m.at(-0.1, 0.28, z).box(3.0, 0.56, 0.4, 0x2b2f38).reset();
+  });
+  T.logs = mk((m) => {   // a pile of three logs, axis along z (it spins around z when it rolls)
+    for (const [x, y] of [[-0.55, 0.5], [0.55, 0.5], [0, 1.4]]) m.at(x, y, 0, { rx: Math.PI / 2 }).lathe([[0, -1], [0.5, -1], [0.5, 1], [0, 1]], 8, (j, i) => (j === 1 ? (i % 2 ? 0x7a4a24 : 0x6a3f1e) : 0xd9b27a)).reset();
+  });
+  T.bang = mk((m) => {   // '!' in the xy plane, faces the camera
+    m.quad([-0.17, 0.0, 0], [0.17, 0.0, 0], [0.12, 1.1, 0], [-0.12, 1.1, 0], C(0xffffff, 1));
+    m.quad([-0.14, -0.5, 0], [0.14, -0.5, 0], [0.14, -0.2, 0], [-0.14, -0.2, 0], C(0xffffff, 1));
+  });
   return T;
 }
 
@@ -335,6 +359,7 @@ export class CigPlus {
 
     this.pickups = []; this.mush = []; this.armies = []; this.shots = []; this.bossFx = null;
     this.strips = []; this.cannons = []; this.bridges = []; this.hazards = []; this.rollSets = [];
+    this.obs = new CigObs(this); this.nextObs = 260;
     this._stT = 0;
     this.flip = { on: false, t: 0, dur: 1, landed: false, roll: 0 };
     this.sizeF = 1;
@@ -355,7 +380,7 @@ export class CigPlus {
 
     this.TPL = buildTemplates();
     const solidMat = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide }));
-    this.solid = new DynMesh(9000, 3, solidMat);
+    this.solid = new DynMesh(14000, 3, solidMat);
     this.glow = new DynMesh(9000, 4, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
     this.group = new THREE.Group();
     this.group.add(this.solid.mesh, this.glow.mesh);
@@ -387,6 +412,15 @@ export class CigPlus {
     if (w.planEnd) dTo = Math.min(dTo, w.planEnd);
     while (w.specialQueue.length) this._special(w.specialQueue.shift());
     if (this.L) { this.planD = dTo; return; }
+    // ÇIĞ ENGELLERİ in the endless slope: one hazard every 120-300 m (denser and nastier the further you roll: it counts as 'DAĞ 4 + d / 400')
+    while (this.nextObs < dTo) {
+      const nn = Math.min(40, 4 + this.nextObs / 400), kinds = Object.keys(OBS_AT).filter((k) => OBS_AT[k] <= nn), k = kinds[(R.next() * kinds.length) | 0];
+      const len = obsLen(k, nn), at = this._fit(this.nextObs, len, dTo, 10);
+      if (at < 0) { this.nextObs = dTo; break; }
+      this.obs.add(obsItem(k, at, R, nn));
+      w.zones.push({ d0: at - 6, d1: at + len + 6, kind: 'obst' });
+      this.nextObs = at + len + clamp(300 - this.nextObs * 0.1, 120, 300) * R.range(0.8, 1.2);
+    }
     // power-ups: one roughly every 150 m, a bag so kinds don't repeat; harder kinds join as you go
     while (this.nextPick < dTo) {
       const at = this._fit(this.nextPick, 6, dTo, 10);
@@ -440,6 +474,7 @@ export class CigPlus {
       case 'cannon': this._addCannon(s); break;
       case 'rollers': this.rollSets.push({ d0: s.start, len: s.len, rolls: s.rolls, i: 0, t: 0 }); break;
       case 'bridge': this._addBridge(s); break;
+      case 'obst': this.obs.add(s); break;
       default: break;
     }
   }
@@ -736,6 +771,7 @@ export class CigPlus {
   reset() {
     for (const k of KEYS) { if (this.T[k] > 0) this._buffOff(k); this.T[k] = 0; }
     this.flip.on = false; this.shots.length = 0; this.bossFx = null;
+    this.obs.reset(); this.nextObs = 260;
     this._unfreeze();
     this.sizeF = 1;
   }
@@ -756,6 +792,7 @@ export class CigPlus {
       this._freeze(dt, b);
       this._effects(dt, b);
       if (this.L) { this._strips(dt, b, G); this._hazards(dt, b, G); this._cannons(dt, b); this._bridges(dt, b); this._rollers(dt, b); }
+      if (this.game) this.obs.update(dt, b, G, this.game);
     }
     this._armyUpdate(dt, b, active);
     this._rollUpdate(dt);
@@ -1175,6 +1212,7 @@ export class CigPlus {
         S.emit(TP.ringS, bx, by, bz, t * 0.8, R, R, R, Math.PI / 2, 0, 0.27, 0.88, 0.43, 1);
       }
     }
+    this.obs.draw(S, Gl, TP, t, b);
     S.end(); Gl.end();
   }
 
@@ -1323,6 +1361,7 @@ export class CigPlus {
     for (const k of KEYS) if (this.T[k] > 0) this._buffOff(k);
     if (this._frozenAny) this._unfreeze();
     for (const a of this.armies) for (const p of a.members) p.alive = false;
+    this.obs.dispose();
     this.scene.remove(this.group);
     this.solid.dispose();
     this.glow.dispose();
@@ -1395,6 +1434,7 @@ export class CigGame {
     this.progT = 0; this.progD = 0;
     this.wave.on = false; this.wave.warned = false; this.wave.calm = 0; this.wave.n = 0; this.wave.vis = 0; this.wave.timedOn = false; this._unlockT = -99;
     G.crushT = 0; G.crushDone = 0; G.crushTons = 0;
+    G.hitIFr = 0; G.smallHits = 0; G.hurt = 0; G.revived = false; G.lakeT = 0; G.reGrabT = 0;   // ÇIĞ ENGELLERİ
     this.stats = newStats();
     this.powerT = 0; this.feverT = 0; this.fevAt = 40; this.fevCd = 0;
     this.bot.queue.length = 0; this.bot.tick = 0;
@@ -1478,7 +1518,7 @@ export class CigGame {
   }
   suctionR() {
     const b = this.ball, M = this.plus.mods;
-    return (this.L ? 1 + 0.12 * this.G.mom : 1) * (b.r * CFG.suctionK + CFG.suctionC) * (M.magnet ? 2 : 1) * (M.eatMul > 1 ? 1.25 : 1) * (this.powerT > 0 ? CFG.powerSuction : 1) * (this.feverT > 0 ? 1.45 : 1);
+    return (this.L ? 1 + 0.12 * this.G.mom : 1) * (b.r * CFG.suctionK + CFG.suctionC) * (M.magnet ? 2 : 1) * (M.eatMul > 1 ? 1.25 : 1) * (this.powerT > 0 ? CFG.powerSuction : 1) * (this.feverT > 0 ? 1.45 : 1) * (this.G.reGrabT > 0 ? 1.4 : 1);   // (after a hit the snow it dropped is easy to take back for 3 s)
   }
 
   _h(name, a, b, c, d, e, f, g, h, i, j) {
@@ -1497,6 +1537,7 @@ export class CigGame {
     q.push({ pri, str, a, b, key, t: this.G.t });
     if (pri === 3) for (let i = q.length - 2; i >= 0; i--) if (q[i].pri === 1) q.splice(i, 1);
     if (pri === 3 && this._mCur && this._mCur.pri === 1) this._mCur = null;
+    if (pri >= 4 && this._mCur && this._mCur.pri < 4) this._mCur = null;   // 4 = a hit / second chance: it is read NOW, whatever is on screen
     this._msgTick();
   }
   _msgTick() {
@@ -1513,8 +1554,8 @@ export class CigGame {
     }
     if (bi < 0) return;
     const m = q.splice(bi, 1)[0];
-    if (m.str == null) this._h('tier', m.a, m.b); else this._h('toast', m.str, m.pri === 2);
-    this._mCur = { pri: m.pri, key: m.key, until: G.t + (m.pri === 3 ? 2.2 : m.str == null ? 2.8 : m.pri === 2 ? 2.4 : 1.7) };
+    if (m.str == null) this._h('tier', m.a, m.b); else this._h('toast', m.str, m.pri === 2, m.pri);
+    this._mCur = { pri: m.pri, key: m.key, until: G.t + (m.pri >= 3 ? 2.2 : m.str == null ? 2.8 : m.pri === 2 ? 2.4 : 1.7) };
   }
 
   // ---- main per-frame entry (dt already includes time scale); steerM = meters the target moved this frame
@@ -1522,7 +1563,7 @@ export class CigGame {
     const G = this.G, b = this.ball, w = this.world, M = this.plus.mods;
     G.t += dt;
     if (G.crushT > 0) { G.crushT -= dt / Math.max(0.3, G.timeScale); if (G.crushT > 0.6) G.timeScale = Math.min(G.timeScale, 0.55); }
-    G.bumpCd -= dt; G.recoverT -= dt; G.momentumT -= dt;
+    G.bumpCd -= dt; G.recoverT -= dt; G.momentumT -= dt; G.hitIFr -= dt; G.reGrabT -= dt; if (G.hurt > 0) G.hurt = Math.max(0, G.hurt - 0.03 * dt);
     G.comboT -= dt; G.gateSlow = (G.gateSlow || 0) - dt;
     if (this.feverT > 0) { this.feverT -= dt; if (this.feverT <= 0) this.feverT = 0; }
     if (this.powerT > 0) { this.powerT -= dt; if (this.powerT <= 0) { this.powerT = 0; if (!this.L) this._msg(1, 'Güç bitti'); } }
@@ -1544,10 +1585,11 @@ export class CigGame {
     const tw = this.L ? this.L.twist : null;
     if (tw === 'wind') G.targetX += 5 * Math.sin(G.t * 0.45) * dt;   // twist: a side wind drifts the finger target, you have to hold against it
     G.targetX = clamp(G.targetX, -lim, lim);
-    const lam = (CFG.steerLam / (1 + b.r * CFG.steerMassK)) * M.steerMul * (tw === 'ice' ? 0.8 : 1);
+    const slip = tw === 'ice' || G.lakeT > 0;   // (a frozen lake slides like the ICE twist, only harder)
+    const lam = (CFG.steerLam / (1 + b.r * CFG.steerMassK)) * M.steerMul * (tw === 'ice' ? 0.8 : G.lakeT > 0 ? 0.55 : 1);
     const maxV = 30 + 3 * b.r;
     const want = clamp((G.targetX - b.x) * lam, -maxV, maxV);
-    b.vx += (want - b.vx) * (1 - Math.exp(-CFG.steerFilter * Math.max(1, M.steerMul) * (tw === 'ice' ? 0.55 : 1) * dt));   // (ice twist: the ball slides)
+    b.vx += (want - b.vx) * (1 - Math.exp(-CFG.steerFilter * Math.max(1, M.steerMul) * (slip ? (G.lakeT > 0 ? 0.3 : 0.55) : 1) * dt));   // (ice twist / frozen lake: the ball slides)
 
     // speed: heavier = faster
     const target = this.targetSpeed();
@@ -1972,11 +2014,7 @@ export class CigGame {
     G.bumpCd = 0.35;
     const ratio = p.r / Math.max(0.2, b.r);
     b.speed *= 0.95;
-    if (ratio > 1.6 && !this.plus.consumeShield()) {
-      this._loseSnow(lerp(0.03, 0.1, clamp((ratio - 1.6) / 2, 0, 1)));
-      this._dropRider();
-      G.combo = 0; this._comboUi(0);
-    }
+    if (!p.hurt) { p.hurt = true; this._obstHit(lerp(0.1, 0.2, clamp((ratio - 1.4) / 2.5, 0, 1)), 'prop'); }   // (a prop that is too big for you is a real hit, once: the red tint on it was the warning)
     this.stats.bumps++;
     this._h('sfx', 'bump', clamp(p.r / (8 + b.r), 0.2, 0.6));
     this._h('haptic', 'light');
@@ -2028,26 +2066,20 @@ export class CigGame {
       const gain = Math.min(CFG.growK * p.r ** 3 * 1.2, 0.5 * b.r ** 3);
       this._grow(b.r ** 3 + gain);
       b.punch(0.12);
-      const xp = Math.max(30, this.snowTons() * 0.4) * (e.roll ? 0.3 : 1);
+      const xp = Math.max(30, this.snowTons() * 0.7) * (e.roll ? 0.3 : 1);   // (a rival that was bigger than you pays big)
       G.bonusTons += xp;
       this._h('burst', p.x, p.y + p.h * 0.5, p.d, 28, 0xeaf3ff, 10, 0.4 + p.r * 0.07, 8);
       this._h('hitStop', 0.09); G.shake += 0.8;
       this._h('sfx', 'crash', 0.7); this._h('sfx', 'milestone', 2); this._h('haptic', 'success'); this._h('flash', 'gold');
       this._text(e.roll ? 'TOP YUTULDU!' : 'RAKİP YUTULDU!', p, 'big', true);
       if (!e.roll) { this._msg(1, '+' + fmtTonsShort(xp) + ' XP'); this.stats.rivalEaten++; } else this.stats.rolls++;
-      if (this.L) this._chainHit(2);
+      if (this.L) this._chainHit(e.roll ? 2 : 4);
       this._tierCheck();
       return;
     }
     if (p.r > b.r * 1.05 && (e.rcd || 0) <= 0) {
       e.rcd = 1.2;
-      if (!this.plus.consumeShield()) {
-        this._loseSnow(0.1);
-        G.combo = 0; this._comboUi(0);
-        this._text('RAKİP SENİ TIRAŞLADI!', b, 'bad', true);
-      }
-      b.speed *= 0.95; G.shake += 0.7; b.squash(0.15);
-      this._h('sfx', 'bump', 0.7); this._h('haptic', 'heavy'); this._h('flash', 'hit');
+      if (this._obstHit(0.26, 'rival')) this._text('RAKİP SENİ TIRAŞLADI!', b, 'bad', true);
       this._h('burst', b.x, b.y, b.d, 12, 0xeaf3ff, 8, 0.3, 5);
     }
     this._slide(p);
@@ -2318,6 +2350,66 @@ export class CigGame {
     this._h('burst', b.x, b.y, b.d, 24, 0xffd45a, 10 + b.r, 0.3 + b.r * 0.05, 7);
     this._text('GÜÇLENDİN!', b, 'big', true);
     if (!this.L) this._msg(1, '💪 GÜÇLENDİN! hızlan, her şeyi ez');
+  }
+
+  // ---- ÇIĞ ENGELLERİ: every hazard (rock, ice wall, crevasse, fence, groomer, log pile, icicle, rival, a prop too big for you) hits through here.
+  // The ball loses a share of its snow (chunks fall out and are easy to take back for 3 s), shakes hard, loses combo / chain / momentum and the
+  // avalanche gains ground. At the smallest size (<= 1.3 x the melt size) no snow is taken but the hit counts: the second one ends the run (CRASH).
+  _obstHit(frac, what) {
+    const G = this.G, b = this.ball, L = this.L;
+    if (G.state !== 'play' || G.hitIFr > 0) return false;
+    G.hitIFr = 0.8;
+    if (this.plus.consumeShield()) return false;
+    if (L) frac *= Math.min(1, 0.5 + 0.17 * L.n);   // (mountains 1-3 teach: softer)
+    const soft = what === 'prop';   // (a prop is the world's, not a trap: it takes snow but never breaks the ball by itself: some are as wide as the track)
+    const small = b.r <= this.dieR() * 1.3, crack = !soft && G.hurt >= 1.5;   // (hits pile up: a third one inside ~20 s breaks the ball like a second one at the smallest size)
+    G.hurt += soft ? 0.34 : 1;
+    G.shake += 1.3; G.hitPending = true; G.combo = 0; this._comboUi(0); this._chainBreak();
+    b.speed *= 0.55; G.gateSlow = 0.45; b.squash(0.22);
+    this.stats.obsHits++; this.stats.hk[what] = (this.stats.hk[what] || 0) + 1;
+    if (this.wave.on) this.wave.d += (b.d - this.wave.d) * 0.25;   // (a stumble: the avalanche gains ground)
+    for (const k of Object.keys(b.stuck).slice(0, 3)) b.dropSlot(k);
+    this._dropRider();
+    this._h('hitStop', 0.07); this._h('sfx', 'crash', 0.8); this._h('haptic', 'heavy'); this._h('flash', 'hit'); this._h('kick', 0.1, -3);
+    this._h('burst', b.x, b.y, b.d + b.r, 22, 0xe8f6ff, 9 + b.r, 0.3 + b.r * 0.06, 6);
+    if (crack || (small && !soft && G.smallHits >= 1)) { this.stats.hits++; this._msg(4, 'ÇARPTIN!'); this.end('crash'); return true; }
+    if (small) {
+      this.stats.hits++; if (!soft) G.smallHits++;
+      this._msg(4, 'SON ŞANS!');
+      return true;
+    }
+    if (G.hurt >= 1.5) this._msg(4, 'SON ŞANS!');
+    G.smallHits = 0; G.reGrabT = 3;
+    this._loseSnow(frac);
+    if (G.state === 'play') this._msg(what === 'prop' ? 3 : 4, what === 'prop' ? 'ÇOK BÜYÜK!' : 'ÇARPTIN!');
+    return true;
+  }
+
+  // passed a hazard with less than half a ball of room: a near miss pays (combo, chain, tons)
+  _nearMiss() {
+    const G = this.G, b = this.ball;
+    this.stats.near++;
+    G.combo += 3; G.comboT = Math.max(G.comboT, 1.4); this._comboUi(G.combo);
+    G.bonusTons += Math.max(4, this.snowTons() * 0.06) * this._cm();
+    if (this.L) this._chainHit(2);
+    this._h('sfx', 'milestone', 1); this._h('haptic', 'light'); this._h('kick', 0.08, 4);
+    this._h('burst', b.x, b.y + b.r * 0.3, b.d, 12, 0xffe27a, 8 + b.r, 0.22 + b.r * 0.05, 5);
+    this._text('ÇOK YAKIN!', b, '', true);
+  }
+
+  // the avalanche reached you: the first time (mountains) it only throws you ahead, the second time the run is over
+  _caught() {
+    const G = this.G, b = this.ball, W = this.wave, C = this.L && this.L.chase;
+    if (this.L && !G.revived && G.state === 'play') {
+      G.revived = true; G.hitIFr = 2.2;
+      W.d = b.d - (C ? C.gap0 : 110);
+      b.speed = Math.max(b.speed, this.targetSpeed()); G.gateSlow = 0; G.shake += 1.6; b.punch(0.2);
+      this._h('flash', 'milestone'); this._h('sfx', 'rumble'); this._h('haptic', 'heavy'); this._h('kick', 0.18, 9);
+      this._h('burst', b.x, b.y, b.d - b.r, 30, 0xeaf3ff, 12 + b.r, 0.4 + b.r * 0.06, 8);
+      this._msg(4, 'ÇIĞ SENİ YAKALADI! İKİNCİ ŞANS');
+      return;
+    }
+    this.end('wave');
   }
 
   _loseSnow(frac, noScatter = false) {
@@ -2876,7 +2968,7 @@ export class CigGame {
     const gap = b.d - W.d;
     this._waveFx(dt, gap);
     if (gap < CFG.lvl.chaseNear && (W.t | 0) !== (W._lt | 0)) { W._lt = W.t; this._h('haptic', 'light'); if (gap < CFG.lvl.chaseRed * 0.7) this._h('flash', 'hit'); }
-    if (W.d >= b.d - b.r * 0.3) this.end('wave');
+    if (W.d >= b.d - b.r * 0.3) this._caught();
   }
 
   // The wall you cannot see yet: W.vis (0..1, "the wall is close") drives rumble and shake; the HUD draws dust at the screen edge and the gap bar from the gap.
@@ -3201,7 +3293,7 @@ export class CigGame {
       this.wave.d += Math.max(this.wave.v, 8) * dt;
     } else if (G.cause === 'win') {
       b.speed = Math.max(0, b.speed - 22 * dt);
-    } else if (G.cause === 'boss') {
+    } else if (G.cause === 'boss' || G.cause === 'crash') {
       // shattered on the PATRON: the ball bursts into snow and is gone
       b.speed = 0;
       b.setRadius(Math.max(0.05, b.r * Math.exp(-6 * dt)));
@@ -3241,7 +3333,7 @@ export class CigGame {
     const look = 14 + b.speed * 0.9 + b.r * 3;
     const Rs = this.suctionR();
     w.query(b.x, b.d + look * 0.5, Math.max(lim, look * 0.5 + 2), _near);
-    const N = 21;
+    const N = clamp(Math.ceil((2 * lim) / (0.45 * b.r)) | 1, 21, 81);   // (a lane every ~half ball: a wide track needs more lanes to thread a gap)
     let bestX = b.x, bestS = -1e9;
     const maxV = 30 + 3 * b.r;
     for (let k = 0; k < N; k++) {
@@ -3265,13 +3357,18 @@ export class CigGame {
           if (lat < b.r + p.r) s += 3 / (1 + dd * 0.05);
           continue;
         }
+        if (p.enemy && p.enemy.rival && p.r > b.r * 1.05) {   // a rival (or a red ball) bigger than you: get out of its way
+          if (lat < 1.25 * (b.r + p.r) && dd < look) s -= 250 / (1 + Math.max(0, dd) * 0.03);
+          continue;
+        }
         if (this._edible(p)) {
           if (need > have + 0.15) continue;
           const reach = Rs * 0.85 + p.r * 0.4;
           if (lat < reach) s += ((p.r / b.r) ** 2 + 0.1) / (1 + dd * 0.06) * (1 - 0.5 * lat / reach);
         } else {
-          const clear = b.r + p.r * CFG.contactK + 0.7 + (1 - bot.noise) * 0.4;
-          if (lat < clear && dd < look) s -= 30 * (1 + p.r / b.r) / (1 + Math.max(0, dd) * 0.04);
+          const big = p.r > b.r * CFG.smashRatio * 1.3;   // too big to smash: a real hit now, it outweighs any food
+          const clear = b.r * (big ? 1.2 : 1) + p.r * CFG.contactK + 0.7 + (1 - bot.noise) * 0.4;
+          if (lat < clear && dd < look) s -= (big ? 240 : 30) * (1 + p.r / b.r) / (1 + Math.max(0, dd) * 0.04);
         }
       }
       // dirt patches melt: stay off them
@@ -3279,6 +3376,7 @@ export class CigGame {
         const dd = pt.d - b.d;
         if (dd > -pt.rd && dd < look && Math.abs(x - pt.x) < pt.rx + b.r) s -= 6;
       }
+      s += this.plus.obs.lane(x, b.r, Math.max(look, 30 + 1.6 * b.speed + 3 * b.r), b.speed, b);   // ÇIĞ ENGELLERİ
       if (this.L) {
         // shrink pads: warm puddles cost more than salt; speed strips pull a little
         for (const h of this.plus.hazards) {
@@ -3298,15 +3396,18 @@ export class CigGame {
         }
       }
       s -= move * 0.015;
+      if (bot.last !== undefined) s += 10 * Math.max(0, 1 - Math.abs(x - bot.last) / (1.5 * b.r));   // (hysteresis: no dithering between two lanes)
       if (s > bestS) { bestS = s; bestX = x; }
     }
+    bot.last = bestX;
+    const careful = bestS < -20 || this.plus.obs.list.some((o) => !o.gone && o.d > b.d - 2 * b.r && o.d - b.d < look);   // (a hazard ahead: a decent player steers cleanly, the wobble is for the food chase)
     // boss arena: go for the boss
     if (this.L && this.L.finale.kind === 'boss' && !this.G.finalBroken && w.bossProp && w.bossProp.alive) {
       const bp = w.bossProp, dd = bp.d - b.d;
       if (dd > -b.r * 2 && dd < 90) bestX = clamp(bp.x, -lim, lim);
     }
     // human sloppiness
-    if (bot.noise > 0) bestX += (Math.random() - 0.5) * bot.noise * (2 + b.r);
+    if (bot.noise > 0) bestX += (Math.random() - 0.5) * bot.noise * (2 + b.r) * (careful ? 0.25 : 1);
     return bestX;
   }
 }
@@ -3316,7 +3417,7 @@ function stuckTypes(b) { let n = 0; for (const k in b.stuck) n++; return n; }
 
 function newStats() {
   return { eats: 0, bumps: 0, gates: 0, gatesBroken: 0, maxCombo: 0, goldens: 0, waves: 0, tierT: [], stalls: 0, chunksEaten: 0, kills: 0, bosses: 0, smashes: 0,
-    bounces: 0, hits: 0, crates: 0, gold: 0, maxChain: 0, maxMul: 1, rivalEaten: 0, time: 0, statues: 0, secret: 0, throne: 0, rolls: 0, townPct: 0 };
+    bounces: 0, hits: 0, obsHits: 0, near: 0, hk: {}, crates: 0, gold: 0, maxChain: 0, maxMul: 1, rivalEaten: 0, time: 0, statues: 0, secret: 0, throne: 0, rolls: 0, townPct: 0 };
 }
 
 const _stickPos = new THREE.Vector3();

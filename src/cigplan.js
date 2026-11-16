@@ -12,6 +12,7 @@
 import { CFG, tierOf, hwFor } from './config.js';
 import { makeRng } from './rng.js';
 import { getLang } from './i18n.js';
+import { OBS_AT, obsLen, obsCount, obsItem } from './cigobs.js';
 
 // 40 mountains. save.js CIG_LEVELS must be >= this or the last ones stay locked (main.js clamps to min(DAG_COUNT, CIG_LEVELS)).
 export const DAG_COUNT = 40;
@@ -90,6 +91,7 @@ const STAR3 = { 1: 'nobounce', 2: 'crates', 3: 'nobounce', 4: 'secret', 5: 'nohi
 // metres of track a part needs (everything the part places stays inside [start, start + len])
 const RES = { crateLine: 44, crateWall: 64, iceWall: 48, ramp: 95, mush: 90, army: 60, town: 90, golden: 50, patch: 100, rival: 70, cannon: 90, bridge: 130, fork: 124, pickup: 14, strip: 14, puddle: 12, salt: 16, gate: 84, arena: 170, statues: 66, secret: 92, domino: 40, throne: 58 };
 const GAP = 25;
+const OBS_SOFT = ['mush', 'army', 'statues', 'domino', 'throne', 'secret', 'patch', 'golden', 'ramp', 'cannon'];   // parts a crowded stage drops before a hazard
 // ramp launches: the upward speed is scaled by this, so a jump lasts about a third less (2 / 3 of the old airtime) and lands sooner
 export const RAMP_AIR_K = 0.67;
 
@@ -235,7 +237,7 @@ function build(n, daily, assist, opts) {
   if (ters) P.chase = { ters: true, t0: 3, gap0: 55, k: 0.82, clamp: 1 };
   else if (n >= 3) {
     let k = Math.min(0.78, 0.42 + 0.012 * (n - 3)), gap0 = Math.max(70, 120 - 1.5 * (n - 3));
-    if (n >= 26) { k += 0.08; gap0 -= 15; }
+    if (n >= 26) { k += 0.04; gap0 -= 10; }   // (was +0.08 / -15 before the hazards: a stumble now eats ground too)
     if (assist) gap0 += 20;
     if (blitz) { k = Math.min(0.9, k + 0.1); gap0 = Math.max(60, gap0 - 15); }
     P.chase = { t0: 6, gap0, k, clamp: 1.35 };
@@ -276,6 +278,23 @@ function build(n, daily, assist, opts) {
   let rivalPlaced = false, townPlaced = false, bridgePlaced = false;
   let lastKind = '';
   let crateCycle = (n + 1) % 3;
+  // ÇIĞ ENGELLERİ (cigobs.js): obsCount(n) hazards share the stages by length and are packed like any other part (so they always fit); own random
+  // stream. DAĞ 2-3 teach with one or two; the DAĞ where a kind first appears starts with it; the same kind never follows itself.
+  const orng = makeRng((seed ^ 0x0b57ac1e) >>> 0), obsAvail = Object.keys(OBS_AT).filter((k) => OBS_AT[k] <= n), obsFresh = obsAvail.find((k) => OBS_AT[k] === n);
+  const obsStage = regions.map(() => 0);
+  {
+    const cnt = obsCount(n), live = regions.map((r, i) => (bossArena && i === S - 1 ? 0 : Math.max(0, r[1] - r[0]))), tot = live.reduce((a, v) => a + v, 0) || 1;
+    let acc = 0, given = 0;
+    live.forEach((v, i) => { acc += v; const upto = Math.round((cnt * acc) / tot); obsStage[i] = upto - given; given = upto; });
+  }
+  let obsBag = [], obsLast = '', obsMade = 0;
+  const obsKind = () => {
+    if (!obsMade++ && obsFresh) return (obsLast = obsFresh);
+    if (!obsBag.length) { obsBag = obsAvail.slice(); for (let q = obsBag.length - 1; q > 0; q--) { const j = (orng.next() * (q + 1)) | 0; [obsBag[q], obsBag[j]] = [obsBag[j], obsBag[q]]; } }
+    let qi = obsBag.length - 1;
+    if (obsBag[qi] === obsLast && obsBag.length > 1) qi = 0;
+    return (obsLast = obsBag.splice(qi, 1)[0]);
+  };
   for (let i = 0; i < S; i++) {
     const [a, b] = regions[i];
     const arenaStage = bossArena && i === S - 1;
@@ -328,6 +347,7 @@ function build(n, daily, assist, opts) {
     if (!arenaStage && n >= 4 && i === Math.min(1, S - 1)) parts.unshift({ kind: 'secret', len: RES.secret });
     // BOWLİNG: a rolling-balls stretch in every stage after the first (first in the list = the last one the packer drops)
     if (!arenaStage && bowling && i >= 1) parts.unshift({ kind: 'rollers', len: rollLen, count: rollN, gold: 0 });
+    for (let q = 0; q < obsStage[i]; q++) { const k = obsKind(); parts.splice(Math.min(parts.length, 1 + 2 * q), 0, { kind: 'obst', k, len: obsLen(k, n) }); }
     if (!arenaStage) {
       // a power-up after the first part, an extra strip in the middle of later stages
       if (n >= 2 && parts.length) parts.splice(Math.min(1, parts.length), 0, { kind: 'pickup', len: RES.pickup, power: power() });
@@ -337,6 +357,8 @@ function build(n, daily, assist, opts) {
       while (parts.length > 1 && total() > b - a) {
         let idx = -1;
         for (let q = parts.length - 1; q >= 0; q--) if (parts[q].kind === 'pickup' || parts[q].kind === 'strip') { idx = q; break; }
+        if (idx < 0) for (let q = parts.length - 1; q >= 0; q--) if (OBS_SOFT.includes(parts[q].kind)) { idx = q; break; }   // (the hazards come before the nice-to-have parts, never before crates / bowling balls / gates)
+        if (idx < 0) for (let q = parts.length - 1; q >= 0; q--) if (parts[q].kind === 'obst') { idx = q; break; }
         if (idx < 0) for (let q = parts.length - 1; q >= 0; q--) if (parts[q].kind !== 'fork') { idx = q; break; }
         if (idx < 0) idx = parts.length - 1;
         parts.splice(idx, 1);
@@ -346,7 +368,7 @@ function build(n, daily, assist, opts) {
       let cur = a + gap;
       for (const p of parts) { p.start = Math.round(cur); cur += p.len + gap; }
     }
-    for (const p of parts) { p.stage = i; items.push(p); }
+    for (const p of parts) { p.stage = i; if (p.kind === 'obst') Object.assign(p, obsItem(p.k, p.start, orng, n)); items.push(p); }
   }
 
   // YOL AYRIMI (DAG 3+, once per mountain): one route fork at 40-60% of the course, in the first free slot
@@ -546,6 +568,7 @@ function makeStars(P, n, daily, boss, items) {
   // (kinds that need a part this mountain does not have fall back to something that always works)
   if (kind === 'gold' && P.crates.gold < 1) kind = 'nobounce';
   if (kind === 'crates' && P.crates.total < 4) kind = 'nobounce';
+  if (kind === 'chain' && !items.some((p) => p.kind === 'crateLine' || p.kind === 'crateWall' || p.kind === 'fork')) kind = 'nobounce';
   if (kind === 'rival' && !hasRival) kind = 'nohit';
   if (kind === 'statues' && !P.hasStatues) kind = 'nobounce';
   if (kind === 'throne' && !P.hasThrone) kind = 'nohit';

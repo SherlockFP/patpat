@@ -25,6 +25,7 @@ import { LANES, LANE_W, setLanes, laneOf, hwFor } from './track.js';
 import { Critters } from './critters.js';
 import { gustAt } from './goals.js';
 import { nearFade } from './nearfade.js';
+import { letterRisk, LETTER_H, LETTER_FIRST, LETTER_REPEAT, LETTER_GAP, MBOX_FIRST, MBOX_EVERY } from './hunt.js';
 import { GLB } from '../glb.js';
 
 const PI = Math.PI, TAU = PI * 2;
@@ -236,6 +237,7 @@ function makeGeometries() {
   G.gift = merge([[B(0.6, 0.6, 0.6), 0xc23ad8], [B(0.64, 0.14, 0.64), 0xffd23a], [B(0.14, 0.64, 0.64), 0xffd23a], [B(0.64, 0.64, 0.14), 0xffd23a],
     [B(0.2, 0.2, 0.2), 0xffd23a, 0, 0.4, 0]], false);
   G.letter = letterGeometry('A');
+  G.dletter = letterGeometry('A');       // the daily-word letter (its own pool: the Y-E-T-İ hunt shows a different glyph at the same time)
   G.scarf = merge([0, 1, 2, 3, 4].map((i) => [B(0.2, 0.34, 0.5), i % 2 ? 0xffffff : 0xd9302f, -0.4 + i * 0.2, 0.1, 0]).concat([[B(0.14, 0.5, 0.08), 0xd9302f, 0.3, -0.25, 0.2], [B(0.14, 0.5, 0.08), 0xffffff, 0.46, -0.3, 0.2], [B(0.16, 0.06, 0.1), 0x2a7ad8, 0.3, -0.5, 0.2], [B(0.16, 0.06, 0.1), 0x2a7ad8, 0.46, -0.55, 0.2]]), false);
   G.beamBox = merge([[B(1, 1, 1), null]], false);
   G.timewarp = merge([[new THREE.ConeGeometry(0.3, 0.38, 8), 0x6ad8ff, 0, 0.19, 0, PI, 0, 0], [new THREE.ConeGeometry(0.3, 0.38, 8), 0xffd23a, 0, -0.19, 0],
@@ -293,12 +295,12 @@ const POOLS = {
   ice: ['box', 'ice', 90], wedge: ['wedge', 'lit', 40], lamp: ['ball', 'glow', 120], disc: ['disc', 'glow', 140], puff: ['ball', 'ice', 60],
   ring: ['torus', 'pulse', 90], chev: ['chev', 'pulse', 300], hex: ['hex', 'pulse', 320],
   flake: ['flake', 'glow', 560], star: ['star', 'glow', 16], magnet: ['magnet', 'glow', 12], helmet: ['helmet', 'glow', 12],
-  rocket: ['rocket', 'glow', 12], spring: ['spring', 'glow', 12], crystal: ['crystal', 'glow', 12], gift: ['gift', 'glow', 12], letter: ['letter', 'glow', 6], scarf: ['scarf', 'glow', 14],
+  rocket: ['rocket', 'glow', 12], spring: ['spring', 'glow', 12], crystal: ['crystal', 'glow', 12], gift: ['gift', 'glow', 12], letter: ['letter', 'glow', 6], dletter: ['dletter', 'glow', 6], scarf: ['scarf', 'glow', 14],
   timewarp: ['timewarp', 'glow', 12], ghost: ['ghost', 'glow', 12], risk: ['risk', 'glow', 12], clone: ['clone', 'glow', 12],
   beam: ['beamBox', 'glow', 220],
 };
 // pickup kind -> pool
-const PICK_POOL = { flake: 'flake', snow: 'ball', x2: 'star', gem: 'gem', crystal: 'crystal', box: 'gift', letter: 'letter', scarf: 'scarf', magnet: 'magnet', helmet: 'helmet', rocket: 'rocket', superjump: 'spring', timewarp: 'timewarp', ghost: 'ghost', risk: 'risk', clone: 'clone', cannon: 'rocket', bait: 'gem', bread: 'gem', board: 'gem' };
+const PICK_POOL = { flake: 'flake', snow: 'ball', x2: 'star', gem: 'gem', crystal: 'crystal', box: 'gift', mbox: 'gift', letter: 'letter', dletter: 'dletter', scarf: 'scarf', magnet: 'magnet', helmet: 'helmet', rocket: 'rocket', superjump: 'spring', timewarp: 'timewarp', ghost: 'ghost', risk: 'risk', clone: 'clone', cannon: 'rocket', bait: 'gem', bread: 'gem', board: 'gem' };
 
 export function pulseOf(phase) {
   const p = phase > 0.5 ? phase - 1 : phase, a = 1 - Math.abs(p) / 0.3;
@@ -338,6 +340,8 @@ export class Obstacles {
     this.beatF = 0; this.phase = 0; this.bpm = 100; this.time = 0; this.pulse = 0;
     this.lastS = 0;
     this.nextLetter = null;
+    this._hr = makeRng((this.seed ^ 0x2f6e2b1) >>> 0);      // its own stream: the daily letter / mystery box never move the hazards the seed lays out
+    this.hunt = null;       // daily word hunt: { i, ch } = the letter the runner wants next (null: none)
     this.jumpPadV = opts.jumpPadV ?? 11;     // runner RCFG.jumpPadV: spring / jump pad coin arcs are sized with it
     this.ballVs = 10; this.gateChain = 0;
     this.platforms = [];       // rideable obstacles (train roofs + ramps): platformAt(s, u)
@@ -350,7 +354,7 @@ export class Obstacles {
     this.powerW = { cannon: 1, magnet: 1, x2: 1, superjump: 1, rocket: 1, helmet: 1, timewarp: 1, ghost: 1, risk: 1, clone: 1, board: 1 };
     this._cid = 'main';
     this.rng = makeRng((this.seed ^ 0xa5a5a5a5) >>> 0);
-    this.next = { power: 260, gem: 520, box: 340, letter: 300, scarf: 140, chain: 420, yeti: 330, plow: 1000, tunnel: 900, slide: 380 };   // distance accumulators for rare pickups
+    this.next = { power: 260, gem: 520, box: 340, letter: 300, scarf: 140, chain: 420, yeti: 330, plow: 1000, tunnel: 900, slide: 380, dl: LETTER_FIRST, mbox: MBOX_FIRST };   // distance accumulators for rare pickups
     this.tutorial = !!opts.tutorial;
     this.endless = opts.endless ?? !track.level;
     this.scarves = opts.scarves ?? false;       // season hunt: scarf tokens (endless runs only)
@@ -650,6 +654,7 @@ export class Obstacles {
       if (k.s > ball.s + rr) break;
       if (!k.alive) continue;
       if (!main && k.kind !== 'flake' && k.kind !== 'snow') continue;     // clones only collect flakes and snow
+      if (main && (k.kind === 'dletter' || k.kind === 'mbox') && k.s < ball.s - 1.2) { k.alive = false; this._freePick(k); continue; }      // a big missed glyph / box never hangs between the camera and the ball
       const ds = cb.s - k.s, du = cb.u - k.u, dh = cb.h - k.h;
       const rad = cb.r + k.rad + (k.kind === 'flake' ? mag : k.kind === 'snow' ? mag * 0.4 : 0);
       if (ds * ds + du * du + dh * dh > rad * rad) continue;
@@ -715,9 +720,9 @@ export class Obstacles {
     const pool = PICK_POOL[kind], idx = this._alloc(pool);
     if (idx < 0) return null;
     const f = this._frameOf(s);
-    const sc = opts.sc || (kind === 'flake' ? 0.78 : kind === 'letter' ? 1.0 : kind === 'scarf' ? 1.1 : kind === 'gem' ? 1.25 : kind === 'crystal' ? 1.3 : 1.35);
+    const sc = opts.sc || (kind === 'flake' ? 0.78 : kind === 'letter' || kind === 'dletter' ? 1.0 : kind === 'scarf' ? 1.1 : kind === 'gem' ? 1.25 : kind === 'crystal' ? 1.3 : 1.35);
     const k = { kind, pool, s, u, h, f, idx, alive: true, ph: (s * 1.7) % TAU, sc, value: opts.value ?? 1, sh: -1,
-      rad: opts.rad ?? (kind === 'snow' ? 0.65 : kind === 'letter' || kind === 'scarf' ? 1.0 : kind === 'flake' ? 0.5 : kind === 'gem' ? 0.75 : 0.62), letter: opts.letter || '' };
+      rad: opts.rad ?? (kind === 'snow' ? 0.65 : kind === 'letter' || kind === 'dletter' || kind === 'scarf' ? 1.0 : kind === 'flake' ? 0.5 : kind === 'gem' ? 0.75 : 0.62), letter: opts.letter || '' };
     if (kind === 'snow') {
       this._col('ball', idx, COL.pile); this._set('ball', idx, f, u, 0.55, k.ph, 0, 1.05, 1.0, 1.05);
       k.sh = this._alloc('shadow');                                                            // contact shadow: the pile reads on white snow
@@ -738,6 +743,22 @@ export class Obstacles {
     const p = this.pool.letter;
     if (c) { p.m.geometry.dispose(); p.m.geometry = letterGeometry(c); p.m.geometry.computeBoundingSphere(); }
     else if (!this.yetiLetter) for (const k of this.picks) if (k.kind === 'letter' && k.alive) { k.alive = false; this._freePick(k); }
+  }
+
+  /** Daily word hunt: the letter the runner wants next ('' / null: none). Every live letter on the track shows it; the next one waits LETTER_GAP m behind the ball. */
+  setHunt(i, ch) {
+    const c = ch ? String(ch).toLocaleUpperCase('tr') : null;
+    this.hunt = c ? { i, ch: c } : null;
+    this.next.dl = Math.max(this.next.dl, this.lastS + LETTER_GAP);
+    const p = this.pool.dletter;
+    if (c) { p.m.geometry.dispose(); p.m.geometry = letterGeometry(c); p.m.geometry.computeBoundingSphere(); }
+    else for (const k of this.picks) if (k.kind === 'dletter' && k.alive) { k.alive = false; this._freePick(k); }
+  }
+  /** metres to the nearest live pickup of `kind` ahead of s (-1: none within 400 m) */
+  aheadOf(kind, s) {
+    const pk = this.picks;
+    for (let i = 0; i < pk.length; i++) { const k = pk[i]; if (k.s < s) continue; if (k.s > s + 400) break; if (k.alive && k.kind === kind) return k.s - s; }
+    return -1;
   }
 
   /** Y-E-T-I hunt: the letter the runner wants next (null: none). Spawns rarely, one at a time. */
@@ -2582,6 +2603,24 @@ Object.assign(Obstacles.prototype, {
         const s = kind === 'slalom' ? Math.min(s1 - 6, freeS(s1 - 14)) : freeS(mid + 6);
         this._pickup('scarf', s, LANES[offRoute(s)], rng.chance(0.55) ? 2.3 : 1.3);
         this.next.scarf = s + Math.min(260, 105 + s * 0.016) * rng.range(0.8, 1.25);      // ~8-9 per km early, ~4 per km by 8 km
+      }
+      // risky lines: a row of this piece that leaves a lane blocked (the letter / box hangs above it or just before it)
+      const riskSpot = (above) => {
+        for (const r of plan.rows) {
+          if (r.vert || r.s < s0 + 8 || r.s > s1 - 8 || r.free === FULL) continue;
+          const bl = ALLL.filter((l) => !(r.free & bit(l)));
+          if (bl.length) return { s: r.s - (above ? 0 : 4), lane: bl[this._hr.int(0, bl.length - 1)] };
+        }
+        return null;
+      };
+      if (this.hunt && !T.level && s0 >= 60 && normal && s1 > this.next.dl) {      // DAILY WORD: letter i is harder to reach the later it comes (free lane, beside a hazard, above a hazard)
+        const rk = letterRisk(this.hunt.i), sp = rk ? riskSpot(rk === 2) : null, s = sp ? sp.s : freeS(mid + 2), lane = sp ? sp.lane : ALLL.filter((l) => l !== laneOf(route(s)))[this._hr.int(0, 1)];
+        this._pickup('dletter', s, LANES[lane], LETTER_H[sp ? rk : 0], { rad: 1.0 });
+        this.next.dl = s + this._hr.range(LETTER_REPEAT[0], LETTER_REPEAT[1]);
+      }
+      if (this.endless && !T.level && !this.tutorial && s0 >= MBOX_FIRST && normal && s1 > this.next.mbox) {      // MYSTERY BOX: only on a risky line (above a hazard), a small random prize revealed on the result
+        const sp = riskSpot(true);
+        if (sp) { this._pickup('mbox', sp.s, LANES[sp.lane], 2.5, { sc: 1.5, rad: 1.1 }); this.next.mbox = sp.s + this._hr.range(MBOX_EVERY[0], MBOX_EVERY[1]); }
       }
       if (this.boxes && s0 >= 100 && normal && s1 > this.next.box) {       // (surprise boxes / letters: only when a mode asks for them; the endless run credits rewards silently)
         const s = freeS(mid - 5);

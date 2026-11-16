@@ -1036,7 +1036,7 @@ body:has(.perk-pick:not(.out)) #hint, body:has(.perk-pick:not(.out)) .rtag, body
 #hud.rush .hud-flow { display: none !important; }
 #banner.runner { top: calc(var(--sat) + 172px); }
 #banner.runner .b, #banner.runner .b.l4, #banner.runner .b.l5 { font-size: 26px; }
-#hud.rush ~ #floats .float.big, #hud.rush ~ #floats .float.bad { font-size: 17px; max-width: 94vw; overflow: hidden; text-overflow: ellipsis; }
+#hud.rush ~ #floats .float.big, #hud.rush ~ #floats .float.bad { font-size: 17px; max-width: 94vw; white-space: normal; text-align: center; line-height: 1.15; }   /* a long death line wraps instead of ending in an ellipsis */
 
 
 body:has(#result:not(.hidden)) #rcol { display: none; }   /* the Rush side chips never float over the result / GÜÇ panel */
@@ -1310,7 +1310,7 @@ body:has(#toast-soft:not(.res) .ts) #hud.rush:not(.goal-intro) .hud-goal:not(.ra
 #hud.rush.rush.rush .hud-goal.cannon { border-color: #4fc3ff; box-shadow: 0 0 8px rgba(79, 195, 255, 0.6); }   /* a perk timer, not a mission: blue, snowflake and x-count */
 .hud-goal.cannon .goal-fill { background: linear-gradient(90deg, #2f7dff, #8fe3ff); }
 @media (prefers-reduced-motion: reduce) { .chap-bar.near::after { animation: none; } }
-#result.rr #btn-card.btn.big { position: fixed; top: calc(var(--sat) + 10px); right: 12px; width: 42px; height: 42px; min-width: 0; margin: 0; padding: 0; font-size: 19px; line-height: 1; border-radius: 50%; z-index: 5; box-shadow: 0 3px 0 #b57400; }   /* the share camera lives in a corner: RETRY is the one lit button */
+#result.rr #btn-card.btn.big { position: static; flex: none; width: 44px; height: auto; min-width: 0; margin: 0; padding: 0; font-size: 19px; line-height: 1; border-radius: 14px; box-shadow: 0 3px 0 #b57400; }   /* the share camera sits in the MENU row: it never covers the title */   /* the share camera lives in a corner: RETRY is the one lit button */
 .cig-hud .cg-row { align-items: center; justify-content: center; flex-wrap: nowrap; white-space: nowrap; }
 .cig-hud .cg-nx { color: #cfe6ff; }
 .cig-hud .cg-nx:not(:empty)::before { content: "\00b7"; margin-right: 8px; color: #fff; }
@@ -1459,3 +1459,37 @@ html .fm-main > .fm-best .bk { font-size: 12px; color: #3b5380; }
 .rk-tick { position: fixed; left: 12px; top: calc(env(safe-area-inset-top, 0px) + 150px); z-index: 12; max-width: 62vw; padding: 3px 11px 4px; border-radius: 12px; background: rgba(15, 30, 55, 0.86); color: #fff; font: 800 13px/1.2 system-ui, sans-serif; text-shadow: 0 1px 0 var(--ink); pointer-events: none; opacity: 0; transform: translateX(-14px); transition: opacity 0.15s, transform 0.15s; }
 .rk-tick.on { opacity: 1; transform: none; }
 .rk-tick.gold { background: #ffd23a; color: #14284b; text-shadow: none; }
+
+/* result card: the quest pill is a normal row of the card (after the league bar), so it can never sit over the goal line or the rank header */
+#toast-soft.inres { position: static; top: auto; left: auto; right: auto; width: 100%; z-index: auto; }
+#toast-soft.inres:empty { display: none; }
+#toast-soft.inres .ts { max-width: 100%; box-sizing: border-box; text-align: center; }
+#result.runner .res-mid { justify-content: safe center; }   /* a tall card scrolls from its top: the first row is never pushed out of reach */
+
+/* ---- the Subway loop on the Rush HUD: x-identity + SET n/3, the daily word, a centre card, the mystery-box row on the result ---- */
+#hud-ident { position: absolute; left: 12px; top: calc(var(--sat) + 49px); display: flex; align-items: center; gap: 4px; padding: 0 8px; height: 23px; box-sizing: border-box; border-radius: 12px; border: 2.5px solid var(--ink); background: linear-gradient(180deg, #ffe27a, var(--gold)); color: var(--ink); font-weight: 900; pointer-events: none; transform-origin: left top; transition: transform 0.35s cubic-bezier(.2, 1.5, .4, 1); z-index: 3; box-shadow: 0 2px 0 rgba(10, 25, 55, 0.7); }
+#hud-ident b { font-size: 16px; line-height: 1; letter-spacing: 0.02em; }
+#hud-ident small { font-size: 11px; line-height: 1; font-weight: 800; letter-spacing: 0.03em; }
+#hud-ident.big { transform: scale(1.25); }
+#hud-ident.pop { animation: idPop 0.8s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes idPop { 0% { transform: scale(2.2); filter: brightness(1.6); } 100% { transform: scale(1); } }
+#hud-hunt { position: absolute; left: 198px; top: calc(var(--sat) + 52px); display: flex; gap: 3px; pointer-events: none; z-index: 3; }
+#hud-hunt i { font-style: normal; width: 21px; height: 22px; border-radius: 7px; box-sizing: border-box; border: 2px solid rgba(8, 22, 48, 0.85); background: rgba(8, 22, 48, 0.62); color: rgba(255, 255, 255, 0.55); font: 900 14px/18px system-ui, sans-serif; text-align: center; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4); }
+#hud-hunt i.on { background: linear-gradient(180deg, #ffe27a, var(--gold)); color: var(--ink); text-shadow: none; box-shadow: 0 0 8px rgba(255, 207, 58, 0.8); }
+#hud-hunt i.nx { color: #fff; border-color: var(--gold); animation: huntNx 0.7s ease-in-out infinite alternate; }
+#hud-hunt i.pop { animation: idPop 0.6s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes huntNx { to { background: rgba(255, 207, 58, 0.35); } }
+#hud-card { position: absolute; left: 50%; top: calc(var(--sat) + 168px); transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 1px; padding: 6px 18px 8px; max-width: 88vw; box-sizing: border-box; text-align: center; border-radius: 16px; border: 3px solid var(--ink); background: rgba(10, 25, 55, 0.92); color: #fff; font-weight: 900; pointer-events: none; z-index: 6; box-shadow: 0 4px 0 rgba(10, 25, 55, 0.7); }
+#hud-card.on { display: flex; animation: cardIn 1.5s ease forwards; }
+#hud-card small { font-size: 12px; letter-spacing: 0.16em; color: var(--gold); }
+#hud-card b { font-size: 20px; line-height: 1.15; text-shadow: 0 2px 0 var(--ink); }
+#hud-card em { font-style: normal; font-size: 14px; color: #ffe27a; }
+#hud-card em:empty { display: none; }
+#hud-card.cer { background: linear-gradient(180deg, #ffe27a, var(--gold)); color: var(--ink); }
+#hud-card.cer small, #hud-card.cer em { color: var(--ink); }
+#hud-card.cer b { font-size: 40px; text-shadow: none; }
+@keyframes cardIn { 0% { opacity: 0; transform: translateX(-50%) scale(0.8); } 10% { opacity: 1; transform: translateX(-50%) scale(1.06); } 18% { transform: translateX(-50%) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+.res-extra .rx-mb { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; padding: 5px 10px; border-radius: 12px; border: 2px solid #ff9a3a; background: rgba(255, 154, 58, 0.18); font-weight: 900; font-size: 13px; color: #ffe0b0; text-shadow: 0 1px 0 var(--ink); animation: rxJust 0.6s 1.2s cubic-bezier(.2, 1.6, .4, 1) backwards; }
+.res-extra .rx-mb b { color: #fff; font-size: 15px; }
+@media (prefers-reduced-motion: reduce) { #hud-ident.pop, #hud-hunt i.pop, #hud-hunt i.nx, #hud-card.on { animation: none; } #hud-ident { transition: none; } }
+#hud.rush.rush.rush .hud-goal { top: calc(var(--sat) + 78px); }   /* the x-identity + daily word row sits between the score and the one goal line */
