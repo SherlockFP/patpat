@@ -179,7 +179,7 @@ async function ballRead(name, ctx) {
   if (!r) return; READ_LOG.push({ name, ...r });
   if (r.pct > 25) ctx.fail(`ball ${r.pct}% covered in ${name}.png (dom ${r.dom}%, 3D ${r.mesh}%, by ${r.by}; ball at ${r.cx},${r.cy} r${r.rad})`);
   if (r.off) ctx.fail(`ball off screen (${r.cx},${r.cy}) in ${name}.png`);
-  if (!/ring/.test(r.st) && (r.hf < 0.15 || r.hf > 0.55)) ctx.fail(`[${r.st}] horizon at ${Math.round(r.hf * 100)}% of the screen height in ${name}.png (must be 15-55%)`);
+  if (!/ring/.test(r.st) && (r.hf < 0.1 || r.hf > 0.6)) ctx.fail(`[${r.st}] horizon at ${Math.round(r.hf * 100)}% of the screen height in ${name}.png (must be 10-60%, the live-sample band: a Yeti on the ball's heels tilts the lens down)`);
   if (r.cen.length > 1) ctx.fail(`${r.cen.length} centre toasts / banners at once in ${name}.png: ${r.cen.join(', ')}`);
   if (r.slab) ctx.fail(`banner / summary slab covers the top HUD in ${name}.png`);
 }
@@ -447,6 +447,9 @@ async function rushPlaytest(ctx) {
   const tFirst = Date.now() - tNav;
   await ev(RAF_INSTALL);
   ctx.pass(`time page-load -> first playable frame (HUD+state=play): ${tFirst} ms`);
+  // deterministic: every Rush mission text (icon, all goal steps, worst progress "g/g" and the first-run "→ x" suffix) fits the pill at 390 px without a cut-off, at most 2 lines (EN or TR as loaded)
+  const mf = await ev(`(async()=>{const {MISSION_TPL}=await import('/src/meta.js');const {t:tt}=await import('/src/i18n.js');const pill=document.querySelector('#hud-goal');if(!pill)return{err:'no pill'};const c=pill.cloneNode(true);c.removeAttribute('id');c.classList.remove('hidden');c.style.cssText='visibility:hidden;display:block';pill.parentNode.appendChild(c);const l=c.querySelector('.goal-lbl');l.removeAttribute('id');const bad=[];let n=0;for(const t of MISSION_TPL){if(t.legacy||t.modes==='cig')continue;for(const g of t.goals){n++;l.textContent=t.icon+' '+tt(t.text(g))+' '+g+'/'+g+' → x4';await new Promise(r=>setTimeout(r,0));if(l.scrollWidth>l.clientWidth+1||c.getBoundingClientRect().height>46)bad.push(l.textContent+' ('+Math.round(c.getBoundingClientRect().height)+'px)')}}c.remove();return{n,bad}})()`, true);
+  if (mf.err) ctx.warn('mission fit check skipped: ' + mf.err); else if (mf.bad.length) ctx.fail(`mission texts do not fit the pill: ${mf.bad.slice(0, 4).join(' | ')}`); else ctx.pass(`all ${mf.n} Rush mission texts fit the pill (<= 2 lines, no cut-off)`);
   const KS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
   let secShot = false;
   const sections = new Set();   // set-piece name strips seen (.sec-strip)
@@ -612,7 +615,9 @@ async function cigPolish(ctx) {
   const ew = await ev('(()=>{const W=cig.game.wave;return {on:W.on,timed:!!W.timedOn,gap:+(cig.ball.d-W.d).toFixed(0),st:cig.G.state}})()');
   await ev('cig.game.wave.d=cig.ball.d-40;__simF(0.5)'); await shot('cig_endless_wave', ctx);
   if (ew.on && ew.timed || ew.st !== 'play') ctx.pass(`endless avalanche: ${JSON.stringify(ew)} at 46 s`); else ctx.fail('endless avalanche missing at 46 s: ' + JSON.stringify(ew));
-  for (const n of [6, 16, 26, 36]) { await start(n); await ev('__simF(3)'); await shot('cig_theme_' + n, ctx); }
+  for (const n of [6, 16, 26, 36]) { await start(n); await ev('__simF(3)'); await sleep(700); await ev('__simF(1.2)'); await shot('cig_theme_' + n, ctx); }
+  await start(12); await ev('__simF(9)');   // avalanche wall frames at 150 / 80 / 40 m of gap
+  for (const gp of [150, 80, 40]) { await ev(`(()=>{const g=cig.game;g.wave.d=cig.ball.d-${gp}})()`); await ev('__simF(0.4)'); await shot('cig_wave_' + gp, ctx); }
 }
 
 async function endlessDaily(ctx) {
@@ -852,15 +857,16 @@ async function ringRun(ctx, seed, tag, extras) {      // seed 7 gets the full se
   const D = await ev(`(()=>{const r=cig.runner,T=r.track,SEG={def:{},s0:0,s1:1e9,bonus:false};T.chapterAt=()=>SEG;T._q.unshift('loop','loop');T._nextRound=1e9;let a;for(let i=0;i<12&&(a=T.pieces.filter((q)=>q.kind==='loop'&&q.s0>r.b.s)).length<2;i++)T.ensure(T.genEnd+30);return a.length>1?{a:a[0].loop,b:a[1].loop}:null})()`);
   if (!D) ctx.warn('double loop: the two hand-queued rings were not built');
   else {      // dense sweep: the ball read every 1.5 m from before the first ring to past the last: not a frame may hide it (> 50 % covered) or lose it (off screen / a speck)
-    const bad = [], len = D.b.s1 - D.b.s0, marks = [[D.a.s1 + 2, 'exit of the first ring'], [D.a.s1 + 8, 'between the rings'], [D.b.s0 - 3, 'entry of the second ring'], [D.b.s0 + 0.25 * len, "3 o'clock, second ring"], [D.b.s0 + 0.5 * len, 'top of the second ring'], [D.b.s0 + 0.75 * len, "9 o'clock, second ring"], [D.b.s1 + 5, 'exit of the second ring']]; let n = 0, minRad = 99, mi = 0;
+    const bad = [], len = D.b.s1 - D.b.s0, marks = [[D.a.s1 + 2, 'exit of the first ring'], [D.a.s1 + 8, 'between the rings'], [D.a.s1 + 17, 'between the rings, ball past the first ring'], [D.b.s0 - 3, 'entry of the second ring'], [D.b.s0 + 0.25 * len, "3 o'clock, second ring"], [D.b.s0 + 0.5 * len, 'top of the second ring'], [D.b.s0 + 0.75 * len, "9 o'clock, second ring"], [D.b.s1 + 5, 'exit of the second ring']]; let n = 0, minRad = 99, mi = 0;
+    if (process.env.VERBOSE) console.log("  s28 dloop " + JSON.stringify({ a0: D.a.s0, a1: D.a.s1, aR: D.a.R, b0: D.b.s0, b1: D.b.s1, bR: D.b.R }));
     await ev(RING_STEP(`r.b.s>=${D.a.s0 - 40}`));
     for (let sm = D.a.s0 - 18; sm < D.b.s1 + 12; sm += 1.5) {
       const st = await ev(RING_STEP(`r.b.s>=${sm}`)); await sleep(30);
       if (mi < marks.length && sm >= marks[mi][0]) { await ringShot('dloop_' + mi, ctx, `${marks[mi][1]} s=${st.s} cam ${st.k}`); mi++; }
       const q = await ev(BALL_READ).catch(() => null); if (!q) continue; n++; minRad = Math.min(minRad, q.rad);
-      if (q.pct > 50 || q.off || q.rad < 4) bad.push(`${Math.round(sm)}:${q.pct}%${q.off ? " off" : ""} r${q.rad} at ${q.cx},${q.cy} by ${q.by}`);
+      if (q.pct > 50 || q.off || q.rad < 4) { if (bad.length < 3) { await ev(`(()=>{const d=document.createElement('div');d.id='ppdbg';d.style.cssText='position:fixed;z-index:99;pointer-events:none;border:2px solid red;border-radius:50%;left:${q.cx - q.rad - 6}px;top:${q.cy - q.rad - 6}px;width:${q.rad * 2 + 12}px;height:${q.rad * 2 + 12}px';document.body.appendChild(d)})()`); await shot('dloop_bad_' + bad.length, ctx, { noBlank: true, noRead: true }); await ev(`document.getElementById('ppdbg')?.remove()`);  } bad.push(`${Math.round(sm)}:${q.pct}%${q.off ? " off" : ""} r${q.rad} at ${q.cx},${q.cy} by ${q.by}`); }
     }
-    if (bad.length > 5) ctx.fail(`double loop sweep: ${bad.length} of ${n} reads hide or lose the ball: ${bad.slice(0, 8).join('; ')}`); else ctx.pass(`double loop sweep: the ball is visible in ${n - bad.length} of ${n} reads (smallest radius ${minRad}px; at most 5 reads = 7.5 m hidden behind a ring edge)`);
+    if (bad.length > 0) ctx.fail(`double loop sweep: ${bad.length} of ${n} reads hide or lose the ball: ${bad.slice(0, 8).join('; ')}`); else ctx.pass(`double loop sweep: the ball is visible in ${n - bad.length} of ${n} reads (smallest radius ${minRad}px; none hidden)`);
   }
   await ev(`cig.runner.hitStop=0`);
 }

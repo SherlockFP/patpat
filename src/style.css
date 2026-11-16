@@ -792,6 +792,16 @@ body:has(.perk-pick:not(.out)) #hint, body:has(.perk-pick:not(.out)) .rtag, body
 #cig-wave { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
 #cig-wave.on { opacity: 1; }
 #cig-wave .cw-dust { position: absolute; left: 0; right: 0; bottom: 0; height: 30%; opacity: 0; transition: opacity 0.3s; background: radial-gradient(120% 100% at 50% 110%, rgba(250, 253, 255, 0.95) 0%, rgba(235, 244, 255, 0.7) 35%, rgba(235, 244, 255, 0) 80%); }
+#cig-wave .cw-wall { position: absolute; left: 0; right: 0; bottom: 0; height: 0; opacity: 0; overflow: hidden; transition: opacity 0.3s; }
+#cig-wave .cw-wall i { position: absolute; left: 0; right: 0; bottom: 0; top: 0; }
+#cig-wave .cw-wall i::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 64px; background-repeat: repeat-x; background-size: 320px 64px; animation: cwRoll 7s linear infinite; }
+#cig-wave .cw-wall i::after { content: ""; position: absolute; left: 0; right: 0; top: 63px; bottom: 0; }
+#cig-wave .cw-a { top: -12px !important; }
+#cig-wave .cw-a::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='64'%3E%3Cpath fill='%23b9cbe6' d='M0 64V40Q20 14 50 30Q70 4 110 26Q140 8 175 28Q205 2 245 24Q275 10 300 28Q312 36 320 40V64Z'/%3E%3C/svg%3E"); animation-duration: 11s !important; animation-direction: reverse; }
+#cig-wave .cw-a::after { background: #b9cbe6; }
+#cig-wave .cw-b::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='64'%3E%3Cpath fill='%23f7fbff' d='M0 64V40Q20 14 50 30Q70 4 110 26Q140 8 175 28Q205 2 245 24Q275 10 300 28Q312 36 320 40V64Z'/%3E%3C/svg%3E"); }
+#cig-wave .cw-b::after { background: linear-gradient(#f7fbff, #dfeaf8); }
+@keyframes cwRoll { from { background-position-x: 0; } to { background-position-x: 320px; } }
 #cig-wave .cw-pill { position: absolute; left: 50%; bottom: calc(var(--sab, 0px) + 14px); transform: translateX(-50%); display: flex; align-items: center; gap: 7px; padding: 3px 11px 4px; border-radius: 12px; white-space: nowrap; background: rgba(8, 22, 48, 0.72); font-weight: 900; font-size: 13px; letter-spacing: 0.06em; color: #fff; }
 #cig-wave .cw-pill b { color: #bfe0ff; }
 #cig-wave .cw-bar { width: 70px; height: 8px; border-radius: 5px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
@@ -1416,3 +1426,13 @@ body:has(.fm-ov) #result { visibility: hidden; }   /* a panel (GÜÇ ...) over t
 #hud.rush.rush.rush .hud-coins { background: rgba(8, 22, 48, 0.55); border-radius: 10px; padding: 3px 8px; }
 .res-extra .rx-dim { font-size: 13px; color: #e2eeff; }
 .res-extra .rx-goal .rg-h { font-size: 12px; }
+/* HUD gap pass: the town label is a plate under its icon, not loose text on the house */
+#cig-gauge .gt { gap: 4px; }
+#cig-gauge .gt small { margin-top: 0; padding: 1px 8px 2px; font-size: 13px; letter-spacing: 0.04em; border-radius: 9px; background: rgba(8, 22, 48, 0.86); border: 1.5px solid rgba(255, 255, 255, 0.7); text-shadow: none; }
+#hud.rush .cmb .ch.k u { margin-top: 6px; }   /* the SCORE caption clears the multiplier's outline */
+html .fm-main > .fm-best .bs { font-size: 14px; font-weight: 900; color: #17345c; }   /* the 'Next: 4,001' line: 14 px, dark ink on the pale plate */
+html .fm-main > .fm-best .bk { font-size: 12px; color: #3b5380; }
+/* mission pill: a long mission wraps to a second line instead of being cut off (390 px wide, EN and TR) */
+#hud.rush.rush.rush .hud-goal { height: auto; min-height: 28px; }
+#hud.rush.rush.rush .hud-goal .goal-lbl { white-space: normal; overflow: visible; text-overflow: clip; font-size: 14px; line-height: 16px; padding: 3px 34px 3px 8px; overflow-wrap: anywhere; }
+#hud.rush .hud-coins .rec-gap { font-size: 13px; color: #ffe066; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }   /* the metres-to-record line: >= 12 px with contrast */

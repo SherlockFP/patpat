@@ -1573,9 +1573,9 @@ export class UI {
       if (!on) return;
       const root = document.createElement('div');
       root.id = 'cig-wave';
-      root.innerHTML = '<div class="cw-dust"></div><div class="cw-pill"><b>ÇIĞ</b><span class="cw-bar"><i></i></span><em></em></div>';
+      root.innerHTML = '<div class="cw-dust"></div><div class="cw-wall"><i class="cw-a"></i><i class="cw-b"></i></div><div class="cw-pill"><b>ÇIĞ</b><span class="cw-bar"><i></i></span><em></em></div>';
       this.el.hud.appendChild(root);
-      w = this._cw2 = { root, dust: root.firstChild, bar: root.querySelector('i'), txt: root.querySelector('em'), g: -1, on: false };
+      w = this._cw2 = { root, dust: root.firstChild, wall: root.querySelector('.cw-wall'), bar: root.querySelector('.cw-bar i'), txt: root.querySelector('em'), g: -1, on: false };
     }
     if (on !== w.on) { w.on = on; w.root.classList.toggle('on', on); }
     if (!on) return;
@@ -1583,6 +1583,10 @@ export class UI {
     if (g === w.g) return;
     w.g = g;
     w.dust.style.opacity = String(Math.round(clamp01((130 - gap) / 115) * 90) / 100);
+    // the snow wall: a low rolling band from ~150 m that climbs to ~1/3 of the screen (the ball sits above it) as the gap closes
+    const wk = clamp01((170 - gap) / 140);
+    w.wall.style.height = (4 + 36 * Math.pow(wk, 1.1)).toFixed(1) + '%';
+    w.wall.style.opacity = wk > 0 ? '1' : '0';
     w.bar.style.setProperty('--f', String(Math.round(100 * clamp01(1 - gap / Math.max(60, max || 150))) / 100));
     w.txt.textContent = g + ' m';
     w.root.classList.toggle('near', gap < 45);

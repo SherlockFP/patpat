@@ -516,7 +516,7 @@ export class Runner {
     this.camU = 0;
     this.camLookU = 0;
     this.camRoundK = 0;
-    this.camLoopK = 0; this.camLoop = null; this.camLC = new THREE.Vector3(); this.camLS = new THREE.Vector3(); this.camCorkK = 0; this.camHi = 0; this.camHiS = 0; this.setPiece = false; this.spLow = 0;     // ring camera: the ring being framed, its smoothed centre, the side the camera sits on
+    this.camLoopK = 0; this.camLoop = null; this.camLC = new THREE.Vector3(); this.camLS = new THREE.Vector3(); this.camLT = new THREE.Vector3(); this.camCorkK = 0; this.camHi = 0; this.camHiS = 0; this.setPiece = false; this.spLow = 0;     // ring camera: the ring being framed, its smoothed centre, the side the camera sits on
     this.tilt = 0;
     this.leanT = 0;
     this.hitStop = 0;
@@ -4783,10 +4783,10 @@ export class Runner {
     tr.frame(L.s0, _f2); _lc.copy(_f2.pos); _v2.copy(_f2.pos); _lc.addScaledVector(_f2.up, R);
     tr.frame(L.s1, _f2); _lc.add(_f2.pos).addScaledVector(_f2.up, R).multiplyScalar(0.5);
     _v2.subVectors(_f2.pos, _v2);
-    tr.frame((L.s0 + L.s1) * 0.5, _f2); _ls.copy(_f2.right); _ls.y = 0; _ls.normalize();
+    tr.frame((L.s0 + L.s1) * 0.5, _f2); _ls.copy(_f2.right); _ls.y = 0; _ls.normalize(); this.camLT.copy(_f2.tan); this.camLT.y = 0; this.camLT.normalize();
     if (_v2.dot(_ls) > 0) _ls.negate();
     this.camLS.copy(_ls);
-    if (this.camLoopK < 0.05) this.camLC.copy(_lc);
+    if (this.camLoopK < 0.9) this.camLC.copy(_lc);
   }
 
   // The chase camera rides the path (exactly `camBackS` behind the ball along the track — no world-space lag, so it never
@@ -4835,9 +4835,9 @@ export class Runner {
     if (kind === 'tube') { upT = Math.min(upT, 4.6); backT = Math.min(backT, 7); }   // stay inside the 5.6 m tube (axis 4 m up)
     // Sonic ring (11-16 m): from ~1 s before it until ~0.8 s after it the camera leaves the chase rig and watches from the SIDE (see below); the chase framing itself is untouched.
     const pa = tr.pieceAt(b.s + 26), lpC = pc && pc.loop && b.s < pc.loop.s1 + 12 ? pc : null, lp = !dying ? (lpC || (pa && pa.loop ? pa : null)) : null;
-    const loopT = lp && b.s > lp.loop.s0 - 26 && b.s < lp.loop.s1 + 12 ? 1 : 0;
+    const loopT = lp && b.s > lp.loop.s0 - (lp.loop === this.camLoop || !this.camLoop || lp.loop.s0 - this.camLoop.s1 > 45 ? 26 : 10) && b.s < lp.loop.s1 + 12 ? 1 : 0;      // a ring right behind another one (double loop): the chase rig has the gap, the side view comes back 10 m before the second ring
     this.camLoopK += (loopT - this.camLoopK) * kfil(snap, cdt, 5);
-    if (loopT && this.camLoop !== lp.loop) { if (this.camLoop) this.camHiS = this.camLoop.s1 + this.camLoop.R + 8; this.loopRig(lp.loop); }
+    if (loopT && this.camLoop !== lp.loop) { if (this.camLoop) this.camHiS = this.camLoop.s1 + this.camLoop.R * 0.5; this.loopRig(lp.loop); }
     const lk = this.camLoopK;
     this.camBackS += (backT - this.camBackS) * kfil(snap, cdt, 5);
     this.camUpH += (upT - this.camUpH) * kfil(snap, cdt, 5);
@@ -4875,7 +4875,8 @@ export class Runner {
       // from the last quarter of a ring until a ring radius past its exit the lens rises high and close (nearly overhead): seen flat from the side, the ring's near pass hides the ball just after the exit
       const cl = this.camLoop, hiT = b.s > cl.s0 + 0.7 * (cl.s1 - cl.s0) && b.s < cl.s1 + cl.R + 8 || b.s < this.camHiS ? 1 : 0;
       this.camHi += (hiT - this.camHi) * kfil(snap, cdt, hiT ? 6 : 12);
-      _tp.copy(this.camLC).addScaledVector(this.camLS, D * (1 - 0.55 * this.camHi)); _tp.y += (0.35 + 2.9 * this.camHi) * R;
+      _tp.copy(this.camLC).addScaledVector(this.camLS, D * (1 - 0.55 * this.camHi)); _tp.y += (0.35 + 2.9 * this.camHi) * R + 0.12 * D * (1 - this.camHi);   // + a lens lift that grows with the distance: a hill brow between a far lens and the far ball (r 7-9 px) hid it in ~1 of 4 Rush runs
+      _tp.addScaledVector(this.camLT, -1.2 * R * clamp((cl.s0 + 2 - b.s) / 18, 0, 1));      // before a ring the lens waits behind the ball's end of the road: the ring's near wall never stands between lens and ball (double loop)
       _v.lerp(_tp, e);
       // the blend in and out never swings the lens away from the ball faster than the view closes in (a speck 60 m away is lost): the distance grows with e^3 up to the full side view
       _ax.subVectors(_v, this.ctx.ball.group.position); _tp.x = 12 + (D + 2 * R - 12) * e * e * e;

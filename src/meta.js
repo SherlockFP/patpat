@@ -331,7 +331,7 @@ const tierFromName = (n) => {
   if (t.includes('çığ') || t.includes('cig')) return 2;
   return t ? 1 : 0;
 };
-const MISSION_TPL = [
+export const MISSION_TPL = [
   { id: 'coins', group: 'coin', modes: 'endless', scope: 'run', icon: '❄️', goals: [100, 200, 350, 500, 800, 1200], text: (g) => `Bir koşuda ${fmtN(g)} kar tanesi topla`,
     on: { run_progress: best((d) => d.coins), endless_end: best((d) => d.coins) } },
   { id: 'dist', group: 'dist', modes: 'endless', scope: 'run', icon: '📏', goals: [500, 1000, 1500, 2500, 4000, 6000], text: (g) => `Bir koşuda ${fmtN(g)} m koş`,

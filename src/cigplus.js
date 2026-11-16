@@ -2883,8 +2883,9 @@ export class CigGame {
   _waveFx(dt, gap) {
     const G = this.G, W = this.wave;
     W.vis = clamp((CFG.lvl.chaseNear - gap) / (CFG.lvl.chaseNear - 15), 0, 1);
+    const far = clamp((170 - gap) / 140, 0, 1);   // the wall is in view from ~150 m: a faint tremble that grows with it
+    if (far > 0) G.shake = Math.max(G.shake, 0.04 + 0.1 * far * far + (W.vis > 0 ? 0.08 + 0.5 * W.vis : 0));
     if (W.vis <= 0) return;
-    G.shake = Math.max(G.shake, 0.12 + 0.5 * W.vis);
     W.rumT = (W.rumT || 0) - dt;
     if (W.rumT <= 0) { W.rumT = 1.3 - 0.8 * W.vis; this._h('sfx', 'rumble'); if (W.vis > 0.5) this._h('haptic', 'light'); }
   }

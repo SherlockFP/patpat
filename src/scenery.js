@@ -100,6 +100,11 @@ export const THEMES = [
   },
 ];
 
+// public/sky/<id>.jpg panoramas for the matching themes (same files and mapping idea as the Rush chapter backdrops in runner/biomes.js)
+const SKY_OF = { dawn: 'dawn', canyon: 'canyon', nightcity: 'night', volcano: 'volcano', sakura: 'sakura', neon: 'neon', space: 'space' };
+export const SKY_CYCLE = ['dawn', 'canyon', 'night', 'volcano', 'sakura', 'neon', 'space'];   // endless: tier 2, 3, ... (tier 1 keeps the colour sky)
+export const skyOfTheme = (th) => SKY_OF[th && th.id] || null;
+
 const THEME_BY_ID = {};
 for (const t of THEMES) THEME_BY_ID[t.id] = t;
 
@@ -685,6 +690,60 @@ export class Scenery {
     this.group.add(this.hemi, this.sun);
   }
 
+  // Sky photo backdrop (public/sky/<id>.jpg): ONE extra textured dome (+1 draw call while shown), lazy-loaded, dither-faded; the colour dome stays the fallback.
+  buildBackdrop() {
+    const ROWS = [-8, 0, 5, 10, 15, 20, 28, 38, 50, 90], SEG = 36, REP = 3, D2R = Math.PI / 180, pos = [], uv = [], idx = [];
+    for (let j = 0; j < ROWS.length; j++) {
+      const e = ROWS[j] * D2R, ce = Math.cos(e), v = 1 - clamp(0.93 - ROWS[j] / 48, 0, 1);
+      for (let i = 0; i <= SEG; i++) { const a = (i / SEG) * TAU; pos.push(Math.sin(a) * ce * 990, Math.sin(e) * 990, Math.cos(a) * ce * 990); uv.push((i * REP) / SEG, v); }
+    }
+    for (let j = 0; j < ROWS.length - 1; j++) for (let i = 0; i < SEG; i++) { const a = j * (SEG + 1) + i, b = a + SEG + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    this._bdU = { value: 0 };
+    const m = new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, depthWrite: false, depthTest: false });
+    m.onBeforeCompile = (sh) => {      // screen-door dissolve: uBd = share of pixels drawn
+      sh.uniforms.uBd = this._bdU;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uBd;')
+        .replace('void main() {', 'void main() {\n  if (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) > uBd) discard;');
+    };
+    m.customProgramCacheKey = () => 'scn-bd';
+    this.bd = new THREE.Mesh(geo, m);
+    this.bd.renderOrder = -999; this.bd.frustumCulled = false; this.bd.visible = false;
+    this.sky.add(this.bd);
+    this._bdTex = {}; this._bdWant = null; this._bdCur = null; this._bdK = 0;
+  }
+
+  /** id: 'dawn' | 'canyon' | 'night' | 'volcano' | 'sakura' | 'neon' | 'space' | null (the colour sky). Safe to call every frame. */
+  setBackdrop(id) {
+    id = id || null;
+    if (id === this._bdWant) return;
+    this._bdWant = id;
+    if (id && !this._bdTex[id]) {
+      const rec = this._bdTex[id] = { tex: null };
+      try {
+        new THREE.TextureLoader().load(`./sky/${id}.jpg`, (tx) => {
+          if (this.disposed) { tx.dispose(); return; }
+          tx.colorSpace = THREE.SRGBColorSpace; tx.wrapS = THREE.RepeatWrapping; tx.wrapT = THREE.ClampToEdgeWrapping; tx.anisotropy = 1;
+          rec.tex = tx;
+        }, undefined, () => { rec.failed = true; });
+      } catch (e) { rec.failed = true; }
+    }
+  }
+
+  updateBackdrop(dt) {
+    const w = this._bdWant, rec = w ? this._bdTex[w] : null;
+    if (this._bdCur !== w && (this._bdK <= 0 || !this._bdCur)) {      // faded out: swap (only to a ready texture)
+      if (!w) this._bdCur = null;
+      else if (rec && rec.tex) { this._bdCur = w; this.bd.material.map = rec.tex; this.bd.material.needsUpdate = true; }
+    }
+    this._bdK = clamp(this._bdK + (this._bdCur && this._bdCur === w ? dt : -dt) * 2.2, 0, 1);
+    this._bdU.value = this._bdK;
+    this.bd.visible = this._bdK > 0.004 && !!this._bdCur;
+  }
+
   // ---------------------------------------------------------------- sky, sun/moon, stars, aurora
 
   buildSky() {
@@ -752,6 +811,7 @@ export class Scenery {
     dome.frustumCulled = false;
     dome.renderOrder = -1000;
     this.sky.add(dome);
+    this.buildBackdrop();
 
     // Sun / moon sprite.
     if (th.disc) {
@@ -2121,6 +2181,7 @@ export class Scenery {
     this.t += dt;
     const t = this.t;
     this.sky.position.copy(camera.position);
+    this.updateBackdrop(dt);
     if (this.stars) {
       const col = this.starColor.array, base = this.starBase, ph = this.starPh;
       const n = ph.length;

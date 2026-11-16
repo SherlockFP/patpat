@@ -187,8 +187,8 @@ export function bandAt(r, d) {
 }
 
 // Growth you can see: the camera pulls back and the FOV opens with log2(r / r0), so the world shrinks as the ball grows.
-export const camGrowZ = (r, r0) => 1 + 0.15 * Math.min(4, Math.log2(Math.max(1, r / Math.max(0.3, r0))));
-export const camGrowFov = (r, r0) => 4 * Math.min(4, Math.log2(Math.max(1, r / Math.max(0.3, r0))));
+export const camGrowZ = (r, r0) => 1 + 0.5 * Math.min(3, Math.log2(Math.max(1, r / Math.max(0.3, r0))));
+export const camGrowFov = (r, r0) => 4 * Math.min(3, Math.log2(Math.max(1, r / Math.max(0.3, r0))));
 // Size ladder: the class of prop the next tier can swallow (tier index -> word, a real library type that is placed bright at the unlock)
 export const LADDER = [['PENGUEN', 'penguin'], ['ARABA', 'car'], ['OTOBÜS', 'bus'], ['EV', 'house'], ['KULE', 'clocktower'], ['KASABA', 'hotel']];
 

@@ -641,7 +641,7 @@ function junction(f, { secBefore = 0 } = {}) {
         if (Math.abs(nd.x) > 0.9 || Math.abs(nd.y) > 0.92 || nd.z > 1) out++;
         if (q.b.s > a0.s0 - 5 && q.b.s < z1) mk = Math.min(mk, q.camLoopK);
       }
-      ok(`${dbl ? 'double' : 'single'} loop: the ball stays on screen in all ${seen} ring-camera frames (${out} outside)` + (dbl ? `, the side camera holds through both rings (lowest blend ${mk.toFixed(2)})` : ''), seen > 60 && out === 0 && (!dbl || mk > 0.9));
+      ok(`${dbl ? 'double' : 'single'} loop: the ball stays on screen in all ${seen} ring-camera frames (${out} outside)` + (dbl ? `, the side camera stays on both rings (it eases toward the chase rig in the gap so the ball clears the second ring's wall) (lowest blend ${mk.toFixed(2)})` : ''), seen > 60 && out === 0 && (!dbl || mk > 0.6));
     }
   }
   // -- upgrades: start size, melt resistance, magnet range, power durations; the score share is capped at 25% --

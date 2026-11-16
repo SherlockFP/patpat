@@ -17,7 +17,7 @@ import { save, CIG_LEVELS } from './save.js';
 import { dailySeed, dailyNumber } from './rng.js';
 import { PostFX, VISUAL_MODES, SU, patchMaterial, makeGovernor } from './shaders.js';
 import { makeSkin, disposeSkin, trailStyle, setGoldBall } from './skins.js';
-import { Scenery, themeForLevel } from './scenery.js';
+import { Scenery, themeForLevel, skyOfTheme, SKY_CYCLE } from './scenery.js';
 import { loadModels } from './assets.js';
 import { loadGlbs } from './glb.js';
 import { meta } from './meta.js';
@@ -1190,6 +1190,7 @@ function cigFrame(dt) {
     updateWaveVis(gdt);
     ui.cigCrush?.(G.crushDone && (G.state === 'play' || G.state === 'end') ? G.crushTons : -1);
     updateCamera(dt);
+    scenery.setBackdrop(G.lv || G.tier < 1 ? skyOfTheme(scenery.theme) : SKY_CYCLE[(G.tier - 1) % SKY_CYCLE.length]);
     scenery.update(gdt, camera, ball);
   }
   updateEnemyBars();
