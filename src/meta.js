@@ -10,6 +10,7 @@
 // corrupted blob falls back to a fresh state. Importing this module never touches `document` / `localStorage`.
 // Rewards that touch the shop economy (❄️, skins, trails) go through the `save` object handed to init().
 import { getLang } from './i18n.js';
+import { tierOf } from './runner/ladder.js';
 import { SKINS, TRAILS, ABILITIES } from './skins.js';
 import { ACTS, CAMPAIGN_SIZE, LEVELS_PER_ACT, levelById, evalGoals, BONUS_COUNT, BONUS_STARS, bonusReward } from './campaign.js';
 
@@ -218,6 +219,14 @@ ach('hunt1', 'Kelime Avcısı', 'PATPAT harflerini bir günde topla.', '🔤', 1
 // sold or rolled; the others pay ❄️ / 💎. The skins.js items point at these ids with unlock: { challenge: id }.
 ach('ch_rush3k', 'Uzun Koşu', "Yeti Rush'ta 3.000 m koş.", '🏃', 3000, { coins: 150 }, ['endless_end'], (S) => S.st.bestDist);
 ach('ch_kombo8', 'Kombo Ustası', 'Art arda 8 yaratık ez (KOMBO x8). [özel]', '🔥', 8, { skin: 'kombo_top' }, ['stomp'], (S, d, cur) => Math.max(cur, num(d.combo)));
+// RUSH LİGLERİ (src/runner/ladder.js tiers by best score) and the record streak: the item is granted when the run's score / streak reaches it (flakes per step are paid by progress.js)
+ach('lg_kp', 'Kartopu Ligi', 'Yeti Rush: Kartopu ligine çık (1.500 puan). [özel]', '⚪', 1, { trail: 'lg_kp' }, ['endless_end'], (S, d, cur) => Math.max(cur, tierOf(num(d.score)) >= 4 ? 1 : 0), { auto: true });
+ach('lg_buz', 'Buz Ligi', 'Yeti Rush: Buz ligine çık (4.500 puan). [özel]', '🧊', 1, { skin: 'lg_buz' }, ['endless_end'], (S, d, cur) => Math.max(cur, tierOf(num(d.score)) >= 7 ? 1 : 0), { auto: true });
+ach('lg_cig', 'Çığ Ligi', 'Yeti Rush: Çığ ligine çık (13.000 puan). [özel]', '🌨️', 1, { skin: 'lg_cig' }, ['endless_end'], (S, d, cur) => Math.max(cur, tierOf(num(d.score)) >= 10 ? 1 : 0), { auto: true });
+ach('lg_avci', 'Yeti Avcısı Ligi', 'Yeti Rush: Yeti Avcısı ligine çık (35.000 puan). [özel]', '🦣', 1, { skin: 'lg_avci' }, ['endless_end'], (S, d, cur) => Math.max(cur, tierOf(num(d.score)) >= 13 ? 1 : 0), { auto: true });
+ach('lg_efsane', 'Efsane Lig', 'Yeti Rush: Efsane ligine çık (100.000 puan). [özel]', '👑', 1, { skin: 'lg_efsane' }, ['endless_end'], (S, d, cur) => Math.max(cur, tierOf(num(d.score)) >= 16 ? 1 : 0), { auto: true });
+ach('rs_5', 'Rekor Serisi 5', 'Yeti Rush: art arda 5 gün rekor kır. [özel]', '🔥', 5, { trail: 'rs_iz' }, ['endless_end'], (S, d, cur) => Math.max(cur, num(d.recStreak)), { auto: true });
+ach('rs_7', 'Rekor Serisi 7', 'Yeti Rush: art arda 7 gün rekor kır. [özel]', '☄️', 7, { skin: 'rs_ates' }, ['endless_end'], (S, d, cur) => Math.max(cur, num(d.recStreak)), { auto: true });
 ach('ch_stomp100', 'Yaratık Avcısı', 'Toplam 100 yaratık ez.', '🦶', 100, { crystals: 1 }, ['stomp'], (S) => S.st.stomps);
 ach('ch_buff25', 'Kart Koleksiyoneri', '25 buff kartı topla. [özel]', '🃏', 25, { trail: 'kart_izi' }, ['buff'], (S) => S.st.buffCards);
 ach('ch_power30', 'Güçlendirici', '30 güçlendirme topla.', '⚡', 30, { coins: 250 }, ['powerup'], (S) => S.st.powerups);
@@ -1076,6 +1085,10 @@ export const STAMPS = [
   { id: 'camp10', icon: '🧭', name: 'Macera 10', desc: 'MACERA: 10 bölüm bitir.' },
   { id: 'arena100', icon: '⚔️', name: 'Arena çaylağı', desc: 'ARENA: 100 kütleye ulaş.' },
   { id: 'arena500', icon: '👑', name: 'Arena ilk 10', desc: 'ARENA: 500 kütleye ulaş.' },
+  { id: 'med_b', icon: '🥉', name: '10 Bronz', desc: 'Yeti Rush: 10 bronz madalya kazan.' },
+  { id: 'med_s', icon: '🥈', name: '10 Gümüş', desc: 'Yeti Rush: 10 gümüş madalya kazan.' },
+  { id: 'med_g', icon: '🥇', name: '5 Altın', desc: 'Yeti Rush: 5 altın madalya kazan.' },
+  { id: 'med_p', icon: '💎', name: 'Platin', desc: 'Yeti Rush: bir platin madalya kazan.' },
   { id: 'avalanche', icon: '🌨️', name: 'Çığ olayından kurtuldun', desc: 'ARENA: Çığ Olayı sırasında hayatta kal.' },
 ];
 const STAMP_BY_ID = Object.fromEntries(STAMPS.map((x) => [x.id, x]));
@@ -1104,6 +1117,9 @@ function stampCheck(ev, d) {
   try { cl = sv && sv.cigNext ? sv.cigNext() - 1 : 0; ts = sv && sv.cigLvTotalStars ? sv.cigLvTotalStars() : 0; } catch { /* ignore */ }
   if (cl >= 5) stampEarn('dag5');
   if (ts >= 30) stampEarn('dagstar');
+  let md = null;
+  try { md = sv && sv.runnerMedals ? sv.runnerMedals() : null; } catch { /* ignore */ }
+  if (md) { if (md.b >= 10) stampEarn('med_b'); if (md.s >= 10) stampEarn('med_s'); if (md.g >= 5) stampEarn('med_g'); if (md.p >= 1) stampEarn('med_p'); }
   const cc = campCleared(S);
   if (cc >= 1) stampEarn('camp1');
   if (cc >= 10) stampEarn('camp10');

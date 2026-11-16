@@ -3,6 +3,7 @@
 // Run: node scripts/check-economy.mjs   (wired into `npm run check` through check:economy)
 import { meta, GUC, UPGRADES, UNLOCK_LV, UNLOCK_LV_MAX, WELCOME, DAILY_REWARDS, levelReward } from '../src/meta.js';
 import { platform } from '../src/platform.js';
+import { promotion, medalFor, MEDALS, recPayout, pbPay } from '../src/runner/ladder.js';
 
 let fails = 0;
 const ok = (name, cond, extra = '') => { if (!cond) { fails++; console.log('FAIL ' + name + (extra ? ' ' + extra : '')); } else console.log('ok   ' + name + (extra ? ' ' + extra : '')); };
@@ -43,6 +44,17 @@ const buyLoop = () => {
     bought.push(pick.id);
   }
 };
+// the Rush goal layer (ladder steps, medals, record margin, personal bests) pays on top of the run: score climbs ~300 a run with a bad run every third
+const goalPay = { lt: 0, best: 0, total: 0, ladder: 0 };
+const goalRun = (r) => {
+  const score = 900 + 300 * r - (r % 3 === 0 ? 500 : 0), prev = goalPay.best;
+  let c = MEDALS[medalFor(score, prev, 300)]?.coins || 0;
+  const pr = promotion(goalPay.lt, Math.max(prev, score)); c += pr.coins; goalPay.lt = pr.to; goalPay.ladder += pr.coins;
+  if (prev >= 100 && score > prev) c += recPayout(score / prev - 1) - 50;      // (the sim's REC already pays the flat 50)
+  if (r > 3 && r % 4 === 0) c += pbPay(1);                                    // a personal best now and then
+  goalPay.best = Math.max(prev, score); goalPay.total += c;
+  return c;
+};
 const perSession = [];
 for (let s = 1; s <= 5; s++) {
   if (s >= 2 && meta.unlocked('daily')) sv.addCoins(DAILY_REWARDS[s - 1].coins); // the daily reward opens at level 4
@@ -51,6 +63,7 @@ for (let s = 1; s <= 5; s++) {
     runs++;
     sv.addCoins(RUN.coins + (runs === 1 || runs % 5 === 2 || runs % 5 === 4 ? REC : 0)); // run 1 always passes the empty record, later 2 of 5 runs do (P_REC)
     meta.track('endless_end', { ...RUN });
+    sv.addCoins(goalRun(runs));
     if (runs === 1) sv.addCoins(WELCOME.ftue); // menus.js ftueFirstRun
     while (meta.claimLevelUp()) { /* level-up screens are tapped */ }
     checkUnlocks();
@@ -63,6 +76,7 @@ ok('session 1: at least 1 GÜÇ purchase', perSession[0] >= 1, String(perSession
 ok('by session 3: at least 3 purchases', perSession[2] >= 3, String(perSession[2]));
 ok('by session 5: at least 6 purchases', perSession[4] >= 6, String(perSession[4]));
 ok('purchases do not all come from one branch', new Set(bought).size >= 4, bought.join(','));
+ok('goal layer: the whole ladder pays under 4000 flakes (a small slice of the shop) and 25 runs of it under 800 (this sim breaks the record on 2 of 3 runs, twice the real rate)', promotion(0, 1e9).coins < 4000 && goalPay.total < 800 && goalPay.total / Math.max(1, runs) < 35, `${goalPay.total} in ${runs} runs`);
 ok('economy is not trivial: at most 6 purchases in session 1 and 14 by session 5', perSession[0] <= 6 && perSession[4] <= 14, perSession.join(','));
 
 // ---- level-gated unlocks (new save): Bölümler 2, ÇIĞ 3, Günlük 4, Arena 5, Sezon 6; reachable at a sane pace
@@ -120,7 +134,7 @@ ok('maxed values', meta.upgradeValue('flakes') === 1.5 && meta.upgradeValue('top
 const xp0 = meta.xp, c1 = sv3.coins;
 meta._setRandom(() => 0.01);
 meta.track('run_start', {});
-meta.track('endless_end', { distance: 1000, score: 5000, coins: 100, maxTier: 2 });
+meta.track('endless_end', { distance: 1000, score: 399, coins: 100, maxTier: 2 });      // (score under the first Rush league: its free items are no part of the run XP measured here)
 const b = meta.runBonus();
 ok('flake multiplier x1.5 pays +50 on a 100 flake run', b.coins === 50 && sv3.coins - c1 === 50, JSON.stringify(b));
 ok('chest chance can drop a chest', b.chest === 1 && meta.boxes >= 1);

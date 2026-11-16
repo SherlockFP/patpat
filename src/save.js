@@ -1,4 +1,5 @@
 import { platform } from './platform.js';
+import { streakStep, dayNum } from './runner/ladder.js';
 
 const KEY = 'cig.save.v1';
 // first level 120 (60 with the welcome 50% coupon): the 60 welcome + 100 wheel ❄️ of session 1 always buy one permanent upgrade
@@ -19,6 +20,7 @@ const fresh = () => ({
   cig: CIG_DEF(),
 });
 
+let lastBeat = false, lastStreak = null;
 const localDay = () => { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
 const COIN_CAP = 999999999;   // keeps the wallet a safe integer, ASCII-sortable and far below any float precision issue
 // Old saves have no `v`: they are schema 0 and already match the shape below (the loader fills every missing field). Future steps go here.
@@ -166,8 +168,11 @@ export const save = {
     if (!r.day || r.day.k !== localDay()) r.day = { k: localDay(), d: 0, s: 0 };
     r.day.d = Math.max(r.day.d, dist);
     r.day.s = Math.max(r.day.s | 0, score);
-    if (beat) { r.recs = (r.recs | 0) + 1; if (r.recs === 3) askReview(); }
+    lastBeat = beat;
+    lastStreak = null;
+    if (beat) { r.recs = (r.recs | 0) + 1; if (r.recs === 3) askReview(); lastStreak = streakStep(r.rs, dayNum()); r.rs = lastStreak.rs; }
     if (!Array.isArray(r.top)) r.top = [];
+    r.topS = [...(Array.isArray(r.topS) ? r.topS : r.top.map((e) => e.score)), score].filter((x) => x > 0).sort((a, b) => b - a).slice(0, 3);
     const entry = { score, dist, t: Date.now() };
     r.top.push(entry);
     r.top.sort((a, b) => b.dist - a.dist);
@@ -175,6 +180,21 @@ export const save = {
     persist();
     return r.top.indexOf(entry) + 1;
   },
+  // Rush goals (ladder / rivals / personal bests / medals): lazily created, old saves have none.
+  lastRunnerBeat: () => lastBeat,              // the run recorded last was a real record (not the first run)
+  lastRunnerStreak: () => lastStreak,          // { rs: {k, n}, reward, n } of that record, or null
+  runnerTopScores: () => (Array.isArray(data.runner?.topS) ? data.runner.topS.slice() : (data.runner?.top || []).map((e) => e.score).filter((x) => x > 0).sort((a, b) => b - a).slice(0, 3)),
+  runnerLadTier: () => data.runner?.lad?.t | 0,
+  setRunnerLadTier(t) { data.runner.lad = { t: Math.max(data.runner.lad?.t | 0, t | 0) }; persist(); },
+  runnerPb: () => ({ hop: 0, stomp: 0, spd: 0, blast: 0, chap: 0, ...(data.runner?.pb || {}) }),
+  setRunnerPb(o) { data.runner.pb = { ...(data.runner.pb || {}), ...o }; persist(); },
+  runnerMedals: () => ({ b: 0, s: 0, g: 0, p: 0, ...(data.runner?.med || {}) }),
+  addRunnerMedal(id) { const m = data.runner.med = { b: 0, s: 0, g: 0, p: 0, ...(data.runner.med || {}) }; m[id] = (m[id] | 0) + 1; persist(); },
+  runnerRv: () => (data.runner?.rv ? { ...data.runner.rv } : null),
+  setRunnerRv(o) { data.runner.rv = { ...o }; persist(); },
+  runnerDc: () => (data.runner?.dc ? { ...data.runner.dc } : null),
+  setRunnerDc(o) { data.runner.dc = { ...o }; persist(); },
+  runnerRecStreak: () => ({ k: 0, n: 0, ...(data.runner?.rs || {}) }),
   // Rank this distance would take in the top list (1-based), 0 if it would not make the top 10.
   previewRunnerRank(dist) {
     const top = Array.isArray(data.runner?.top) ? data.runner.top : [];

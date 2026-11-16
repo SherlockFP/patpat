@@ -180,6 +180,32 @@ ui._best = 1000; ui._bestD = 900;
 ui.showRunnerResult({ cause: 'wall', distance: 120, score: 300, coins: 0, best: 1000, bestDist: 900, isBest: false, isBestDist: false, rank: 0, toRecord: 780, crystals: 0 });
 assert.equal(ui.el.resBadge.textContent, '', 'no record: no badge text');
 assert.equal(ui.el.resTons.textContent, 'BEAT YOUR BEST: 701 PTS', 'below the best: points still missing');
+// ---- Rush goal layer: ONE nearest-goal line, rank row, medal badge, retry pulse, promotion ceremony (stub DOM: no throw, right text) ----
+{
+  const { tierInfo } = await import('../src/runner/ladder.js');
+  ui._best = 4000;
+  const base = { cause: 'yeti', distance: 420, score: 3250, coins: 8, best: 4000, bestDist: 900, isBest: false, isBestDist: false, rank: 0, toRecord: 0, crystals: 0 };
+  const lad = (to, o = {}) => ({ from: to, to, coins: 0, up: false, retro: false, leagueUp: false, info: tierInfo(to), ...o });
+  const prog = (o) => ({ medal: 2, coins: 4, lad: lad(6), pb: { improved: [], coins: 0 }, rv: { place: 9, was: 10, wb: 3500, rows: [{ place: 9, name: '', score: 3500, you: true }], last: null }, streak: null, near: { k: 'ladder', gap: 500, tier: 7 }, pulse: true, ...o });
+  ui.showRunnerResult({ ...base, prog: prog() });
+  assert.ok(ui.el.resExtra.innerHTML.startsWith('<div class="rx-lad'), 'the rank row comes first in the card');
+  assert.equal(ui.el.resBadge.textContent, '🥈 SILVER', 'a run below the record shows its medal');
+  assert.ok(ui.el.resTons.textContent.length > 0 && ui.el.resSub.textContent.includes('BEST'), 'one nearest-goal line + the best');
+  assert.ok(ui.el.retry.classList.contains('pulse'), 'RETRY pulses when the goal is within 15%');
+  ui.showRunnerResult({ ...base, prog: prog({ pulse: false, medal: 0 }) });
+  assert.ok(!ui.el.retry.classList.contains('pulse') && ui.el.resBadge.classList.contains('hidden'), 'no pulse, no badge without a medal');
+  const { nearLine } = UI;
+  assert.equal(nearLine({ k: 'rival', gap: 840, place: 12, name: 'Mert' }), '#12 Mert · 840 puan');
+  assert.equal(nearLine({ k: 'medal', gap: 1200, medal: 2 }), 'Gümüş madalyaya 1,200');
+  assert.equal(nearLine({ k: 'ladder', gap: 3200, tier: 8 }), '▲ Buz II · 3,200 kaldı');
+  assert.equal(nearLine({ k: 'rec', gap: 3200 }), 'EN İYİYE 3,200 PUAN');
+  ui.showRunnerResult({ ...base, score: 5200, isBest: true, isRecord: true, deltaBest: 1200, prog: prog({ medal: 4, lad: lad(7, { from: 6, up: true, leagueUp: true, coins: 130 }), near: { k: 'rival', gap: 97, place: 6, name: 'Emre' }, pulse: true }) });
+  assert.ok(ui.el.resExtra.innerHTML.includes('rx-lad up'), 'a promotion marks the rank row');
+  const ln = (m) => `${ui.el.resTons.textContent}|${ui.el.resSub.textContent}`;
+  assert.ok(/pts to #6 Emre/.test(ln()) || /Emre/.test(ln()), 'record run: the nearest goal sits under the +gap line: ' + ln());
+  ui._best = 1000; ui._bestD = 900;
+  ui.showRunnerResult({ cause: 'wall', distance: 120, score: 300, coins: 0, best: 1000, bestDist: 900, isBest: false, isBestDist: false, rank: 0, toRecord: 780, crystals: 0 });   // (back to the state the checks below read)
+}
 assert.equal(ui.el.resSub.textContent, 'BEST 1,000');
 ui.showResult({ endless: true, tons: 3, dist: 100, distance: 100, best: { tons: 5, dist: 200 }, isBest: false, cause: 'wave', tierName: 'Çığ', coins: 4, hasNext: false }, null);
 assert.equal(ui.el.retry.kids.length, 0, 'legacy results reset the TEKRAR sub line');

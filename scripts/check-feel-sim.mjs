@@ -404,10 +404,32 @@ function junction(f, { secBefore = 0 } = {}) {
   ok('snow postcard was counted silently at the start (no toast in the countdown)', tracked.includes('snow') && !h.log.ui.some((x) => x[0] === 'toastSoft' && /(KARTPOSTAL|POSTCARD)/.test(x[1])));
   // no open mission: the record takes the strip, and it speaks POINTS
   h.ctx.meta.missions = () => []; step(h, 40);
-  r.passedScore = false; r.bestScore = Math.ceil(r.score * (1 + 40 / Math.max(60, r.b.s))) + 20;
+  r.passedScore = false; r.bestScore = Math.ceil(r.score * (1 + 900 / Math.max(60, r.b.s))) + 20; r.recEq = 0; r._recT = 0;
   step(h, 3);
   const g2 = lastGoal(h);
-  ok('record near: strip shows the gap in points', !!g2 && g2[1] === 'rec' && /(PTS TO RECORD|PUAN)/.test(g2[4] || '') && g2[2] % 10 === 0 && g2[2] >= 10);
+  ok('record in sight (more than 300 m of equivalent distance): strip shows the gap in points', !!g2 && g2[1] === 'rec' && /(PTS TO RECORD|PUAN)/.test(g2[4] || '') && g2[2] % 10 === 0 && g2[2] >= 10);
+  r.bestScore = Math.ceil(r.score * (1 + 40 / Math.max(60, r.b.s))) + 20; r.recEq = 0; r._recT = 0;
+  step(h, 3);
+  const g2b = lastGoal(h);
+  ok('record near (last 300 m): the countdown speaks METRES, rounded to 10, and beats the mission pill', !!g2b && g2b[1] === 'rec' && /(M TO RECORD|REKOR'A \d+ m)/.test(g2b[4] || '') && g2b[2] % 10 === 0 && g2b[2] >= 10 && g2b[2] <= 300 && r._recNear === true);
+  r.bestScore = Math.ceil(r.score * (1 + 40 / Math.max(60, r.b.s))) + 20; r.recEq = 0; r._recT = 0;
+  // passing the personal best: ONE record moment (toast, +50 flakes, slow-mo, gold flag), then +10% pops pay once each (50 + 10 per started 10%)
+  {
+    const { recPops } = await import('../src/runner/ladder.js');
+    const g = make({ seed: 77 }), q = g.runner; g.ctx.ui._recShown = false; goLive(g); step(g, 60);
+    q.bestScore = 400; q.passedScore = false; q.score = 380; q.recEq = 0; q._recT = 0; q._rcPop = 0;
+    const c0 = q.coins; step(g, 3);
+    q.score = 410; step(g, 6); q.score = 420; step(g, 6);
+    const n1 = g.log.ui.filter((x) => x[0] === 'toastSoft' && /YENİ REKOR!/.test(x[1])).length;
+    ok('passing the record fires the record moment exactly once (toast, flakes, flag, slow-mo)', n1 === 1 && q.passedScore && q.coins - c0 >= 50 && q.coins - c0 < 50 + 12);
+    q.score = 400 * 1.25 + 5; step(g, 80);
+    ok('+10% over the old record: two pops, each paid once, none repeated', q._rcPop === 2 && q.coins - c0 >= 50 + 2 * 10 && g.log.ui.filter((x) => x[0] === 'toastSoft' && /YENİ REKOR \+/.test(x[1])).length === 2);
+    step(g, 80);
+    ok('pops never run ahead of the points (max 10 a run)', q._rcPop <= recPops(q.score, q.bestScore) && q._rcPop <= 10);
+    const g2 = make({ seed: 78 }), q2 = g2.runner; goLive(g2); step(g2, 30);
+    q2.bestScore = 60; q2.passedScore = false; q2.score = 20; step(g2, 10); q2.score = 200; step(g2, 10);
+    ok('a record under 100 points is no record (no flag, no pass)', !q2.recFlag && !g2.log.ui.some((x) => x[0] === 'toastSoft' && /YENİ REKOR!/.test(x[1])));
+  }
   r.bestScore = 0; r.passedScore = true;
   // postcards: first time only, flash + one line with n/total; the count goes through meta.track('biome_seen')
   r.postcard({ id: 'volcano', name: 'Volkan' });

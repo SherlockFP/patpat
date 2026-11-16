@@ -11,6 +11,8 @@ import { save } from './save.js';
 import { nextGoal } from './shop.js';
 import { fxOf } from './cosmetics.js';
 import { isScoreRecord } from './runner/goals.js';
+import { MEDALS, TIER_AT, MAX_TIER, tierInfo, leagueIdx, PB_NAME, PB_ICON } from './runner/ladder.js';
+import { platform } from './platform.js';
 import { shareCard } from './sharecard.js';
 import { setIcon, uiImg } from './uiicons.js';
 
@@ -71,6 +73,28 @@ export function runnerResultLines(p, prevBest) {
   return { rec, delta: '', goal: ngt };
 }
 const UP = (x) => String(x || '').toLocaleUpperCase(EN ? 'en-US' : 'tr-TR');   // the active language decides the dotted/dotless i
+// ONE nearest-goal line (Rush result): n = prog.near { k, gap, ... }; the number part is passed so the result can count it down.
+export function nearLine(n, gap = n && n.gap) {
+  if (!n) return '';
+  const g = fmtN(gap);
+  if (n.k === 'rival') return `#${n.place} ${n.name} · ${g} puan`;
+  if (n.k === 'medal') return `${MEDALS[n.medal].name[0] + MEDALS[n.medal].name.slice(1).toLocaleLowerCase('tr-TR')} madalyaya ${g}`;
+  if (n.k === 'rec') return 'EN İYİYE ' + g + ' PUAN';
+  const ti = tierInfo(n.tier);
+  return `▲ ${ti.name} ${ti.label.slice(ti.name.length + 1)} · ${g} kaldı`;
+}
+// the 3 pips of a league: fill of each step toward `best`
+// 'Buz II' -> the active language's league name + step
+export const lgName = (ti) => tr(ti.name) + ' ' + ti.label.slice(ti.name.length + 1);
+function ladPips(best, tier) {
+  const b = Math.max(0, leagueIdx(Math.max(1, tier))) * 3;
+  let h = '';
+  for (let j = 1; j <= 3; j++) {
+    const lo = b + j - 2 >= 0 ? TIER_AT[b + j - 2] : 0, hi = TIER_AT[b + j - 1];
+    h += `<i style="--f:${Math.round(clamp01((best - lo) / (hi - lo)) * 100)}%"></i>`;
+  }
+  return h;
+}
 
 // Respect the OS "reduce motion" setting (JS-driven pops; style.css handles the CSS animations).
 const _mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -449,6 +473,7 @@ export class UI {
     this.runnerDanger(0, 0, 0);
     this.chaseVig(0);
     this.runnerGoal(null);
+    this.runnerTicker(null);
     if (this.el.chapBar) this.el.chapBar.hidden = true;
     this.runnerSurge(false);
     this.clearTimers();
@@ -471,6 +496,7 @@ export class UI {
     const rk = recKind(isRec, score, this._best);   // _best / _bestD = records at the START of this run
     const rl = runnerResultLines(p || {}, this._best);   // the hero is the SCORE: a score record turns the screen gold
     rk.score = rl.rec;
+    const pg = p && p.prog, near = pg && pg.near;   // pg: the goal layer of this run (ladder, medal, personal bests, weekly league, streak); absent while a revive is still possible
     const anyRec = rk.score;   // the badge and gold screen mean a SCORE record (the hero number); a distance record only tints the metres chip
     const badge = recTitle({ dist: false, score: rk.score });
 
@@ -488,7 +514,14 @@ export class UI {
     let seaTok = 0;
     try { seaTok = Math.floor(Number(p && (p.seasonTokens ?? (p.stats && p.stats.seasonTokens))) || meta.stats().seasonTokens || 0); } catch { seaTok = 0; }
     if (seaTok > 0) chips.push(chip(`+${fmtN(seaTok)} 🧣`));
-    let html = coins > 0 ? `<div class="rx-row">${chip(`❄️ +${fmtN(coins)}`)}</div>` : "";      // the flakes only: LEVEL / SEASON bars sit behind Details (one number to sell)
+    const gain = coins + (pg ? pg.coins : 0), row2 = [];
+    this._gainTot = gain;
+    if (gain > 0) row2.push(chip(`❄️ +${fmtN(gain)}`, ' rx-coin'));
+    if (pg && pg.rv && pg.rv.place) row2.push(chip(`🏁 #${pg.rv.place}${pg.rv.was > pg.rv.place ? ' ▲' + (pg.rv.was - pg.rv.place) : ''}`, ' cy'));
+    let pbTop = null;
+    if (pg && pg.pb && pg.pb.improved.length) { for (const x of pg.pb.improved) if (!pbTop || x.v / x.old > pbTop.v / pbTop.old) pbTop = x; row2.push(chip(`${PB_ICON[pbTop.k]} ${tr(PB_NAME[pbTop.k])} ▲`, ' cy')); }
+    if (pg && pg.streak && pg.streak.n >= 2) row2.push(chip(`🔥 ${tr('REKOR SERİSİ')} ${pg.streak.n}`, ' fire'));
+    let html = row2.length ? `<div class="rx-row">${row2.join('')}</div>` : "";      // the flakes only: LEVEL / SEASON bars sit behind Details (one number to sell)
     let nup = null;
     try { nup = this.hooks?.nextPower?.() || null; } catch { nup = null; }
     this._nupAfford = !!(nup && nup.afford);
@@ -504,6 +537,23 @@ export class UI {
     if (p && p.perk) det += `<div class="rx-line">${p.perk.icon} ${tr(p.perk.name)}</div>`;
     if (p && p.mutator) det += `<div class="rx-line"><span>${tr('BU HAFTA: ' + p.mutator.name)}</span> ${p.mutator.icon}${p.mutator.score > 1 ? ' · ' : ''}${p.mutator.score > 1 ? `<span>${tr('x' + p.mutator.score + ' puan')}</span>` : ''}</div>`;
     if (p && p.weeklyBest) det += `<div class="rx-line">🏆 Haftalık rekor! ${fmtN(p.weeklyRecord || score)}</div>`;
+    if (pg) {
+      const lines = [];
+      if (pg.medal) lines.push(`${MEDALS[pg.medal].icon} ${tr(MEDALS[pg.medal].name)} +${MEDALS[pg.medal].coins} ❄️`);
+      if (pg.lad && pg.lad.up) lines.push(`${pg.lad.info.icon} ${lgName(pg.lad.info)} +${fmtN(pg.lad.coins)} ❄️`);
+      else if (pg.lad && pg.lad.retro && pg.lad.coins) lines.push(`${tr('Eski puanların:')} ${fmtN(pg.lad.coins)} ❄️`);
+      if (pg.pb) for (const x of pg.pb.improved) lines.push(`${PB_ICON[x.k]} ${tr(PB_NAME[x.k])} ${fmtN(x.old)} → ${fmtN(x.v)}`);
+      if (pg.streak && pg.streak.n >= 2) lines.push(`🔥 ${tr('REKOR SERİSİ')} ${pg.streak.n}${pg.streak.reward ? ' +' + pg.streak.reward.coins + ' ❄️' : ''}`);
+      const rv = pg.rv;
+      if (rv && rv.place) {
+        lines.push(`${tr('Haftalık sıra')} #${rv.place}${rv.was > rv.place ? ' ▲' + (rv.was - rv.place) : ''}`);
+        for (const r of rv.rows) lines.push(`<span class="${r.you ? 'rv-you' : 'rv-bot'}">#${r.place} ${r.you ? tr('Sen') : r.name} · ${fmtN(r.score)}</span>`);
+      }
+      if (pg.dc) lines.push(`🎯 ${[0, 1, 2].map((i) => (pg.dc.claimed & (1 << i) ? '●' : '○')).join(' ')} · ${tr('Deneme')} ${Math.min(3, pg.dc.n)}/3${pg.dc.counted ? '' : ' (-)'}${pg.dc.coins ? ' +' + pg.dc.coins + ' ❄️' : ''}`);
+      const st = pg.settle;
+      if (st && st.place) lines.push(`${tr('Geçen hafta')} #${st.place}: +${fmtN(st.coins)} ❄️`);
+      det += lines.map((x) => `<div class="rx-line rx-pg2">${x}</div>`).join('');
+    }
     if (p && p.synergies) det += `<div class="rx-line">${tr('SİNERJİ:')} ${p.synergies.map((x) => tr(x)).join(' · ')}</div>`;
     const dly = p && p.daily;
     let shareTxt = '';
@@ -526,8 +576,13 @@ export class UI {
     if (!rk.score && tipTxt) det += `<div class="rx-dim">${tipTxt}</div>`;
     if (det) html += `<div class="rx-qtoggle">▸ Detaylar</div><div class="rx-qlist hidden">${det}</div>`;
     // the mission line lives IN the stats card (one box, one progress fill) instead of a separate chip under the score
-    const mChip = !!nq && !!rl.goal && rl.goal === p.nextGoalText && p.nextGoalKind === 'mission';
+    const mChip = !pg && !!nq && !!rl.goal && rl.goal === p.nextGoalText && p.nextGoalKind === 'mission';
     if (mChip && !this._nupAfford) html = `<div class="rx-ms" style="--f:${Math.round(clamp01(nf) * 100)}%">${tr(rl.goal)}<span class="rx-pips">${qRows.map((m) => (m.done ? '●' : '○')).join('')}</span></div>` + html;
+    if (pg && pg.lad) {      // rank ladder: league badge, 3 step pips filled toward the next step, points to go (the nearest-goal line says it instead when the ladder is the goal)
+      const li = pg.lad.info, bestNow = Math.max(this._best || 0, score), col = li ? li.col : '#d9a066';
+      const toGo = pg.lad.to >= MAX_TIER ? 0 : TIER_AT[pg.lad.to] - bestNow;
+      html = `<div class="rx-lad${pg.lad.up ? ' up' : ''}" style="--lc:${col}"><span class="lb">${li ? li.icon + ' ' + UP(lgName(li)) : '❄️ ' + UP(tr('SIRA YOK'))}</span><span class="lp">${ladPips(bestNow, pg.lad.to)}</span>${toGo > 0 && !(near && near.k === 'ladder') ? `<small>${tr(fmtN(toGo) + ' kaldı')}</small>` : ''}</div>` + html;
+    }
     ex.innerHTML = html;
     const qt = ex.querySelector('.rx-qtoggle');
     const afEl = ex.querySelector('.rx-aff');
@@ -540,19 +595,28 @@ export class UI {
 
     this.el.result.classList.remove('hidden');
     this.el.result.classList.add('runner', 'rr');   // rr = the Rush layout (score hero, TEKRAR first)
-    this.shareCardBtn({ mode: 'YETİ RUSH', big: fmtN(distance), unit: 'metre', isRec, challenge: 'Beni geçebilir misin? 🏔️' });
+    this.shareCardBtn({ mode: 'YETİ RUSH', big: fmtN(distance), unit: 'metre', isRec, challenge: pg && pg.lad && pg.lad.info ? `${pg.lad.info.icon} ${lgName(pg.lad.info)}${pg.rv && pg.rv.place ? ' · #' + pg.rv.place : ''} · ${tr('Beni geçebilir misin?')}` : 'Beni geçebilir misin? 🏔️' });
     this.el.resTitle.textContent = title;
     // the record badge + gap wait until the score has counted up: next to a half-counted number ("193" + "+203 vs old record") they read as impossible maths
     const hold = anyRec && !reduceMotion();
-    this.el.resBadge.classList.toggle('hidden', !anyRec || hold);
-    this.el.resBadge.textContent = badge;
+    const medalB = pg && !anyRec && pg.medal ? `${MEDALS[pg.medal].icon} ${UP(tr(MEDALS[pg.medal].name))}` : pg && !anyRec && pbTop ? UP(tr('YENİ EN İYİ')) : '';
+    this.el.resBadge.classList.toggle('hidden', (!anyRec && !medalB) || hold);
+    this.el.resBadge.classList.toggle('medal', !!medalB);
+    this.el.resBadge.style.setProperty('--mc', pg && pg.medal ? MEDALS[pg.medal].col : '#7fe9ff');
+    this.el.resBadge.textContent = medalB || badge;
     this.el.resLabel.textContent = tr('SKOR');
     // ONE number (score), the signed gap to the best, ONE next goal
     const gap = tr(rl.delta && rl.delta[0] === '+' ? rl.delta + ' ESKİ REKORDAN' : rl.delta);   // the bare +N had no label
-    this.el.resTons.textContent = hold ? '' : gap;
+    const nearTxt = near ? tr(nearLine(near)) : '';
+    this.el.resTons.textContent = hold ? '' : pg && !rl.rec ? nearTxt : gap;
+    if (pg && near && !hold && !reduceMotion()) {      // the gap counts down into place (400 ms): a near miss reads as one
+      const el = !rl.rec ? this.el.resTons : this.el.resSub, t0 = performance.now();
+      const f = () => { const k = Math.min(1, (performance.now() - t0) / 400); el.textContent = tr(nearLine(near, Math.round(near.gap * (1.5 - 0.5 * k)))); if (k < 1) this._nearRaf = requestAnimationFrame(f); };
+      cancelAnimationFrame(this._nearRaf); f();
+    }
     this._recReveal = hold ? () => { this.el.resBadge.classList.remove('hidden'); this.el.resTons.textContent = gap; } : null;
-    this.el.resTons.classList.toggle('dl', !!rl.delta && rl.delta[0] !== '+');
-    this.el.resSub.textContent = mChip ? '' : tr(rl.goal);
+    this.el.resTons.classList.toggle('dl', pg && !rl.rec ? !!nearTxt : !!rl.delta && rl.delta[0] !== '+');
+    this.el.resSub.textContent = mChip ? '' : pg && rl.rec ? nearTxt : tr(rl.goal);
     this.el.resSub.classList.remove('chip');
     this.el.resSub.style.setProperty('--f', `${Math.round(clamp01(nf) * 100)}%`);
     this.el.resCoins.classList.add('hidden');
@@ -574,6 +638,7 @@ export class UI {
     clearTimeout(this._rvTm); this._rvTm = show ? setTimeout(() => { this.el.next.classList.remove('rv-ring'); }, 3000) : 0;
     this.el.retry.classList.remove('hidden');
     this.retryLabel('');   // TEKRAR first and biggest (CSS order); the goal line lives under the score
+    this.el.retry.classList.toggle('pulse', !!(pg && pg.pulse));   // the nearest goal is within 15% of your best: RETRY breathes
     this.el.menuBtn.classList.remove('hidden');
 
     this.powerBtn();
@@ -582,6 +647,29 @@ export class UI {
     this.goalAnimate();
     this.countUp(score, (v) => { this.el.resPct.textContent = fmtN(v); }, 600, { tick: true, done: () => this.resultScoreDone(anyRec) });
     this.flushNotices(mrep.notices);
+    if (pg && pg.dc && pg.dc.hits.length) this.timers.push(setTimeout(() => { snd(pg.dc.chest ? 'milestone' : 'chime', 4); if (pg.dc.chest) { this.confetti(60); this.toastSoft(`🎁 ${tr('GÜNLÜK HEDEF')}`, { prio: 2 }); } }, 900));
+    if (pg && pg.lad && (pg.lad.up || (pg.lad.retro && pg.lad.coins))) this.ladderCeremony(pg);
+  }
+
+  // promotion ceremony: the card dims 0.4 s, the badge stamps in (1.6 -> 1 in 250 ms), flakes tick up; a league also gets confetti and a banner
+  ladderCeremony(pg) {
+    const lad = pg.lad, big = lad.leagueUp || (lad.retro && !lad.up);
+    this.timers.push(setTimeout(() => {
+      const row = this.el.resExtra.querySelector('.rx-lad');
+      if (!row || !this.el.result || this.el.result.classList.contains('hidden')) return;
+      if (!reduceMotion()) {
+        const d = document.createElement('div'); d.className = 'rx-dim-ov'; document.body.appendChild(d);
+        d.animate([{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0 }], { duration: 400 }).onfinish = () => d.remove();
+        setTimeout(() => d.remove(), 700);
+        try { row.animate([{ transform: 'scale(1.6)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 250, easing: 'cubic-bezier(.2,1.6,.4,1)' }); } catch { /* optional */ }
+      }
+      snd('milestone', 5); try { platform.haptic('success'); } catch { /* optional */ }
+      this.confetti(big ? 140 : 60);
+      if (lad.leagueUp && lad.info) this.toastSoft(`${tr('TERFİ')}: ${tr(lad.info.name)}`, { prio: 2, icon: lad.info.icon });
+      else if (lad.retro && lad.coins) this.toastSoft(`${tr('Eski puanların:')} ${fmtN(lad.coins)} ❄️`, { prio: 2 });
+      const c = this.el.resExtra.querySelector('.rx-coin');
+      if (c) { const tot = this._gainTot || 0; this.countUp(tot, (v) => { c.textContent = '❄️ +' + fmtN(v); }, 600); }
+    }, 700));
   }
 
   // the equipped result EMOTE (wardrobe): an emoji acts out in the corner of the result card; the celebrating ones add confetti on a record
@@ -622,7 +710,7 @@ export class UI {
   // TEKRAR: big label + an optional small target line (no sub line = plain label, also used to reset it for other result screens)
   retryLabel(sub) {
     const b = this.el.retry;
-    b.textContent = '↻ TEKRAR';
+    b.textContent = '↻ TEKRAR'; b.classList.remove('pulse');
     if (sub) { const s = document.createElement('small'); s.className = 'rt-sub'; s.textContent = sub; b.appendChild(s); }
   }
 
@@ -782,13 +870,13 @@ export class UI {
     if (rec) { pop(this.el.resPct, 1.14, 420); snd('chime'); } else snd('ui', 'confirm');
   }
 
-  confetti() {
+  confetti(n = 34) {
     const R = this.el.result;
     const cols = ['#ffd23a', '#ff5c8a', '#4fd3ff', '#7dff6a', '#fff', '#b46bff'];
     const box = document.createElement('div');
     box.className = 'confetti';
     let h = '';
-    for (let i = 0; i < 34; i++) {
+    for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, r = 90 + Math.random() * 190;
       h += `<i style="background:${cols[i % cols.length]};--x:${Math.round(Math.cos(a) * r)}px;--y:${Math.round(Math.sin(a) * r - 60)}px;--r:${Math.round(Math.random() * 720 - 360)}deg;animation-delay:${(Math.random() * 0.15).toFixed(2)}s"></i>`;
     }
@@ -1766,6 +1854,17 @@ export class UI {
     setTimeout(() => d.remove(), box.classList.contains('res') ? 6300 : opts && opts.long ? 3300 : 2200);   // (the result screen: a quest chip stays 6 s)
     box.appendChild(d);
     return () => { d.getAnimations?.().forEach((an) => an.cancel()); d.style.opacity = '0'; d.remove(); };
+  }
+
+  // Rival overtake ticker: a small chip under the score (slides in 150 ms, holds 1.2 s); gold for the podium. null hides it.
+  runnerTicker(text, gold) {
+    let el = this._tkEl;
+    if (!text) { if (el) el.classList.remove('on'); clearTimeout(this._tkTm); return; }
+    if (!el) { el = this._tkEl = document.createElement('div'); el.className = 'rk-tick'; document.body.appendChild(el); }
+    el.textContent = tr(text);
+    el.classList.toggle('gold', !!gold);
+    el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+    clearTimeout(this._tkTm); this._tkTm = setTimeout(() => el.classList.remove('on'), 1350);
   }
 
   // ---- first-run tutor card (top edge). card = {icon, title, text} or null ----

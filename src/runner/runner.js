@@ -15,8 +15,11 @@ import { patchMaterial } from '../shaders.js';
 import { nfBall, nearFade } from './nearfade.js';
 import { ppView, ppOcc } from './ppview.js';
 import { cloneYeti, GLB } from '../glb.js';
-import { isScoreRecord, gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, pickMission, missionFrac, missionsLeft, nextMult, missionResultText, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
+import { isScoreRecord, gustAt, scoreMult, nextGoal, chainBonus, dangerBonus, checkpointReward, goalFor, meltRate, TURN_BUF, turnBuffered, turnGrade, turnReward, comboLevel, flowStateSecs, multStep, yetiFit, yetiSide, recordEqDist, pickMission, missionFrac, missionsLeft, nextMult, missionResultText, postcardLine, deathGoalKind, ChapterPlan, chapterReward, chapterLine, capUpgradeMult, upStartSize, upMeltMul, upMagnet, charStep } from './goals.js';
 import { starProgress } from '../campaign.js';
+import { REC_POP, pbBeats, PB_NAME, PB_ICON, recPops, recMetres, beatHz, RECORD_NEAR } from './ladder.js';
+import { rivalScores, rivalName, nextAbove, weekDay, weekKey } from './rivals.js';
+import { rollWeek, settleRun } from './progress.js';
 
 // YETİ RUSH — endless Temple-Run-style downhill run (RUNNER.md).
 // Core loop: the ball's SIZE is its health AND its hunger. It melts all the time; snow piles refill it, so you steer for
@@ -420,6 +423,19 @@ export class Runner {
     this.bestScore = save.runnerBest?.() ?? 0;
     this.passedDist = this.bestDist < 50;
     this.passedScore = this.bestScore < 100;
+    // goal layer: record chase (flag, countdown, pass moment, +10% pops), personal bests, weekly rival ticker
+    this.recEq = 0; this._recT = 0; this._rcPop = 0; this._rcAt = 0; this._beatT = 0; this._recNear = false; this._slowT = 0; this._goldT = 0; this._pbN = 0; this._pbSeen = {};
+    this.maxChain = 0; this.maxVs = 0; this.maxBlast = 0; this._bl = 0; this.runChap = 0; this._pb0 = save.runnerPb?.() || {};
+    this._rvPend = null; this._rvAt = 0; this._rvI = -1; this._rvKT = -9; this._rvK = 0; this._rvN = 0; this._top10 = false; this._rvTop = false; this._pbT = 0; this._rvPK = -1;
+    if (!this._rvSc) this._rvSc = new Float64Array(30);
+    this.rvOn = false; this.rvSettle = null;
+    if (!level && save.runnerRv) {
+      const wk = weekKey();
+      try {
+        this.rvSettle = rollWeek(save, this.ctx.meta, wk, this.bestScore);
+        rivalScores(wk, save.runnerRv().A, weekDay(), this._rvSc); this._rvWk = wk; this._rvI = nextAbove(this._rvSc, 0); this.rvOn = true;
+      } catch (e) { this.rvOn = false; }      // (a save without the Rush league fields just plays without rivals)
+    }
     let nRuns = 0; try { nRuns = this.ctx.meta?.stats?.().runs || 0; } catch (e) { nRuns = 0; }
     this._nRuns = nRuns;
     if (nRuns < 2 && typeof document !== 'undefined') { const h = document.getElementById('hud'); h?.classList.add('goal-intro'); setTimeout(() => h?.classList.remove('goal-intro'), 4500); }   // first runs: the goal pill is big for 4 s
@@ -685,6 +701,7 @@ export class Runner {
     if (play && this.juncSlow) want = Math.min(want, 0.5);
     if (this.tipSlowT > 0) { this.tipSlowT -= rdt; if (play) want = Math.min(want, 0.6); }
     if (this.tipCd > 0 && play) this.tipCd -= rdt;
+    if (this._slowT > 0) { this._slowT -= rdt; if (play) want = Math.min(want, 0.3); }      // the record pass: a 0.3 s slow-mo
     this.timeScale += (want - this.timeScale) * Math.min(1, rdt * 8);
     let dt = rdt * this.timeScale;
     // Hit-stop: a crash freezes the world for a heartbeat so it lands.
@@ -901,8 +918,10 @@ export class Runner {
     if (this.driftT > 0) this.driftT -= dt;
     if (this.burstT > 0 && (this.burstT -= dt) <= 0) this.burstEnd();
     this.score += b.vs * dt * this.mult * (this.dblT > 0 ? 2 : 1);
+    if (b.vs > this.maxVs) this.maxVs = b.vs;
+    this._bl = this.blastT > 0 ? this._bl + dt : 0; if (this._bl > this.maxBlast) this.maxBlast = this._bl;
     music.setBpm(bpmAt(b.s) + (this.blastT > 0 ? 10 : 0));
-    music.setIntensity(this.blastT > 0 ? 1 : clamp(0.55 + b.s / 4000 + (this.stumbleT > 0 ? 0.35 : 0), 0.55, 1));
+    music.setIntensity(this.blastT > 0 || this._recNear ? 1 : clamp(0.55 + b.s / 4000 + (this.stumbleT > 0 ? 0.35 : 0), 0.55, 1));
     this.ctx.audio.setRoll(this.grounded ? clamp(b.vs / RCFG.maxSpeed, 0, 1) * 0.7 : 0, clamp(b.r / 1.5, 0, 1) * 0.5);
     this.updateHud();
 
@@ -1679,13 +1698,16 @@ export class Runner {
       // ONE record moment per run: a single top-edge toast (the HUD's score-record toast counts as it), never a centre banner
       if (!ui._recShown) { ui._recShown = true; ui.toastSoft?.(`★ YENİ REKOR! +${RCFG.recCoins} ❄️`, { prio: 2 }); }
       if (audio.newBest) audio.newBest(); else audio.win();
-      platform.haptic('success');
+      platform.haptic('heavy');
       if (!this.level) {
         this.newRecT = 4;
         this.coins += RCFG.recCoins;
+        this._slowT = 0.3; this._goldT = 0.1; this._rcAt = this.time;
+        this.recFlagGold?.();
       }
     }
     if (this.newRecT > 0) this.newRecT -= dt;
+    this.recordTick(dt);
     ui.runnerRecord?.(this.bestScore);       // one-argument form: a plain "REKOR <score>" label
     this.placeRecordFlag();
     this.landmarkTick();
@@ -2050,26 +2072,82 @@ export class Runner {
     }
   }
 
+  // Record chase (once a frame, no allocation): equivalent-distance marker refreshed each second, last-300 m countdown + heartbeat,
+  // after the pass a gold trail and a +25 pop for every +10% over the old record, then the personal-best and rival tickers.
+  recordTick(dt) {
+    const { ui, audio, platform } = this.ctx, s = this.b.s;
+    if (this.level || this.state !== 'play') return;
+    if (this.bestScore >= 100 && !this.passedScore) {
+      this._recT -= dt;
+      if (this._recT <= 0) { this._recT = 1; this.recEq = recordEqDist(s, this.score, this.bestScore); }
+      const m = this.recEq > 0 ? this.recEq - s : 1e9;
+      this._recNear = m <= RECORD_NEAR && m > 0;
+      if (this._recNear) {
+        this._beatT -= dt;
+        if (this._beatT <= 0) { this._beatT = 1 / beatHz(m); audio.bump?.(0.22); }
+      } else this._beatT = 0;
+    } else this._recNear = false;
+    if (this.passedScore && this.bestScore >= 100) {
+      this._goldT -= dt;
+      if (this._goldT <= 0) { this._goldT = 0.25; this.mistBurst(2, 0xffd060, 4, 1.0); }
+      const k = recPops(this.score, this.bestScore);
+      if (this._rcPop < k && this.time - this._rcAt >= 0.5) {
+        this._rcPop++; this._rcAt = this.time; this.coins += REC_POP;
+        ui.toastSoft?.(`★ YENİ REKOR +${NUM(this.score - this.bestScore)}`, { prio: 1 });
+        audio.milestone?.(Math.min(5, this._rcPop)); platform.haptic('light');
+      }
+    }
+    if ((this._pbT = (this._pbT || 0) + dt) >= 1) {           // personal bests: one small toast per stat, two per run
+      this._pbT = 0;
+      if (this._pbN < 2) this.pbCheck('hop', this.maxChain) || this.pbCheck('stomp', this.stompTotal) || this.pbCheck('spd', Math.round(this.maxVs)) || this.pbCheck('blast', Math.round(this.maxBlast)) || this.pbCheck('chap', this.runChap);
+    }
+    if (this.rvOn) this.rivalTick();
+  }
+
+  pbCheck(k, v) {
+    if (this._pbSeen[k] || !pbBeats(k, this._pb0[k] | 0, v)) return false;
+    this._pbSeen[k] = 1; this._pbN++;
+    this.ctx.ui.toastSoft?.(`★ ${t(PB_NAME[k])} ${NUM(v)}`, { prio: 1, icon: PB_ICON[k] });
+    this.ctx.audio.chime?.(); this.ctx.platform.haptic('light');
+    return true;
+  }
+
+  // Weekly rivals: the live score walks up the sorted table; each bot passed ticks once (several within 0.6 s are one line, the pitch climbs).
+  rivalTick() {
+    const sc = this._rvSc, ui = this.ctx.ui;
+    while (this._rvI >= 0 && this.score > sc[this._rvI]) {
+      const rank = this._rvI + 1;
+      if (this._rvPend) this._rvPend.b = rank; else this._rvPend = { a: rank, b: rank };
+      this._rvAt = this.time; this._rvI--; this._rvN = (this._rvN || 0) + 1; this._rvLast = this.time;
+      if (rank === 10 && !this._top10) { this._top10 = true; this._rvTop = true; }
+    }
+    const p = this._rvPend;
+    if (p && this.time - this._rvAt > 0.35) {
+      this._rvPend = null;
+      const txt = p.a === p.b ? `#${p.a} ${rivalName(this._rvWk, p.a)} geçildi` : `#${p.a}-#${p.b} geçildi`;
+      const pod = p.b <= 3;
+      ui.runnerTicker?.((this._rvTop ? 'İLK 10! ' : '') + (pod ? '🏆 ' : '') + txt, pod); this._rvTop = false;
+      this._rvK = this.time - (this._rvKT || -9) < 3 ? this._rvK + 1 : 1;      // chain overtakes: the pitch climbs
+      this.ctx.audio.milestone?.(Math.min(5, this._rvK));
+      this._rvKT = this.time; this.ctx.platform.haptic('light');
+    }
+  }
+
+  // The record on the track: a red flag + line where your best score lands at THIS run's points-per-metre (recEq, refreshed each second);
+  // gold once passed. Faint lines mark your 2nd and 3rd best scores. Normal Rush only (a record of < 100 points is no record).
   makeRecordFlag() {
-    this.recFlag = null; return;                       // no record flag / line on the track (only the HUD 'REKOR n m' text)
-    // eslint-disable-next-line no-unreachable
-    if (this.bestDist < 50) { this.recFlag = null; return; }
+    this.recFlag = null; this.recMarks = null;
+    if (this.level || this.bestScore < 100) return;
     const g = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 7, 6).translate(0, 3.5, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }));
-    g.add(pole);
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 7, 6).translate(0, 3.5, 0), new THREE.MeshLambertMaterial({ color: 0xffffff })));
     let mat;
     if (typeof document !== 'undefined') {
-      const cv = document.createElement('canvas');
-      cv.width = 256; cv.height = 128;
-      const c = cv.getContext('2d');
-      c.fillStyle = '#e8322a'; c.fillRect(0, 0, 256, 128);
-      c.fillStyle = '#fff'; c.font = '900 56px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.lineWidth = 8; c.strokeStyle = '#17345c'; c.strokeText(t('REKOR'), 128, 66); c.fillText(t('REKOR'), 128, 66);
-      mat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide });
+      this._flagCv = document.createElement('canvas'); this._flagCv.width = 256; this._flagCv.height = 128;
+      this._flagTex = new THREE.CanvasTexture(this._flagCv);
+      this.paintFlag('#e8322a');
+      mat = new THREE.MeshBasicMaterial({ map: this._flagTex, side: THREE.DoubleSide });
     } else mat = new THREE.MeshBasicMaterial({ color: 0xe8322a, side: THREE.DoubleSide });
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.8).translate(1.8, 5.8, 0), mat);
-    g.add(banner);
-    // A glowing line across the track marks the exact spot.
+    g.add(new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.8).translate(1.8, 5.8, 0), mat));
     const line = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.6), new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.75, depthWrite: false }));
     line.rotation.x = -Math.PI / 2;
     g.add(line);
@@ -2077,24 +2155,60 @@ export class Runner {
     g.visible = false;
     this.ctx.scene.add(g);
     this.recFlag = g;
+    this.recMarks = [];
+    const tops = this.ctx.save.runnerTopScores?.() || [];
+    for (let i = 1; i < 3; i++) {
+      if (!(tops[i] >= 100 && tops[i] < this.bestScore)) continue;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.4), new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.3, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; m.visible = false; m.userData = { sc: tops[i], eq: 0 };
+      this.ctx.scene.add(m); this.recMarks.push(m);
+    }
+  }
+
+  paintFlag(col) {
+    const c = this._flagCv.getContext('2d');
+    c.fillStyle = col; c.fillRect(0, 0, 256, 128);
+    c.fillStyle = '#fff'; c.font = '900 56px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.lineWidth = 8; c.strokeStyle = '#17345c'; c.strokeText(t('REKOR'), 128, 66); c.fillText(t('REKOR'), 128, 66);
+    this._flagTex.needsUpdate = true;
+  }
+
+  recFlagGold() {
+    if (this._flagCv) this.paintFlag('#e0a41c');
+    if (this.recLine) this.recLine.material.color.set(0xffd060);
   }
 
   placeRecordFlag() {
     const f = this.recFlag;
-    if (!f) return;
-    const ds = this.bestDist - this.b.s;
-    f.visible = ds > -20 && ds < 280;
-    if (!f.visible) return;
-    const tr = this.track;
-    tr.frame(this.bestDist, _f);
-    const hw = tr.halfWidth(this.bestDist) || 3.8;
-    tr.toWorld(this.bestDist, -hw - 0.6, 0, _v);
-    f.position.copy(_v);
-    _x.copy(_f.right).negate();
-    _m.makeBasis(_f.right, _f.up, _x.crossVectors(_f.right, _f.up));
-    f.quaternion.setFromRotationMatrix(_m);
-    this.recLine.scale.set(hw * 2 + 1.2, 1, 1);
-    this.recLine.position.set(hw + 0.6, 0.06, 0);
+    if (!f || this.state === 'idle') return;
+    const eq = this.passedScore ? (this._flagEq || 0) : this.recEq;
+    if (!this.passedScore) this._flagEq = eq;
+    const ds = eq - this.b.s, tr = this.track;
+    f.visible = eq > 0 && ds > -20 && ds < 280;
+    if (f.visible) {
+      tr.frame(eq, _f);
+      const hw = tr.halfWidth(eq) || 3.8;
+      tr.toWorld(eq, -hw - 0.6, 0, _v);
+      f.position.copy(_v);
+      _x.copy(_f.right).negate();
+      _m.makeBasis(_f.right, _f.up, _x.crossVectors(_f.right, _f.up));
+      f.quaternion.setFromRotationMatrix(_m);
+      this.recLine.scale.set(hw * 2 + 1.2, 1, 1);
+      this.recLine.position.set(hw + 0.6, 0.06, 0);
+    }
+    const ms = this.recMarks;
+    if (!ms) return;
+    for (let i = 0; i < ms.length; i++) {
+      const m = ms[i], u = m.userData;
+      if (this.time - (u.at || -9) >= 1) { u.at = this.time; u.eq = this.score < u.sc ? recordEqDist(this.b.s, this.score, u.sc) : 0; }
+      const d = u.eq - this.b.s;
+      m.visible = u.eq > 0 && d > 0 && d < 200;
+      if (!m.visible) continue;
+      tr.frame(u.eq, _f); const hw = tr.halfWidth(u.eq) || 3.8;
+      tr.toWorld(u.eq, 0, 0.05, _v); m.position.copy(_v);
+      _m.makeBasis(_f.right, _f.up, _x.crossVectors(_f.right, _f.up)); m.quaternion.setFromRotationMatrix(_m);
+      m.rotateX(-Math.PI / 2); m.scale.set(hw * 2, 1, 1);
+    }
   }
 
 
@@ -2315,6 +2429,24 @@ export class Runner {
     if (this.newRecT > 0) { ui.runnerGoal?.('new', 0, 1); return; }
     // ONE goal at a time: the closest open mission (also in the first two runs: the strip is never empty), else the record in POINTS, else the checkpoint strip
     const h = this._hud, m = this._mrow;
+    if (!this.passedScore && this.recEq > 0 && this.bestScore >= 100) {      // the last 300 m to the record: the countdown beats the mission pill
+      const dm = this.recEq - s;
+      if (dm > 0 && dm <= RECORD_NEAR) {
+        const q = recMetres(dm);
+        if (q !== this._recQ) { this._recQ = q; this._recQT = t("REKOR'A " + q + ' m'); }
+        h.goalKind = 'record'; h.goalText = this._recQT; h.goalFrac = clamp(1 - dm / RECORD_NEAR, 0, 1);
+        this.goalStrip('rec', q, h.goalFrac, this._recQT);
+        return;
+      }
+    }
+    const rvGap = this.rvOn && this._rvI >= 0 ? this._rvSc[this._rvI] - this.score : Infinity;
+    if ((!m || rvGap <= 150) && rvGap < (this.passedScore || this.bestScore < 100 ? Infinity : this.bestScore - this.score) && this.score >= 100) {      // the next bot above you is closer than the record: pin it
+      const q = Math.max(10, Math.ceil(rvGap / 10) * 10), k = this._rvI * 100000 + q;
+      if (k !== this._rvPK) { this._rvPK = k; this._rvPT = `#${this._rvI + 1} ${rivalName(this._rvWk, this._rvI + 1)} · ${NUM(q)}`; }
+      h.goalKind = 'rival'; h.goalText = this._rvPT; h.goalFrac = clamp(this.score / this._rvSc[this._rvI], 0, 1);
+      this.goalStrip('rec', q, h.goalFrac, this._rvPT);
+      return;
+    }
     if (m) {
       const intro = this._nRuns < 2 && m.id === 'jump' && m.value === 0 && this.time < 5;      // first 5 s of a first run: one word + the jump icon, pulsing
       const goal2 = this._nRuns < 3 && this.time < 2.5;      // first 2.5 s of the first runs: the goal AND what it pays ("5 kez zıpla 0/5 → x2")
@@ -2397,6 +2529,7 @@ export class Runner {
     const prev = this.chap, def = seg.def, ui = this.ctx.ui;
     if (prev && !prev.bonus) this.chapterEnd(prev);
     this.chap = seg; this.chapCrash0 = this.crashes; this.duelNear = 0; this._air = 0; this.chapSpd = def.spd || 1; this.lowG = !!def.lowg; this.crowd = !!def.crowd; this.rainT = def.rain ? 0.1 : 0; this.rainN = 0;
+    if (!seg.bonus && seg.n > this.runChap) this.runChap = seg.n;
     if (!seg.bonus && seg.n > this.bestChapter) { this.bestChapter = seg.n; this.saveBestChapter(); }
     let line = seg.bonus ? t('ALTIN DAMAR') : chapterLine(seg.n, def.parts ? def.parts.map(t).join(' × ') : def.name, def.parts ? (x) => x : t, getLang() === 'en');
     if (def.word && !def.parts && !this._words[seg.id]) { this._words[seg.id] = 1; const wd = t(def.word); if (!line.toUpperCase().includes(wd.replace(/[!?]/g, '').toUpperCase())) line += ' · ' + wd; }      // (a word the name already says is not repeated: MISSILE RAIN · MISSILE!)      // the new rule in one word, first time per run (on the name pill: a float would lose to the other messages)
@@ -3225,6 +3358,7 @@ export class Runner {
         if ((e.toughness || 0) < 2) break;
         if (e.boulder && this.boss && this.chap && this.chap.def.duel) this.duelNearHit();
         this.nearChain = this.nearT > 0 ? this.nearChain + 1 : 1;
+        if (this.nearChain > this.maxChain) this.maxChain = this.nearChain;
         this.nearT = 2.6;
         this.addFury(0.125);
         this.addFlow(3);
@@ -3837,23 +3971,30 @@ export class Runner {
 
   // The run is over for good: record it (top list, daily best, missions) exactly once.
   recordRun() {
-    if (this.recorded) return this.recInfo || { rank: 0, dailyBest: false, weeklyBest: false };
+    if (this.recorded) return this.recInfo || { rank: 0, dailyBest: false, weeklyBest: false, prog: null };
     this.recorded = true;
     if (!this.level) this.ctx.meta?.track?.('season_run_end', { total: this.seasonTokens || 0, n: this.seasonTokens || 0 });
     const { save } = this.ctx;
     const meta = this.ctx.meta;
     const score = Math.round(this.score), dist = Math.round(this.b.s);
+    const bestBefore = save.runnerBest?.() ?? 0;
     const rank = save.recordRunner?.(score, dist) || 0;
     const dailyBest = !!save.recordDailyRunner?.(score);
     if (this.daily) this.dailyRec = storeDaily(this.daily, dist, score);
     const weeklyBest = this.week ? !!save.recordWeeklyRunner?.(this.week.key, score) : false;
+    let prog = null;
+    try {
+      prog = settleRun(save, meta, this.goalRun(score, dist, bestBefore));
+      if (prog && this.rvSettle) { prog.settle = this.rvSettle; }
+    } catch (e) { prog = null; }
     meta?.track?.('endless_end', {
+      medal: prog ? prog.medal : 0, recStreak: prog && prog.streak ? prog.streak.n : 0,
       distance: dist, score, coins: this.coins, crashes: this.crashes, cause: this.cause, killKind: this.killKind,
       maxTier: this.maxTier, seasonTokens: this.seasonTokens || 0, jumps: this.jumps, smashes: this.smashes, turns: this.turns, stumbles: this.stumbles, stomps: this.stompTotal,
       chapters: this.chapDone, cleanChapters: this.chapClean, chapterXp: this.chapXp, bestChapter: this.bestChapter,
     });
     if (this.boxes) meta?.addBoxes?.(this.boxes);      // credited silently
-    this.recInfo = { rank, dailyBest, weeklyBest };
+    this.recInfo = { rank, dailyBest, weeklyBest, prog };
     return this.recInfo;
   }
 
@@ -3921,6 +4062,11 @@ export class Runner {
     this._rcpTm = setTimeout(end, 900);
   }
 
+  // what the goal layer needs to know about this run
+  goalRun(score, dist, bestBefore) {
+    return { score, dist, bestBefore, wk: this.ctx.save.runnerRv ? weekKey() : '', daily: !!this.daily, hop: this.maxChain, stomp: this.stompTotal, spd: Math.round(this.maxVs * 10) / 10, blast: Math.round(this.maxBlast * 10) / 10, chap: this.runChap };
+  }
+
   // The result screen. While a revive is possible the run is NOT recorded yet (a revive continues the same run).
   showResult(canRevive) {
     const { save, ui } = this.ctx;
@@ -3928,9 +4074,9 @@ export class Runner {
     const b = this.b;
     const bestBefore = save.runnerBest?.() ?? 0, bestDistBefore = save.runnerBestDist?.() ?? 0;
     const dist = Math.round(b.s), score = Math.round(this.score);
-    let rank = 0, dailyBest = false, weeklyBest = false;
-    if (!canRevive) { const info = this.recordRun(); rank = info.rank; dailyBest = info.dailyBest; weeklyBest = !!info.weeklyBest; }
-    else rank = save.previewRunnerRank?.(dist) ?? 0;
+    let rank = 0, dailyBest = false, weeklyBest = false, prog = null;
+    if (!canRevive) { const info = this.recordRun(); prog = info.prog || null; rank = info.rank; dailyBest = info.dailyBest; weeklyBest = !!info.weeklyBest; }
+    else { rank = save.previewRunnerRank?.(dist) ?? 0; try { prog = settleRun(save, meta, this.goalRun(score, dist, bestBefore), true); } catch (e) { prog = null; } }
     const isBestDist = dist >= 50 && dist > bestDistBefore;
     // score read-out: one big number (score), how far from the best (deltaBest, signed) and one next goal (text is ready to show)
     const ng = nextGoal(score, bestBefore);
@@ -3952,6 +4098,7 @@ export class Runner {
       destruction: DESTRUCTION[this.destTier].name,
       tons: Math.round(this.destTons),
       rank,
+      prog,
       toRecord: Math.max(0, Math.round(bestDistBefore - dist)),   // (old, metres: kept for old readers)
       toRecordScore: Math.max(0, bestBefore - score),
       isRecord: isScoreRecord(score, bestBefore, dist),
@@ -5040,6 +5187,7 @@ export class Runner {
       this.ctx.scene.remove(this.recFlag);
       this.recFlag.traverse((o) => { if (o.isMesh) { o.geometry.dispose(); o.material.map?.dispose(); o.material.dispose(); } });
       this.recFlag = null;
+      if (this.recMarks) { for (const m of this.recMarks) { this.ctx.scene.remove(m); m.geometry.dispose(); m.material.dispose(); } this.recMarks = null; }
     }
     ui.speedLines?.(0);
     if (this._baitEl) { this._baitEl.remove(); this._baitEl = null; }

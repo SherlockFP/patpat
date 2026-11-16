@@ -1436,3 +1436,26 @@ html .fm-main > .fm-best .bk { font-size: 12px; color: #3b5380; }
 #hud.rush.rush.rush .hud-goal { height: auto; min-height: 28px; }
 #hud.rush.rush.rush .hud-goal .goal-lbl { white-space: normal; overflow: visible; text-overflow: clip; font-size: 14px; line-height: 16px; padding: 3px 34px 3px 8px; overflow-wrap: anywhere; }
 #hud.rush .hud-coins .rec-gap { font-size: 13px; color: #ffe066; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink); }   /* the metres-to-record line: >= 12 px with contrast */
+
+/* ---- Rush goal layer: rank ladder row, medal / PB badges, retry pulse, promotion dim ---- */
+.res-extra .rx-lad { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 5px 10px 6px; border-radius: 12px; border: 2px solid var(--ink); background: rgba(23, 52, 92, 0.78); font-weight: 900; font-size: 14px; color: #fff; text-shadow: 0 2px 0 var(--ink); }
+.res-extra .rx-lad .lb { color: var(--lc, #fff); letter-spacing: 0.04em; }
+.res-extra .rx-lad .lp { display: flex; gap: 4px; }
+.res-extra .rx-lad .lp i { width: 28px; height: 9px; border-radius: 5px; border: 1.5px solid var(--ink); background: linear-gradient(90deg, var(--lc, #fff) var(--f, 0%), rgba(255, 255, 255, 0.22) var(--f, 0%)); }
+.res-extra .rx-lad small { font-size: 12px; font-weight: 800; color: #dbeaff; }
+.res-extra .rx-lad.up .lp i:not([style*="--f:0%"]) { box-shadow: 0 0 8px var(--lc, #fff); }
+.res-extra .rx-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.res-extra .rx-row .rx-c.cy { color: #7fe9ff; font-weight: 900; text-shadow: 0 1px 0 var(--ink); }
+.res-extra .rx-row .rx-c.fire { color: #ffb347; font-weight: 900; text-shadow: 0 1px 0 var(--ink); }
+.res-extra .rx-pg2 { font-size: 14px; }
+.res-extra .rx-pg2 .rv-you { color: var(--gold); }
+.res-extra .rx-pg2 .rv-bot { color: #b8cdea; font-weight: 800; font-size: 13px; }
+.res-badge.medal { color: var(--ink); background: linear-gradient(180deg, #fff, var(--mc, #cfd6e0)); box-shadow: 0 3px 0 var(--ink), 0 0 14px var(--mc, #cfd6e0); animation: badgePop 0.5s cubic-bezier(.2, 1.8, .4, 1) 0.2s backwards; }
+#result .btn.retry.pulse { animation: retryPulse 0.9s ease-in-out infinite; box-shadow: 0 4px 0 var(--ink), 0 0 0 3px rgba(255, 190, 60, 0.9), 0 0 18px rgba(255, 190, 60, 0.7); }
+@keyframes retryPulse { 50% { transform: scale(1.06); } }
+.rx-dim-ov { position: fixed; inset: 0; z-index: 70; pointer-events: none; background: rgba(4, 12, 28, 0.4); }
+@media (prefers-reduced-motion: reduce) { #result .btn.retry.pulse { animation: none; } }
+
+.rk-tick { position: fixed; left: 12px; top: calc(env(safe-area-inset-top, 0px) + 150px); z-index: 12; max-width: 62vw; padding: 3px 11px 4px; border-radius: 12px; background: rgba(15, 30, 55, 0.86); color: #fff; font: 800 13px/1.2 system-ui, sans-serif; text-shadow: 0 1px 0 var(--ink); pointer-events: none; opacity: 0; transform: translateX(-14px); transition: opacity 0.15s, transform 0.15s; }
+.rk-tick.on { opacity: 1; transform: none; }
+.rk-tick.gold { background: #ffd23a; color: #14284b; text-shadow: none; }

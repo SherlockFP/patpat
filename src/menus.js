@@ -19,6 +19,8 @@ import { nextGoal, vitrinInfo, shopNewCount } from './shop.js';
 import { hideBoot, runnerDeathText } from './ui.js';
 import { PUBLIC_URL } from './sharecard.js';
 import { platform } from './platform.js';
+import { tierOf, tierInfo, dcView, dayNum } from './runner/ladder.js';
+import { rivalScores, placeOf, weekDay, weekKey } from './runner/rivals.js';
 import { setIcon, uiImg } from './uiicons.js';
 import { getLang, setLang, t as tr } from './i18n.js';
 import { hasArenaInvite } from './agar/invite.js';
@@ -200,6 +202,7 @@ const CSS = `
 }
 .fm-best::after { content: ""; position: absolute; z-index: -1; left: 50%; bottom: -11px; width: 16px; height: 16px; margin-left: -8px; transform: rotate(45deg); background: #dfeaff; border: 0 solid var(--ink); border-right-width: 3px; border-bottom-width: 3px; border-radius: 0 0 5px 0; }
 .fm-best .bk { display: block; font-size: 11px; line-height: 1; letter-spacing: 0.12em; color: #5a7196; }
+.fm-best .lg { font-weight: 900; text-shadow: 0 1px 0 rgba(8, 22, 48, 0.55); letter-spacing: 0.04em; }
 .fm-best .bv { display: block; margin-top: 2px; font-size: 22px; line-height: 1.05; color: var(--orange-dark); white-space: nowrap; }
 .fm-best .bs { display: block; margin-top: 2px; font-size: 12px; line-height: 1.1; white-space: nowrap; }
 @keyframes fmBubble { from { transform: translateX(-50%) translateY(0) rotate(-1.5deg); } to { transform: translateX(-50%) translateY(-4px) rotate(1deg); } }
@@ -1816,7 +1819,8 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
       try {
         let dr = null; try { dr = JSON.parse(localStorage.getItem('patpat.dailyRush') || 'null'); } catch { /* ignore */ }
         const bst = dr && dr.dist > 0 && dr.key === dayKey() ? dr.dist : 0;
-        p.list.appendChild(rowOf('🏃', "Günün Rush'ı", bst ? `${Math.round(bst)} m` : 'Herkese aynı pist: bugün dene', button(`fm-btn sm${bst ? '' : ' glow'}`, 'OYNA', () => { closePanel(true); sfx('confirm'); if (cb.onDailyRush) cb.onDailyRush(); })));
+        let dcv = null; try { const b0 = save.runnerBest ? save.runnerBest() : 0; if (b0 >= 100) dcv = dcView(save.runnerDc ? save.runnerDc() : null, dayNum(), b0); } catch { /* ignore */ }
+        p.list.appendChild(rowOf('🏃', "Günün Rush'ı", dcv ? `Hedef ${dcv.hit}/3 · Deneme ${dcv.n}/3` : bst ? `${Math.round(bst)} m` : 'Herkese aynı pist: bugün dene', button(`fm-btn sm${bst ? '' : ' glow'}`, 'OYNA', () => { closePanel(true); sfx('confirm'); if (cb.onDailyRush) cb.onDailyRush(); })));
         if (cb.onDaily && save.cigDailyOpen && save.cigDailyOpen()) {
           p.list.appendChild(rowOf('🏔', 'Günün Dağı', info.dailyBest > 0 ? `Rekor: ${fmtTons(info.dailyBest)}` : 'Her gün yeni bir dağ', button(`fm-btn sm${info.dailyBest > 0 ? '' : ' glow'}`, 'OYNA', () => { closePanel(true); sfx('confirm'); try { meta.setMode('daily'); } catch { /* ignore */ } cb.onDaily(); })));
         }
@@ -3436,7 +3440,8 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     r.achoo = el('div', 'fm-achoo', 'HAPŞUU!');
     r.bestV = el('span', 'bv', '');
     r.bestS = el('span', 'bs', 'Yeti seni bekliyor!');
-    r.best = add(el('div', 'fm-best'), el('span', 'bk', 'YETİ RUSH REKORU'), r.bestV, r.bestS);
+    r.lg = el('span', 'lg', '');
+    r.best = add(el('div', 'fm-best'), add(el('span', 'bk', 'YETİ RUSH REKORU'), r.lg), r.bestV, r.bestS);
     r.aura = el('div', 'fm-aura');
     add(hero, r.achoo);
     r.globe = button('fm-globe', '', () => shakeGlobe(), 'Günlük Kar Küresi');
@@ -3636,6 +3641,13 @@ export function createMenus({ save, meta, root, callbacks = {} } = {}) {
     let cc = 0, cs = 0;
     try { cc = save.cigCleared(); cs = save.cigLvTotalStars(); } catch { /* ignore */ }
     let tb = 0; try { tb = save.runnerTodayBestScore ? save.runnerTodayBestScore() | 0 : 0; } catch { /* ignore */ }
+    // rank league (+ the weekly place while this week's table exists): the badge and the number the result screen shows
+    try {
+      const ti = tierInfo(tierOf(bd)), rv = save.runnerRv ? save.runnerRv() : null, wk = weekKey();
+      const pl = rv && rv.wk === wk && rv.wb > 0 ? placeOf(rivalScores(wk, rv.A, weekDay()), rv.wb) : 0;
+      r.lg.textContent = ti ? ` ${ti.icon} ${(tr(ti.name) + ' ' + ti.label.slice(ti.name.length + 1)).toUpperCase()}${pl ? ' · #' + pl : ''}` : '';
+      r.lg.style.color = ti ? ti.col : '';
+    } catch { r.lg.textContent = ''; }
     // score chase: today's best vs the record, and what is left to beat it
     r.bestS.textContent = bd > 0 ? (tb >= bd ? `BUGÜN REKOR! ${fmt(tb)} puan` : tb > 0 ? `Bugün ${fmt(tb)} puan · rekora ${fmt(bd - tb)}` : `Sıradaki: ${fmt(bd + 1)} puan`)
       : cc > 0 ? `ÇIĞ: DAĞ ${cc} · ⭐ ${cs}` : (cig.tons > 0 ? `ÇIĞ: ${fmtTons(cig.tons)}` : 'Yeti seni kovalıyor!');

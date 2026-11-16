@@ -119,6 +119,12 @@ export const SKINS = [
   { id: 'gunluk_kar', name: 'Günlük Kar', rarity: 'rare', price: 0, unlock: { challenge: 'ch_daily10' }, preview: { a: '#ffffff', b: '#9fd8ff', c: '#c6f0ff', pattern: 'dots' } },
   { id: 'gece_topu', name: 'Gece Topu', rarity: 'epic', price: 0, unlock: { challenge: 'ch_night5' }, preview: { a: '#0b1640', b: '#3a4fa0', c: '#c8d8ff', pattern: 'stars' } },
   { id: 'arena_kral', name: 'Arena Kralı', rarity: 'legendary', price: 0, unlock: { challenge: 'ch_arena1000' }, preview: { a: '#9fd8ff', b: '#2a6fb8', c: '#ffffff', pattern: 'facets', glow: true } },
+  // ---- RUSH LİGLERİ / REKOR SERİSİ ödülü (bkz. meta.js lg_* / rs_*)
+  { id: 'lg_buz', name: 'Buz Ligi Topu', rarity: 'epic', price: 0, unlock: { challenge: 'lg_buz' }, preview: { a: '#d6f8ff', b: '#33b2e8', c: '#ffffff', pattern: 'facets', glow: true } },
+  { id: 'lg_cig', name: 'Çığ Ligi Topu', rarity: 'epic', price: 0, unlock: { challenge: 'lg_cig' }, preview: { a: '#f2f8ff', b: '#8fb4e8', c: '#3a5a90', pattern: 'swirl' } },
+  { id: 'lg_avci', name: 'Yeti Avcısı Topu', rarity: 'legendary', price: 0, unlock: { challenge: 'lg_avci' }, preview: { a: '#b58cff', b: '#4a2a9a', c: '#f4eaff', pattern: 'stars', glow: true } },
+  { id: 'lg_efsane', name: 'Efsane Top', rarity: 'legendary', price: 0, unlock: { challenge: 'lg_efsane' }, preview: { a: '#ffe681', b: '#c8780c', c: '#fff6c8', pattern: 'facets', glow: true } },
+  { id: 'rs_ates', name: 'Rekor Ateşi', rarity: 'epic', price: 0, unlock: { challenge: 'rs_7' }, preview: { a: '#ffd23a', b: '#ff3a10', c: '#7a2a00', pattern: 'flame', glow: true } },
   { id: 'tac_top', name: 'Taç Topu', rarity: 'legendary', price: 0, unlock: { challenge: 'ch_arenaLead' }, preview: { a: '#ffe681', b: '#d8940c', c: '#7a4a00', pattern: 'tiles', glow: true } },
 ];
 
@@ -175,6 +181,8 @@ export const TRAILS = [
   { id: 'elmas_tozu', name: 'Elmas Tozu', rarity: 'legendary', price: 3800, new: true, preview: { a: '#e8fcff', b: '#7fe3ff', pattern: 'bands', glow: true } },
   { id: 'ejder_nefesi', name: 'Ejder Nefesi', rarity: 'legendary', price: 4500, new: true, unlock: { stars: 30 }, preview: { a: '#ffd23a', b: '#ff3a10', pattern: 'swirl', glow: true } },
   // ---- GÖREVLER ödülü (özel), bkz. SKINS
+  { id: 'lg_kp', name: 'Kartopu Ligi İzi', rarity: 'rare', price: 0, unlock: { challenge: 'lg_kp' }, preview: { a: '#9fd0ff', b: '#ffffff', pattern: 'solid', glow: true } },
+  { id: 'rs_iz', name: 'Rekor İzi', rarity: 'epic', price: 0, unlock: { challenge: 'rs_5' }, preview: { a: '#ffe681', b: '#ff7a1a', pattern: 'solid', glow: true } },
   { id: 'kart_izi', name: 'Kart İzi', rarity: 'epic', price: 0, unlock: { challenge: 'ch_buff25' }, preview: { a: '#ffd23a', b: '#3ad0ff', pattern: 'swirl' } },
   { id: 'firtina_izi', name: 'Çılgın Kar İzi', rarity: 'epic', price: 0, unlock: { challenge: 'ch_fever10' }, preview: { a: '#8ff4ff', b: '#3ac8ff', pattern: 'bands', glow: true } },
   { id: 'seri_izi', name: 'Seri İzi', rarity: 'rare', price: 0, unlock: { challenge: 'ch_play7' }, preview: { a: '#a8ffc0', b: '#2fd06a', pattern: 'solid', glow: true } },
@@ -206,6 +214,8 @@ const TRAIL_STYLES = {
   kart_izi: { color: 0xffd23a, color2: 0x3ad0ff, rainbow: true, glow: false, palette: [0xffd23a, 0x3ad0ff, 0xff5ca8, 0xffffff] },
   firtina_izi: { color: 0x8ff4ff, color2: 0xffffff, rainbow: true, glow: true, palette: [0x8ff4ff, 0xffffff, 0x3ac8ff] },
   seri_izi: { color: 0xa8ffc0, rainbow: false, glow: true },
+  lg_kp: { color: 0x9fd0ff, color2: 0xffffff, rainbow: false, glow: true },
+  rs_iz: { color: 0xffe681, color2: 0xff7a1a, rainbow: false, glow: true, emit: { s: 'spark', rate: 10, cols: [0xffe681, 0xff9a1a, 0xffffff], size: 0.3, up: 1.4, sp: 2, life: 0.6, add: 1 } },
   duman_izi: { color: 0x9aa4b4, color2: 0x5a6478, rainbow: false, glow: false, emit: { s: 'smoke', rate: 7, cols: [0xaab4c4, 0x8892a4], size: 0.9, up: 0.6, life: 1.1, grow: 1 } },
   piksel_izi: { color: 0x38e07a, rainbow: true, glow: false, palette: [0x38e07a, 0xf4ffd0, 0x1a9e5a, 0x103a2a], emit: { s: 'pixel', rate: 6, cols: [0x38e07a, 0xf4ffd0, 0x1a9e5a], size: 0.28, up: 0.9, life: 0.8 } },
   kivilcim: { color: 0xffd23a, color2: 0xff7a1a, rainbow: false, glow: true, emit: { s: 'spark', rate: 12, cols: [0xffd23a, 0xff9a1a, 0xffffff], size: 0.32, up: 1.6, sp: 2.5, life: 0.6, add: 1 } },
@@ -2570,6 +2580,11 @@ const BUILDERS = {
   gunluk_kar: () => skinGen('dots', 0xffffff, 0x9fd8ff, 0xc6f0ff, 0xe6f6ff),
   gece_topu: () => skinGen('stripes', 0x0b1640, 0x3a4fa0, 0xc8d8ff, 0x5a6ec0),
   arena_kral: () => skinGen('facets', 0x9fd8ff, 0x2a6fb8, 0xffffff, 0xcfeaff),
+  lg_buz: () => skinGen('facets', 0xd6f8ff, 0x33b2e8, 0xffffff, 0xaee8ff),
+  lg_cig: () => skinGen('swirl', 0xf2f8ff, 0x8fb4e8, 0x3a5a90, 0xdbe9ff),
+  lg_avci: () => skinGen('stars', 0xb58cff, 0x4a2a9a, 0xf4eaff, 0xcfb4ff),
+  lg_efsane: () => skinGen('facets', 0xffe681, 0xc8780c, 0xfff6c8, 0xffefa0),
+  rs_ates: () => skinGen('flame', 0xffd23a, 0xff3a10, 0x7a2a00, 0xffb070),
   tac_top: () => skinGen('bands', 0xffe681, 0xd8940c, 0x7a4a00, 0xffef9a),
   cam_top: () => skinGen('facets', 0x1f6b3a, 0x0f4a28, 0xe8f6ff, 0xcfe8d6),
   balon_top: () => skinGen('swirl', 0xff5a3a, 0xffd23a, 0x3a8cff, 0xffc08a),

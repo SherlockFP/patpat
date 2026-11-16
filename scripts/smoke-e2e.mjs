@@ -4,7 +4,7 @@
 // 390x844 @ dpr 1, nothing online (every non-localhost request is blocked), only our own PIDs are killed, never the owner's Chrome.
 // Machine lock: os.tmpdir()/patpat-smoke.lock holds the PID of the running smoke test; a second run waits up to 8 min, a lock whose PID is dead is taken over.
 // Timeouts: every scenario has a hard timeout (30 s default, 90 s Rush playtest; a few say otherwise below). On expiry it FAILs and the run moves on;
-// the stuck scenario can no longer touch the browser (its next CDP call is rejected). Whole run is capped at ~8 min (later scenarios are skipped with WARN).
+// the stuck scenario can no longer touch the browser (its next CDP call is rejected). Whole run is capped at ~15 min (later scenarios are skipped with WARN).
 // Frames for humans/critics are shot without the ?debug overlay: s1-s4, s13, s14, s15 load without ?debug. Scenarios that need the cig.* hooks (s5-s9, s11) load with
 // ?debug but an injected style (#debug{display:none}) keeps the overlay out of every frame; only s16 shows it. Draw calls / triangles come from a WebGL draw hook
 // injected into every document (all passes of a frame summed), so they work without ?debug.
@@ -19,7 +19,7 @@
 //   14 cig mountain 1 start/mid/town/end (cig_1_*.png)             15 cig mountain 12 start/mid/end (cig_12_*.png)
 //   29 borrowed mechanics: mech_burst/dash/board/drift/chase/crowd_0..1.png + rush_ch_halka/gp/gokyuzu/magara.png (needs ?debug hooks)
 //   31 wardrobe v2: shop_<en|tr>_<skin|trail|hop|stomp|blast|yeti|death|emote|power|pazar>.png, shop_*_3d_trail / _dene / _3d_yeti, text audit   32 equipped cosmetics in play: cos_*.png
-//   28 Sonic ring: loop_0..5.png (entry / 3 o'clock / top / 9 o'clock / exit / chase back), loopb_* (2nd run), cork_0..1, helix_0..1, dloop_0..6 (double loop) (ball visible, ring in frame)   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   21 rush camera sweep (flat frames)   22 new chapters ekspres/ay/lazer/kopru/fuze/hareket/heyelan/turbo/volkan/sakura/neon/uzay: rush_ch_<id>.png (name strip + one-word label) and mech_<id>.png (the mechanic in view, needs ?debug hooks)   24 menu text: after every bottom-nav panel and after a Rush death -> MENU no toast / hint / float / banner / HUD text is left on screen   30 cig polish (needs ?debug hooks): cig_wave / cig_unlock / cig_crush_0..1 / cig_theme_6..36.png   25 AI UI icons: icons_rush_buff.png, icons_perk.png, icons_cig.png (images decoded, not emoji)   10 is the final blank-frame check (always printed)
+//   33 Rush goal layer: goal_res_promo/weak/weak_tr/near/record/record_tr/ladder.png (result cards), goal_menu, goal_passport, rush_goal_pin/rival/chase/pass/gold.png (needs ?debug hooks)   28 Sonic ring: loop_0..5.png (entry / 3 o'clock / top / 9 o'clock / exit / chase back), loopb_* (2nd run), cork_0..1, helix_0..1, dloop_0..6 (double loop) (ball visible, ring in frame)   16 debug overlay stats (?debug shown, reads calls/tris text)   17 mountain result cards, 2 stars and the tallest 3-star one (res_miss3.png, res_full3.png, fit checks)   18 Rush HUD states: cannon bar, chapter flag, toast hides the strip (rush_cannon.png, rush_toast.png)   19 model gallery (gal_*.png, needs ?debug hooks)   20 chapter sky backdrops (sky_orman/ray/duello.png, ?debug hooks)   21 rush camera sweep (flat frames)   22 new chapters ekspres/ay/lazer/kopru/fuze/hareket/heyelan/turbo/volkan/sakura/neon/uzay: rush_ch_<id>.png (name strip + one-word label) and mech_<id>.png (the mechanic in view, needs ?debug hooks)   24 menu text: after every bottom-nav panel and after a Rush death -> MENU no toast / hint / float / banner / HUD text is left on screen   30 cig polish (needs ?debug hooks): cig_wave / cig_unlock / cig_crush_0..1 / cig_theme_6..36.png   25 AI UI icons: icons_rush_buff.png, icons_perk.png, icons_cig.png (images decoded, not emoji)   10 is the final blank-frame check (always printed)
 import { spawn, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -31,7 +31,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = process.env.CHROME_PATH || 'C:/Users/Admin/AppData/Local/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-win64/chrome-headless-shell.exe';
-const BUDGET_MS = 480_000;                     // whole run (browser time) must stay under ~8 min; later scenarios are skipped past this
+const BUDGET_MS = 900_000;                     // whole run (browser time) must stay under ~15 min (33 scenarios); later scenarios are skipped past this
 let T0 = Date.now();                           // reset after the lock is taken, so waiting for another run does not count
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => Date.now() - T0;
@@ -1178,6 +1178,93 @@ async function cosPlay(ctx) {
   ctx.pass('the pill opened the wardrobe on its item: ' + JSON.stringify(open)); await sleep(1200); await shot('cos_result_shop', ctx);
 }
 
+// scenario 33: Rush goal layer. Result cards (promotion ceremony, weak run, near miss, record + streak + PB, top ladder), in EN and TR; menu league badge; passport medal stamps;
+// in-run: rival pin + overtake ticker, record-chase countdown + flag, the pass moment, the gold trail with +10% pops. Needs ?debug hooks for the in-run part.
+async function goals(ctx) {
+  const { weekKey } = await import('../src/runner/rivals.js');
+  const { dayNum } = await import('../src/runner/ladder.js');
+  const wk = weekKey();
+  const mk = (lang, over = {}) => {
+    const sv = save3(), d = new Date();
+    sv.wheel = { seen: 1, day: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` };
+    sv.runner = { ...sv.runner, best: 4000, bestDist: 800, runs: 8, lad: { t: 6 }, topS: [4000, 3300, 2600], pb: { hop: 10, stomp: 12, spd: 20, blast: 6, chap: 4 }, med: { b: 3, s: 3, g: 1, p: 0 }, rv: { wk, A: 4000, wb: 3500, last: null }, ...over };
+    return seedOf(sv, { 'freemon.meta.v1': JSON.stringify({ st: { runs: 3, endlessRuns: 3 } }), patpat_lang: lang });
+  };
+  const play = async (lang, over, q = '?endless&notut&debug') => { await load(q, mk(lang, over)); await waitFor(`${rushPlay}&&(${hudDist})>=0`, 30000, 'rush playing'); await ev('(()=>{const r=cig.runner;r.invulnT=999;r.yetiHoldT=99})()'); };
+  const result = async (lang, name, { score, dist = 600, set = '', over, wait = 1500, second = 0, details = false }) => {
+    await play(lang, over);
+    await ev(`(()=>{const r=cig.runner;r.score=${score};r.b.s=${dist};r.cause='yeti';${set};r.state='over';r.showResult(false)})()`);
+    await sleep(wait);
+    if (details) { await ev(`document.querySelector('.rx-qtoggle')&&document.querySelector('.rx-qtoggle').click()`); await sleep(300); }
+    await shot(name, ctx);
+    if (second) { await sleep(second); await shot(name + '_b', ctx); }
+    const m = await ev(`(()=>{const q=(s)=>document.querySelector(s),rb=q('#result .btn.retry'),r=rb&&rb.getBoundingClientRect(),ex=q('#res-extra');const lines=[q('#res-tons'),q('#res-sub')].map((e)=>e?e.textContent.trim():'').filter(Boolean);return{lad:!!q('.rx-lad'),ladTxt:(q('.rx-lad')||{}).innerText||'',retryIn:!!r&&r.bottom<=innerHeight&&r.top>0,pulse:!!rb&&rb.classList.contains('pulse'),badge:(q('#res-badge')||{}).textContent||'',lines,coin:(q('.rx-coin')||{}).textContent||'',chips:[...document.querySelectorAll('.rx-row .rx-c')].map((e)=>e.textContent.trim())}})()`);
+    return m;
+  };
+  // 1) promotion: Kartopu III -> Buz I with a record (EN, mid-ceremony + settled)
+  let m = await result('en', 'goal_res_promo', { score: 5200, wait: 950, second: 1500, set: 'r.maxChain=14' });
+  if (m.lad && /ICE/i.test(m.ladTxt) && m.retryIn) ctx.pass(`promotion card: ${m.ladTxt.replace(/\s+/g, ' ')} | ${m.chips.join(' ')} | RETRY on screen`); else ctx.fail('promotion card: ' + JSON.stringify(m));
+  // 2) weak run, EN + TR: a bronze medal and ONE nearest-goal line
+  m = await result('en', 'goal_res_weak', { score: 2600, dist: 420 });
+  if (m.lines.length === 2 && m.retryIn && /medal|pts to|to go/i.test(m.lines[0])) ctx.pass(`weak run: nearest goal "${m.lines[0]}", best "${m.lines[1]}", badge ${m.badge}`); else ctx.fail('weak run lines: ' + JSON.stringify(m));
+  m = await result('tr', 'goal_res_weak_tr', { score: 2600, dist: 420 });
+  if (m.lines.length === 2 && m.retryIn && /madalya|puan|kaldı|EN İYİ/i.test(m.lines[0])) ctx.pass(`weak run TR: "${m.lines[0]}" | ${m.badge}`); else ctx.fail('weak run TR lines: ' + JSON.stringify(m));
+  // 3) near miss: RETRY pulses
+  m = await result('en', 'goal_res_near', { score: 3850, dist: 700 });
+  if (m.pulse && m.retryIn) ctx.pass(`near miss: RETRY pulses, line "${m.lines[0]}", badge ${m.badge}`); else ctx.fail('near miss: ' + JSON.stringify(m));
+  // 4) record + record streak 2 + a personal best
+  m = await result('en', 'goal_res_record', { score: 4700, dist: 900, set: 'r.maxChain=15;r.stompTotal=14', over: { rs: { k: dayNum() - 1, n: 1 } } });
+  if (m.chips.some((c) => /STREAK/i.test(c)) && m.chips.some((c) => /NEAR-MISS|STOMPS/i.test(c)) && m.retryIn) ctx.pass(`record run: chips ${m.chips.join(' | ')}`); else ctx.fail('record run chips: ' + JSON.stringify(m));
+  await result('tr', 'goal_res_record_tr', { score: 4700, dist: 900, set: 'r.maxChain=15;r.stompTotal=14', over: { rs: { k: dayNum() - 1, n: 1 } } });
+  // 4b) the daily Rush: score goals + the details block (weekly table, personal bests, streak)
+  m = await result('en', 'goal_res_daily', { score: 4400, dist: 800, set: "r.daily={num:5,key:'k',seed:1};r.maxChain=15", details: true, over: { rs: { k: dayNum() - 1, n: 1 } } });
+  const dl = await ev(`[...document.querySelectorAll('.rx-pg2')].map((e)=>e.textContent.trim().replace(/\s+/g,' '))`);
+  if (dl.some((x) => /🎯 ● ● ○/.test(x)) && dl.some((x) => /Weekly rank/.test(x))) ctx.pass(`details: ${dl.slice(0, 6).join(' | ')}`); else ctx.fail('details lines: ' + JSON.stringify(dl));
+  // 5) top of the ladder
+  m = await result('en', 'goal_res_ladder', { score: 120000, dist: 3000, over: { best: 90000, lad: { t: 15 }, topS: [90000, 80000, 70000] } });
+  if (m.lad && /LEGEND/i.test(m.ladTxt)) ctx.pass(`ladder top: ${m.ladTxt.replace(/\s+/g, ' ')}`); else ctx.fail('ladder top: ' + JSON.stringify(m));
+  // 6) menu: league badge + weekly place on the record card
+  await load('', mk('en'));
+  await sleep(3500); await shot('goal_menu', ctx);
+  const lg = await ev(`(document.querySelector('.fm-best .lg')||{}).textContent||''`);
+  if (/KARTOPU|SNOWBALL/i.test(lg) && /#\d+/.test(lg)) ctx.pass(`menu card league badge "${lg.trim()}"`); else ctx.fail(`menu card league badge: "${lg}"`);
+  // 7) passport: the medal stamps
+  { const sv = save3(), d = new Date(); sv.level = 12; sv.wheel = { seen: 1, day: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }; sv.runner = { ...sv.runner, med: { b: 10, s: 10, g: 5, p: 1 } }; await load('', seedOf(sv)); }
+  for (let i = 0; i < 60 && !(await ev(MENU_SETTLED)); i++) await sleep(200);
+  await sleep(600);
+  const lbs = await ev(`[...document.querySelectorAll('.fm-secrow .fm-sb')].map(b=>(b.getAttribute('aria-label')||b.textContent.trim())+':'+Math.round(b.getBoundingClientRect().width))`);
+  await tapSel('.fm-secrow .fm-sb', /Passport|Pasaport/i, 4000).catch((e) => { throw new Error(e.message + ' labels=' + lbs.join(',')); });
+  await sleep(900);
+  await sleep(500); await shot('goal_passport', ctx);
+  const st = await ev(`(document.body.innerText.match(/YETI RUSH · (\\d+) stamps?/i)||[])[1]||'0'`);
+  if (+st >= 4) ctx.pass(`passport: the 4 medal stamps are on the Yeti Rush shelf (${st} stamps)`); else ctx.fail('passport medal stamps: ' + st);
+  // 8) in run: rival pin, overtake ticker, record chase, pass, gold trail
+  await play('en'); await sleep(4200);
+  const noPick = () => ev(`(()=>{const r=cig.runner;if(r.pickT>0){r.pickPerk('kalin');document.querySelectorAll('.perk-pick').forEach((e)=>e.remove())}})()`);
+  const rv = await ev(`(()=>{const r=cig.runner;return{on:r.rvOn,i:r._rvI,sc:[...r._rvSc].slice(0,3),at:r._rvSc[r._rvI]}})()`);
+  if (!rv.on || rv.i < 0) { ctx.fail('rivals not armed: ' + JSON.stringify(rv)); return; }
+  await ev(`(()=>{const r=cig.runner;r.score=r._rvSc[r._rvI]-130;r._rvPK=-1})()`);
+  await sleep(700); await shot('rush_goal_pin', ctx);
+  const pin = await ev(`((document.querySelector('#hud-goal .goal-lbl')||{}).textContent||'')+'|'+document.getElementById('hud-goal').className+'|'+(cig.runner._hud||{}).goalKind`);
+  if (/^#\d+ .+ · \d+/.test(pin.replace(/\s+/g, ' ').trim())) ctx.pass(`rival pin on the goal strip: "${pin.replace(/\s+/g, ' ').trim()}"`); else ctx.fail('rival pin text: ' + JSON.stringify(pin));
+  await ev(`(()=>{const r=cig.runner;r.score=r._rvSc[r._rvI]-6})()`);
+  await sleep(900); await shot('rush_goal_rival', ctx);
+  const tk = await ev(`(document.querySelector('.rk-tick.on')||{}).textContent||''`);
+  if (/passed/i.test(tk)) ctx.pass(`overtake ticker: "${tk.replace(/\s+/g, ' ').trim()}"`); else ctx.fail('overtake ticker text: ' + JSON.stringify(tk));
+  await ev(`(()=>{const r=cig.runner;document.getElementById('toast-soft').innerHTML='';r.b.s=130;r.score=3500;r._recT=0})()`);
+  await sleep(1300); await noPick(); await shot('rush_goal_chase', ctx);
+  const cd = await ev(`(()=>{const r=cig.runner;return{kind:(r._hud||{}).goalKind,cls:document.getElementById('hud-goal').className,pk:r.passedScore,newT:r.newRecT,cn:r.cannonN,txt:((document.querySelector('#hud-goal .goal-lbl')||{}).textContent||'').replace(/\\s+/g,' ').trim(),eq:Math.round(r.recEq),s:Math.round(r.b.s),flag:!!r.recFlag&&r.recFlag.visible}})()`);
+  if (/TO RECORD/i.test(cd.txt) && cd.flag) ctx.pass(`record chase: "${cd.txt}", flag visible at ${cd.eq} m (you at ${cd.s} m)`); else ctx.fail('record chase: ' + JSON.stringify(cd));
+  const c0 = await ev('cig.runner.coins');
+  await ev(`(()=>{const r=cig.runner;r.score=4010})()`);
+  await sleep(180); await shot('rush_goal_pass', ctx);
+  await sleep(700);
+  await ev(`(()=>{const r=cig.runner;r.score=4900;document.getElementById('toast-soft').innerHTML=''})()`);
+  await sleep(1300); await shot('rush_goal_gold', ctx);
+  const ps = await ev(`(()=>{const r=cig.runner;return{passed:r.passedScore,coins:r.coins,pops:r._rcPop,toast:(document.getElementById('toast-soft')||{}).innerText||''}})()`);
+  if (ps.passed && ps.coins - c0 >= 50 && ps.pops >= 1) ctx.pass(`record pass: +${ps.coins - c0} flakes so far, ${ps.pops} x +10% pop, toast "${ps.toast.replace(/\s+/g, ' ').trim()}"`); else ctx.fail('record pass: ' + JSON.stringify(ps));
+}
+
 async function main() {
   if (!existsSync(CHROME)) { console.error('Chrome headless shell not found: ' + CHROME + ' (set CHROME_PATH)'); process.exit(2); }
   await takeLock(); T0 = Date.now();
@@ -1265,6 +1352,7 @@ async function main() {
   await scenario(29, 'borrowed mechanics (mech_*, rush_ch_halka/gp/gokyuzu/magara)', 120000, mechs);
   await scenario(26, 'sonic layer (opening shot, bunny hop, dive-stomp, BLAST)', 70000, sonic);
   await scenario(27, 'Blender props in place (prop_*.png)', 40000, props);
+  await scenario(33, 'rush goals: ranks, medals, rivals, record chase (goal_*, rush_goal_*)', 110000, goals);
 }
 
 async function run() {
