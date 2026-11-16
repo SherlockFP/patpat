@@ -332,6 +332,7 @@ export const patterns = [
   [/^🏆 (.+): (.+) ([\d.,]+)\/([\d.,]+)$/, '🏆 $1: $2 $3/$4'],
   [/^⭐ VİTRİN -%15 · ⏳ (.+)$/, '⭐ SHOWCASE -15% · ⏳ $1'],
   [/^SIRADAKİ HEDEF: (.+)$/, 'NEXT GOAL: $1'],
+  [/^Sv (\d+)\/(\d+)$/, 'Lv $1/$2'], [/^(\d+) sn → (\d+) sn$/, '$1 s → $2 s'], [/^(\d+) sn \(en yüksek\)$/, '$1 s (max)'],
   [/^(\d+) sn → (\d+) sn · (.+)$/, '$1 s → $2 s · $3'],
   [/^(\d+) sn \(en yüksek\) · (.+)$/, '$1 s (max) · $2'],
   [/^Bir çarpışmayı affeder · Stok: (\d+)$/, 'Forgives one crash · Stock: $1'],

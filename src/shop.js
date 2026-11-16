@@ -1231,10 +1231,10 @@ export function openShop({ save, onClose, onSelect } = {}) {
     sfx();
     let n = DENE_SEC;
     deneBtn.classList.add('busy');
-    deneBtn.textContent = String(n);
+    deneBtn.textContent = '⏱ ' + n;
     if (view) view.dene(true);
     emoteDemo();
-    deneTm = setInterval(() => { n--; if (n <= 0 || closed) stopDene(); else deneBtn.textContent = String(n); }, 1000);
+    deneTm = setInterval(() => { n--; if (n <= 0 || closed) stopDene(); else deneBtn.textContent = '⏱ ' + n; }, 1000);
   });
   stBuy.addEventListener('click', () => { if (pv) act(pv, stage); });
 
@@ -1281,7 +1281,7 @@ export function openShop({ save, onClose, onSelect } = {}) {
     row.appendChild(typeof icon === 'string' ? h('div', 'ui', icon) : icon);
     const mid = h('div', 'um');
     mid.appendChild(h('div', 'un', name));
-    mid.appendChild(h('div', 'ud', desc));
+    { const ud = h('div', 'ud'); String(desc).split(' · ').forEach((p, i) => { if (i) ud.appendChild(document.createTextNode(' · ')); ud.appendChild(h('span', '', p)); }); mid.appendChild(ud); }
     if (lv !== null) {
       const pips = h('div', 'up');
       for (let i = 0; i < MAX_LV; i++) pips.appendChild(h('i', i < lv ? 'on' : ''));
@@ -1340,7 +1340,7 @@ export function openShop({ save, onClose, onSelect } = {}) {
     row.appendChild(prev);
     const mid = h('div', 'um');
     mid.appendChild(h('div', 'un', name));
-    mid.appendChild(h('div', 'ud', desc));
+    { const ud = h('div', 'ud'); String(desc).split(' · ').forEach((p, i) => { if (i) ud.appendChild(document.createTextNode(' · ')); ud.appendChild(h('span', '', p)); }); mid.appendChild(ud); }
     row.appendChild(mid);
     const btn = h('button', done ? 'cs-btn on' : 'cs-btn' + (afford ? '' : ' poor'), done ? doneLabel : (cur === 'crystals' ? '💎 ' + op : '❄️ ' + fmt(op)) + (op < price ? ' · %50' : ''));
     btn.setAttribute('type', 'button');

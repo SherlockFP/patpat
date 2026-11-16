@@ -799,7 +799,7 @@ body:has(.perk-pick:not(.out)) #hint, body:has(.perk-pick:not(.out)) .rtag, body
 #cig-wave.near .cw-pill { background: rgba(150, 20, 20, 0.85); animation: chaseNear 0.5s ease-in-out infinite alternate; }
 #cig-ladder:not(.show) { display: none; }
 #cig-ladder { position: absolute; left: 50%; bottom: calc(var(--sab, 0px) + 46px); transform: translateX(-50%); display: flex; gap: 4px; pointer-events: none; }
-#cig-ladder i { font-style: normal; font-weight: 900; font-size: 10px; letter-spacing: 0.04em; padding: 2px 6px 3px; border-radius: 8px; color: rgba(255, 255, 255, 0.55); background: rgba(8, 22, 48, 0.4); }
+#cig-ladder i { font-style: normal; font-weight: 900; font-size: 11px; letter-spacing: 0.04em; padding: 2px 6px 3px; border-radius: 8px; color: rgba(255, 255, 255, 0.9); background: rgba(8, 22, 48, 0.62); }
 #cig-ladder i.on { color: #fff; background: rgba(8, 22, 48, 0.72); }
 #cig-ladder i.new { color: #2a1a00; background: var(--gold, #ffd45a); animation: ladderPop 0.5s ease-in-out infinite alternate; }
 @keyframes ladderPop { from { transform: scale(1); } to { transform: scale(1.22); } }
