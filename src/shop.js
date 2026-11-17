@@ -10,6 +10,7 @@ import { getLang } from './i18n.js';
 import { SKINS, ABILITIES, TRAILS, RARITY, sortCatalog } from './skins.js';
 import { KINDS, BUNDLES as SETS, catalog, itemOf } from './cosmetics.js';
 import { createView } from './shopview.js';
+import { stageOf } from './effectballs.js';
 import { meta, ACHIEVEMENTS, UPGRADES as POWER_UPGRADES, SLED_PACK } from './meta.js';
 import * as Perks from './runner/perks.js';
 
@@ -214,6 +215,18 @@ const CSS = `
 .cs-card.r-rare { --rc: #2f7dff; --rg: rgba(47, 125, 255, 0.42); }
 .cs-card.r-epic { --rc: #a855f7; --rg: rgba(168, 85, 247, 0.5); }
 .cs-card.r-legendary { --rc: #ffb400; --rg: rgba(255, 180, 0, 0.62); }
+.cs-card.r-mythic { --rc: #ff4fd8; --rg: rgba(255, 79, 216, 0.72); }
+.cs-card.r-mythic .cs-rar { background: linear-gradient(100deg, #ff4fd8, #7a5cff, #3ad0ff, #ff4fd8) 0 0 / 300% 100%; animation: csShimmer 2.2s linear infinite; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); }
+/* EFFECT BALL cards: a few animated motes over the thumbnail hint what the ball does (rise / fall / orbit / zap) */
+.cs-fxb { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.cs-fxb i { position: absolute; width: 7px; height: 7px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--fc); box-shadow: 0 0 6px 1px var(--fc); left: calc(var(--x) * 1%); bottom: 10%; opacity: 0; animation: csMoteUp 1.4s ease-out infinite; animation-delay: var(--d); }
+.cs-fxb.f-fall i { bottom: auto; top: 0; animation-name: csMoteFall; }
+.cs-fxb.f-orb i { left: 50%; top: 50%; bottom: auto; opacity: 1; animation: csMoteOrb 2.6s linear infinite; animation-delay: var(--d); }
+.cs-fxb.f-zap i { width: 3px; height: 14px; border-radius: 1px; bottom: auto; top: 20%; transform: skewX(-20deg); animation: csMoteZap 0.9s steps(2) infinite; animation-delay: var(--d); }
+@keyframes csMoteUp { 0% { opacity: 0; transform: translateY(0) scale(0.6); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-48px) scale(1.1); } }
+@keyframes csMoteFall { 0% { opacity: 0; transform: translateY(-4px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(54px) rotate(160deg); } }
+@keyframes csMoteOrb { from { transform: rotate(0deg) translateX(46px) rotate(0deg); } to { transform: rotate(360deg) translateX(46px) rotate(-360deg); } }
+@keyframes csMoteZap { 0%, 45% { opacity: 1; } 50%, 100% { opacity: 0; } }
 .cs-card.sel { box-shadow: 0 5px 0 var(--ink), 0 0 0 4px var(--gold), 0 0 20px 4px rgba(255, 207, 58, 0.55); }
 .cs-abilbox { display:flex; flex-direction:column; align-items:center; gap:2px; text-align:center; flex:none; max-width:100%; }
 .cs-abil-b { display:inline-block; font-size:11px; font-weight:900; letter-spacing:.04em; padding:2px 8px; border-radius:7px; background:linear-gradient(180deg,#ffe27a,#ffb400); color:#2a1a00; border:2px solid var(--ink,#17345c); }
@@ -661,12 +674,12 @@ const CSS = `
 .cs-view.nogl .cs-stagecv::after { content: "🎈"; position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); font-size: 54px; }
 .cs-vinfo { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 10px 8px; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; pointer-events: none; }
 .cs-vtop { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
-.cs-vabil { max-width: 190px; padding: 4px 7px; border-radius: 9px; background: rgba(255, 244, 200, 0.94); color: #5a3a00; font-size: 12px; font-weight: 800; line-height: 1.25; }
+.cs-vabil { max-width: 132px; padding: 4px 7px; border-radius: 9px; background: rgba(255, 244, 200, 0.94); color: #5a3a00; font-size: 11px; font-weight: 800; line-height: 1.25; }
 .cs-vabil:empty { display: none; }
 .cs-abil-star { position: absolute; top: 6px; right: 8px; z-index: 2; font-size: 17px; color: #ffb400; text-shadow: 0 1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 -1px 0 var(--ink); }
 .cs-vname { max-width: 190px; font-size: 17px; line-height: 1.1; color: #fff; overflow-wrap: anywhere; text-shadow: 0 2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink); }
 .cs-vrar { padding: 3px 8px; border-radius: 8px; font-size: 11px; line-height: 1; color: #fff; background: #8e9db3; box-shadow: 0 2px 0 rgba(23, 52, 92, 0.5); }
-.cs-vrar.r-rare { background: #2f7dff; } .cs-vrar.r-epic { background: #a855f7; } .cs-vrar.r-legendary { background: #ffb400; color: #4a2f00; }
+.cs-vrar.r-rare { background: #2f7dff; } .cs-vrar.r-epic { background: #a855f7; } .cs-vrar.r-legendary { background: #ffb400; color: #4a2f00; } .cs-vrar.r-mythic { background: linear-gradient(100deg, #ff4fd8, #7a5cff); }
 .cs-vbtns { display: flex; gap: 6px; pointer-events: auto; }
 .cs-vb { cursor: pointer; padding: 8px 12px 7px; border-radius: 14px; border: 3px solid var(--ink); font-size: 14px; font-weight: 900; color: #fff; white-space: nowrap; box-shadow: 0 3px 0 var(--ink);
   background: linear-gradient(180deg, #ff9a52, var(--orange)); text-shadow: 0 2px 0 var(--orange-dark); }
@@ -851,7 +864,7 @@ function buildPreview(kind, pv, secret) {
 
 // flat card icon for the effect kinds (a rotating 3D preview of the selected one sits on top of the list)
 const HOP_GLYPH = { star: '★', heart: '♥', diamond: '◆', flower: '✿', dash: '◌', double: '◎', ring: '○' };
-const KIND_GLYPH = { stomp: '💥', blast: '🔥', yeti: '👹', death: '💀' };
+const KIND_GLYPH = { stomp: '💥', blast: '🔥', yeti: '👹', death: '💀', hat: '🎩', yacc: '🧣' };
 function buildFxPreview(kind, it, secret) {
   const pv = secret ? HIDDEN : it.preview;
   const wrap = h('div', `cs-prev fxp${pv.glow ? ' glow' : ''}`);
@@ -859,8 +872,16 @@ function buildFxPreview(kind, it, secret) {
   wrap.appendChild(h('i', 'fg', secret ? '?' : kind === 'hop' ? HOP_GLYPH[it.fx.shape] || '○' : kind === 'emote' ? it.fx.e || '😶' : KIND_GLYPH[kind] || '✨'));
   return wrap;
 }
+const withFxb = (el, it, secret) => {      // effect balls: animated motes over the thumbnail
+  if (!it.fxb || secret) return el;
+  el.classList.add('over');
+  const f = h('span', `cs-fxb f-${it.fxb.k}`); f.style.setProperty('--fc', it.fxb.c);
+  for (let i = 0; i < 4; i++) { const d = h('i'); d.style.setProperty('--x', 20 + i * 20); d.style.setProperty('--d', i * 0.33 + 's'); f.appendChild(d); }
+  el.appendChild(f);
+  return el;
+};
 const previewFor = (kind, it, secret) => (kind === 'skin' || kind === 'trail'
-  ? buildPreview(kind, secret ? HIDDEN : kind === 'skin' && BLOTCH.has(it.id) ? { ...it.preview, pattern: 'blotch' } : it.preview, secret)
+  ? withFxb(buildPreview(kind, secret ? HIDDEN : kind === 'skin' && BLOTCH.has(it.id) ? { ...it.preview, pattern: 'blotch' } : it.preview, secret), it, secret)
   : buildFxPreview(kind, it, secret));
 
 // ---- DAILY OFFER (3 items, 20/30/40% off, same for everyone, new at local midnight) and THEME BUNDLES ----
@@ -1211,7 +1232,7 @@ export function openShop({ save, onClose, onSelect } = {}) {
       stAbil.appendChild(h('span', '', ab.icon));
       stAbil.appendChild(document.createTextNode(' '));
       stAbil.appendChild(h('span', '', ab.text));
-      try { const si = meta.shardInfo(pv.id); if (si) { stAbil.appendChild(document.createTextNode(' · ')); stAbil.appendChild(h('span', '', si.max ? `★ Sv ${si.level}/5 · MAKS` : `★ Sv ${si.level}/5 · 🧩 ${si.shards}/${si.next}`)); } } catch { /* ignore */ }
+      try { const si = meta.shardInfo(pv.id); if (si) { if (ab.myth) { stAbil.appendChild(document.createTextNode(' · ')); stAbil.appendChild(h('span', '', 'EVRİM ' + (stageOf(si.level) + 1) + '/3')); } stAbil.appendChild(document.createTextNode(' · ')); stAbil.appendChild(h('span', '', si.max ? `★ Sv ${si.level}/5 · MAKS` : `★ Sv ${si.level}/5 · 🧩 ${si.shards}/${si.next}`)); } } catch { /* ignore */ }
     }
     const sp = btnSpec(pv, st);
     stBuy.textContent = sp.label;

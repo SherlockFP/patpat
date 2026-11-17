@@ -5,6 +5,9 @@ import * as THREE from 'three';
 import { makeSkin, disposeSkin, trailStyle } from './skins.js';
 import { hopGeometry, Glyphs } from './cosmetics.js';
 import { cloneYeti } from './glb.js';
+import { BallRig } from './ballrig.js';
+import { buildYetiAcc } from './accessories.js';
+import { EFFECT_BY_ID } from './effectballs.js';
 
 const N = 30; // ribbon points
 const _c = new THREE.Color(), _c2 = new THREE.Color();
@@ -27,6 +30,8 @@ export function createView(host, skinId) {
   floor.rotation.x = -Math.PI / 2; floor.position.y = -1; scene.add(floor);
   const glyphs = new Glyphs(scene, 48);
   const group = new THREE.Group(); scene.add(group);
+  const rig = new BallRig(); scene.add(rig.root);      // effect-ball particles / rings / hat (follows the ball, never spins with it)
+  let yAcc = null, evoT = 0, evoSt = -1, ballId = 'classic';
 
   let kind = '', it = null, skin = null, ball = null, ringM = null, halo = null, yeti = null, mixer = null, ribbon = null;
   let t = 0, deneT = 0, raf = 0, last = 0, dead = false, popT = 0, evT = 0, fxOn = false;
@@ -39,11 +44,14 @@ export function createView(host, skinId) {
       o.traverse((m) => { if (m.geometry && !m.geometry.userData.keep) m.geometry.dispose(); if (m.material && m.material.dispose) { if (m.material.map && m.material.userData.ownMap) m.material.map.dispose(); m.material.dispose(); } });
     }
     if (skin) { disposeSkin(skin); skin = null; }
+    if (yAcc) { yAcc.dispose(); yAcc = null; }
+    rig.clear(); evoSt = -1;
     ball = ringM = halo = yeti = ribbon = null; mixer = null; hasHist = false; glyphs.setEmit(null);
   };
 
   function makeBall(id) {
-    skin = makeSkin(id || 'classic');
+    ballId = id || 'classic';
+    skin = makeSkin(ballId);
     ball = new THREE.Mesh(skin.geometry, skin.material);
     ball.scale.setScalar(kind === 'skin' ? 1.1 : 0.85);
     if (skin.id === 'classic' && skin.material.emissive) skin.material.emissive.setHex(0x4a5666);      // (the game's sparkly snow shader is not patched in here)
@@ -83,9 +91,9 @@ export function createView(host, skinId) {
     kind = k; it = item; t = 0; evT = 0; popT = 0; fxOn = false;
     if (k === 'none') return;
     const fx = (item && item.fx) || {};
-    if (k === 'yeti') {
+    if (k === 'yeti' || k === 'yacc') {
       const gl = cloneYeti();
-      const mat = new THREE.MeshLambertMaterial({ vertexColors: !!gl, color: new THREE.Color(fx.tint[0], fx.tint[1], fx.tint[2]), emissive: fx.em || 0x0a1630, flatShading: true });
+      const mat = new THREE.MeshLambertMaterial({ vertexColors: !!gl, color: new THREE.Color(...(fx.tint || [2, 1.95, 2])), emissive: fx.em || 0x0a1630, flatShading: true });
       if (gl) {
         gl.model.traverse((o) => { if (o.isMesh) { o.material = mat; o.frustumCulled = false; } });
         mixer = new THREE.AnimationMixer(gl.model);
@@ -93,11 +101,13 @@ export function createView(host, skinId) {
         yeti = gl.model; yeti.scale.setScalar(2.3 / 3.34);
       } else { yeti = new THREE.Mesh(new THREE.CapsuleGeometry(0.8, 1.6, 4, 8), mat); }
       yeti.position.y = -1; yeti.userData.pulse = fx.pulse || 0; yeti.userData.mat = mat;
+      if (k === 'yacc' && gl) { const hb = yeti.getObjectByName('head'); yAcc = hb && buildYetiAcc(item.id); if (yAcc) hb.add(yAcc.group); }
       group.add(yeti);
       return;
     }
     makeBall(k === 'skin' ? (item && item.id) : skinId);
-    if (k === 'skin') return;
+    rig.set({ skin: ballId, level: 0, hat: k === 'hat' ? item.id : null });
+    if (k === 'skin' || k === 'hat') return;
     if (k === 'trail') { const st = trailStyle(item.id); makeRibbon(st); glyphs.setEmit(st.emit); }
     else if (k === 'blast') { makeRibbon({ color: fx.col, color2: fx.col, glow: true, rainbow: !!fx.hue }); makeHalo(); }
     else if (k === 'hop') {
@@ -112,14 +122,14 @@ export function createView(host, skinId) {
     if (deneT > 0) { deneT -= dt; if (deneT <= 0) { deneT = 0; if (host.__onDeneEnd) host.__onDeneEnd(); } }
     if (mixer) mixer.update(dt);
     if (yeti) {
-      yeti.rotation.y = Math.PI + Math.sin(t * 0.7) * 0.6;
+      yeti.rotation.y = (kind === 'yacc' ? 0 : Math.PI) + Math.sin(t * 0.7) * 0.6;
       if (yeti.userData.pulse) yeti.userData.mat.emissiveIntensity = 1 + yeti.userData.pulse * Math.sin(t * 3.5);
     }
     if (!ball) { glyphs.tick(dt, 0, 0, 0, 1, false); return; }
     if (skin && skin.update) skin.update(dt, t, ball);
     const fx = (it && it.fx) || {};
     let bx = 0, by = 0, bz = 0;
-    if (kind === 'skin' || kind === 'emote') { ball.rotation.y += dt * 0.9 * sp(); by = kind === 'emote' ? Math.abs(Math.sin(t * 3)) * 0.35 : 0.04 * Math.sin(t * 2); ball.position.set(0, by, 0); }
+    if (kind === 'skin' || kind === 'emote' || kind === 'hat') { ball.rotation.y += dt * 0.9 * sp(); by = kind === 'emote' ? Math.abs(Math.sin(t * 3)) * 0.35 : 0.04 * Math.sin(t * 2); ball.position.set(0, by, 0); }
     else if (kind === 'trail' || kind === 'blast') {
       const a = t * 1.15;
       bx = Math.sin(a) * 2.2; bz = Math.cos(a * 2) * 0.55 - 0.3; by = -0.15 + 0.12 * Math.abs(Math.sin(t * 5));
@@ -179,11 +189,22 @@ export function createView(host, skinId) {
     ribbon.geometry.attributes.position.needsUpdate = true;
   }
 
+  // the rig follows the ball; a MİTİK ball cycles its 3 evolution stages (shard level 1 / 3 / 5) so the shop shows what the shards unlock
+  function rigStep(dt) {
+    if (!ball) { rig.update(dt, t, 1, 1, false); return; }
+    const def = EFFECT_BY_ID[ballId];
+    if (def && def.myth && kind === 'skin') {
+      evoT += dt * sp(); const st = Math.floor(evoT / 3.5) % 3;
+      if (st !== evoSt) { evoSt = st; const old = skin, lv = [1, 3, 5][st]; skin = makeSkin(ballId, lv); ball.geometry = skin.geometry; ball.material = skin.material; disposeSkin(old); rig.set({ skin: ballId, level: lv }); }
+    }
+    rig.root.position.copy(ball.position);
+    rig.update(dt, t, ball.scale.x, renderer.domElement.height, ball.visible);
+  }
   function frame(now) {
     if (dead) return;
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016); last = now;
-    tick(dt);
+    tick(dt); rigStep(dt);
     renderer.render(scene, cam);
   }
   raf = requestAnimationFrame(frame);
@@ -195,7 +216,7 @@ export function createView(host, skinId) {
     get denning() { return deneT; },
     resize() { const w = host.clientWidth, h = host.clientHeight; if (w && h) { renderer.setSize(w, h); cam.aspect = w / h; cam.updateProjectionMatrix(); } },
     dispose() {
-      dead = true; cancelAnimationFrame(raf); clear(); glyphs.dispose();
+      dead = true; cancelAnimationFrame(raf); clear(); glyphs.dispose(); rig.dispose();
       floor.geometry.dispose(); floor.material.dispose();
       renderer.dispose(); try { renderer.forceContextLoss(); } catch { /* ignore */ }
       renderer.domElement.remove();

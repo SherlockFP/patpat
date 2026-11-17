@@ -177,11 +177,11 @@ export class UI {
         '#hud.hc-new .mut-chip,#hud.hc-new .perk-ico{display:none!important}',
         // Rush HUD: the score is the hero (thick outline), the multiplier sits right beside it, the chips form one right-hand stack that fades after 2 s
         '#hud.rush.rush.rush .hud-tons{font-size:34px;line-height:1;top:calc(var(--sat) + 12px);left:54px;right:auto;text-align:left;-webkit-text-stroke:6px var(--ink);paint-order:stroke fill;transform-origin:left center}',
-        '#hud.rush.rush.rush .cmb,#hud.rush.rush.rush .cmb:has(small:not(:empty)){top:calc(var(--sat) + 8px);left:calc(54px + var(--sw,4)*18.5px + 12px);width:auto;text-align:left;transform-origin:left center}',   // (the x badge follows the left-aligned score: --sw = its character count)
+        '#hud.rush.rush.rush .cmb,#hud.rush.rush.rush .cmb:has(small:not(:empty)){top:calc(var(--sat) + 2px);left:calc(54px + var(--tw,100px)*1.45);width:auto;text-align:left;transform-origin:left center}',   // (the x badge follows the left-aligned score: --tw = its measured width, x1.45 for the pulse / gold flash)
         '#hud.rush.rush.rush .cmb .ch.k em{font-size:30px}',
         '#hud.rush.rush.rush .hud-coins{top:calc(var(--sat) + 14px);right:10px}',   // right column: flakes + metres (the top HUD layout is the block at the end of style.css; smoke asserts the boxes do not touch)
         '#hud.rush.rush.rush .buffs{top:calc(var(--sat) + 60px)}',
-        '#hud.rush.rush.rush .perk-ico{top:calc(var(--sat) + 84px);right:8px}',
+        '#hud.rush.rush.rush .perk-ico{top:calc(var(--sat) + 114px);right:8px}',
         '#rcol{top:calc(var(--sat) + 128px)!important}',
         '#hud.rush .hud-coins,#hud.rush .buffs,#hud.rush .perk-ico,#hud.rush .mut-chip{transition:opacity .5s}',
         '#hud.rush.chips-dim .buffs,#hud.rush.chips-dim .perk-ico,#hud.rush.chips-dim .mut-chip{opacity:.3}#hud.rush.chips-dim .hud-coins{opacity:.8}#hud.rush.rush.rush .hud-coins{font-size:17px}',
@@ -1306,6 +1306,7 @@ export class UI {
     this.el.tons.className = 'hud-tons';
     this.el.tons.textContent = '0';
     this._swl = 0; this._sw('0');
+    if (!this._swo && typeof ResizeObserver !== 'undefined') { this._swo = new ResizeObserver(() => this._sw()); this._swo.observe(this.el.tons); } // (the font size changes when the Rush class lands: re-measure so the x badge never sits on the score)
   }
 
   scoreTo(sc) {
@@ -1339,7 +1340,7 @@ export class UI {
   }
 
   // the multiplier chip hangs right beside the score: its offset follows the digit count (CSS var, only written when the length changes)
-  _sw(s) { if (s.length !== this._swl) { this._swl = s.length; this.el.hud.style.setProperty('--sw', String(s.length)); } }
+  _sw() { const w = this.el.tons.offsetWidth; if (w !== this._swl) { this._swl = w; this.el.hud.style.setProperty('--tw', w + 'px'); } }
 
   // the secondary chips (coins, power, perk, weekly) fade after 2 s unless one of them changes
   _chipsTouch() {
@@ -1364,10 +1365,11 @@ export class UI {
     const d = document.createElement('div');
     d.className = 'score-pop';
     d.textContent = `+${fmtN(delta)}`;
+    const top = this.el.hud.classList.contains('rush') ? 0.18 : 0.3; d.style.top = top * 100 + '%'; // Rush: starts high, clear of the ball (loops shrink it to r9 around 34%)
     this.el.hud.appendChild(d);
     let dx = 0, dy = -90;
     const W = window.innerWidth || 390, H = window.innerHeight || 800;
-    try { const r = this.el.tons.getBoundingClientRect(); dx = r.left + r.width / 2 - W / 2; dy = r.top + r.height / 2 - H * 0.3; } catch { /* default */ }
+    try { const r = this.el.tons.getBoundingClientRect(); dx = r.left + r.width / 2 - W / 2; dy = r.top + r.height / 2 - H * top; } catch { /* default */ }
     const done = () => { d.remove(); this._pops--; };
     try {
       const a = d.animate([{ transform: 'translate(-50%,0) scale(0.6)', opacity: 0 }, { transform: 'translate(-50%,0) scale(1.35)', opacity: 1, offset: 0.2 }, { transform: 'translate(-50%,0) scale(1.2)', opacity: 1, offset: 0.4 }, { transform: `translate(calc(-50% + ${dx}px),${dy}px) scale(0.45)`, opacity: 0.1 }], { duration: 750, easing: 'ease-in' });

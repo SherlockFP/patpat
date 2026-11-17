@@ -1493,3 +1493,28 @@ html .fm-main > .fm-best .bk { font-size: 12px; color: #3b5380; }
 .res-extra .rx-mb b { color: #fff; font-size: 15px; }
 @media (prefers-reduced-motion: reduce) { #hud-ident.pop, #hud-hunt i.pop, #hud-hunt i.nx, #hud-card.on { animation: none; } #hud-ident { transition: none; } }
 #hud.rush.rush.rush .hud-goal { top: calc(var(--sat) + 78px); }   /* the x-identity + daily word row sits between the score and the one goal line */
+
+/* ARENA: swallow call-out, podium ending */
+.ag-call { position: absolute; left: 0; right: 0; top: 12.5%; text-align: center; pointer-events: none; opacity: 0; z-index: 9; font-weight: 900; }
+.ag-call b { display: block; font-size: 28px; line-height: 1.05; color: #ffe066; text-shadow: 0 3px 0 var(--ink), 2px 2px 0 var(--ink), -2px 2px 0 var(--ink); }
+.ag-call small { display: block; margin-top: 2px; font-size: 18px; color: #7dffb0; text-shadow: 0 2px 0 var(--ink), 1px 1px 0 var(--ink), -1px 1px 0 var(--ink); }
+.ag-call.on { animation: agCall 1.6s ease-out both; }
+@keyframes agCall { 0% { opacity: 0; transform: scale(0.6); } 10% { opacity: 1; transform: scale(1.2); } 22% { transform: scale(1); } 78% { opacity: 1; } 100% { opacity: 0; transform: translateY(-16px); } }
+.ag-pod { flex: none; display: flex; align-items: flex-end; justify-content: center; gap: 6px; margin: 4px 0 8px; flex-wrap: wrap; }
+.ag-pod .pc { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; font-weight: 900; }
+.ag-pod .pc span { font-size: 26px; line-height: 1; }
+.ag-pod .pc b { max-width: 100%; font-size: 13px; line-height: 1.1; color: #fff; text-shadow: 0 1px 0 var(--ink), 1px 1px 0 var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-pod .pc small { font-size: 12px; color: #ffe066; text-shadow: 0 1px 0 var(--ink); }
+.ag-pod .pc i { display: block; width: 100%; margin-top: 3px; border: 3px solid var(--ink); border-bottom: 0; border-radius: 10px 10px 0 0; background: linear-gradient(180deg, #cfe6ff, #7fb2e8); color: var(--ink); font-style: normal; font-size: 20px; line-height: 1; padding-top: 6px; text-align: center; }
+.ag-pod .pc:nth-child(2) i { background: linear-gradient(180deg, #ffe681, #e6a91a); }
+.ag-pod .pc.me b { color: #7dffb0; }
+.ag-pod .pc.me i { box-shadow: 0 0 0 3px #7dffb0; }
+.ag-pod .pme { flex: 1 1 100%; display: flex; justify-content: space-between; padding: 4px 10px; border-radius: 10px; background: rgba(10, 25, 55, 0.4); border: 2px solid #7dffb0; font-size: 15px; font-weight: 800; }
+.ag-pod .pme b { color: #7dffb0; }
+
+/* Rush HUD: the soft toast sits clear of the goal strip (smoke HUD overlap contract) */
+#hud.rush.rush.rush ~ #toast-soft:not(.res) { top: calc(var(--sat) + 114px); }
+@keyframes scoreGoldRush { 0% { color: #fff; } 15% { color: #fff3a8; text-shadow: 0 3px 0 var(--ink), 0 0 30px #ffcf3a, 0 0 60px #ff9d00; } 60% { color: #ffd23a; text-shadow: 0 3px 0 var(--ink), 0 0 22px #ffcf3a; } 100% { color: #fff; } }
+#hud.rush .hud-tons.gold1, #hud.rush .hud-tons.gold2, #hud.rush .hud-tons.gold3 { animation-name: scoreGoldRush; }   /* the score flash stays small in Rush so the x badge beside it is never covered */
+
+body:has(.ag-card) #toast-soft { visibility: hidden; }   /* arena result card: no stamp/info toast on top of it */

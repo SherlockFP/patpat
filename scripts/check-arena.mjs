@@ -102,6 +102,54 @@ assert.equal(pickRival(field, 0, 500), 2); // nobody heavier: the heaviest eligi
 assert.equal(pickRival([ow(0), ow(5)], 0, 24), -1); // nobody eligible
 assert.equal(pickRival(field, 3, 24), 2); // the player's own slot (3) is never picked: 90 is next
 
+// ---- chase model (src/agar/chase.js: the pure rules agar.js uses): once you are big it must be possible to eat people
+import { speedFor, boostFor, pullOf, suckReach, tireMul, KR, MATCH_T, RING_AT, RING_K, RING_WARN, RING_SHRINK, ringArea, RAIN_FIRST, RAIN_GAP, RAIN_NEAR } from '../src/agar/chase.js';
+const OLD = { sp: (m) => 17 * 1.265 * Math.pow(m, -0.12), bf: () => ({ t: 0.4, mul: 2.4, cd: 2.4 }), pb: 0.5, bcd: 1, react: 0, tire: 0, pull: 0 };
+const NEW = { sp: speedFor, bf: boostFor, pb: 0.18, bcd: 1.5, react: 1, tire: 1, pull: 1 };
+/** 1-D chase: hunter (mass pm) charges whenever HIZLAN is ready; the prey (mass qm) flees at its speed, reacts late, tires and counter-boosts. Returns 'caught within 3 charges'. */
+function chase(cfg, seed, pm, qm, preyCounters = cfg.pb) {
+  let s = seed >>> 0; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const pr = KR * Math.sqrt(pm), rr = KR * Math.sqrt(qm), dt = 0.05;
+  let gap = 15 + rnd() * 27; const react = cfg.react ? 0.35 + rnd() * 0.35 : 0; // bots notice the threat at 14 + 2.5 r + 1.5 R ~ 42 m
+  let pB = 1, pT = 0, pCd = 0, charges = 0, bT = 0, bM = 2.4, bCd = 0, tire = 0, tick = 0;
+  for (let t = 0; t < 25; t += dt) {
+    if (pCd > 0) pCd -= dt; if (bCd > 0) bCd -= dt;
+    let vp = cfg.sp(pm);
+    if (pT > 0) { pT -= dt; vp *= pB; } else if (pCd <= 0 && gap < 32) { const b = cfg.bf(pm); pT = b.t; pB = b.mul; pCd = b.cd; if (++charges > 3) return false; }
+    let vb = 0;
+    if (t > react) {
+      vb = cfg.sp(qm) * (cfg.tire ? tireMul(tire) : 1); tire += dt; tick += dt;
+      if (tick >= 0.23) { tick = 0; if (gap < rr * 1.5 + 4 && bCd <= 0 && rnd() < preyCounters) { const q = cfg.bf(qm); bT = q.t; bM = q.mul; bCd = q.cd * cfg.bcd; } }
+      if (bT > 0) { bT -= dt; vb *= bM; }
+    }
+    gap += (vb - vp) * dt;
+    if (cfg.pull) gap -= pullOf(pm, qm, pr, gap, false) * dt;
+    if (gap <= -rr * 1.25) return true; // eat distance: centre inside r_hunter - 0.25 r_prey
+  }
+  return false;
+}
+const rate = (cfg, pm, qm, pc) => { let ok = 0; for (let i = 0; i < 400; i++) if (chase(cfg, i * 7919 + 13, pm, qm, pc)) ok++; return ok / 400; };
+assert.ok(speedFor(1000) > 10.5 && speedFor(1000) > OLD.sp(1000) * 1.1, 'big balls keep top speed: ' + speedFor(1000));
+assert.equal(speedFor(100), OLD.sp(100)); // small balls unchanged
+assert.ok(Math.abs(speedFor(150) - OLD.sp(150)) < 1e-9 && speedFor(151) < speedFor(150)); // continuous at 150
+const before = rate(OLD, 1000, 360), after = rate(NEW, 1000, 360); // 360 = 0.6 R of a 1000 ball
+console.log('check-arena: m=1000 vs 0.6R fleeing bot, caught within 3 charges: before ' + Math.round(before * 100) + '%, after ' + Math.round(after * 100) + '%');
+assert.ok(after >= 0.6 && before < 0.2, 'big ball must catch a fleeing bot: ' + before + ' -> ' + after);
+assert.ok(rate(NEW, 100, 36) < rate(NEW, 1000, 360), 'catching is easier the bigger you are');
+assert.ok(boostFor(1000).t > boostFor(30).t && boostFor(1000).mul > boostFor(30).mul && boostFor(1000).cd < boostFor(30).cd);
+// the player can still lose to a bigger hunter: a 1000 ball fleeing (human-like counter-boosts) from a 1600 hunter is caught
+const lose = rate(NEW, 1600, 1000, 0.5); assert.ok(lose > 0.1, 'a bigger hunter can still catch you: ' + lose);
+// suction: equal masses (and anything within EAT_K) never pulled, shielded / hidden prey never pulled, bigger => longer reach, never at zero gap for small
+for (const m of [60, 150, 400, 1000, 5000]) { assert.equal(pullOf(m, m, KR * Math.sqrt(m), 0, false), 0); assert.equal(pullOf(m * 1.1, m, KR * Math.sqrt(m), 0, false), 0); assert.ok(pullOf(m * 2, m, KR * Math.sqrt(m * 2), 0, false) > 0 || m * 2 < 60); assert.equal(pullOf(m * 3, m, KR * Math.sqrt(m * 3), 0, true), 0); }
+assert.equal(pullOf(50, 10, 2, 0, false), 0); // tiny balls do not vacuum
+assert.ok(suckReach(1000, 9.5) > suckReach(100, 3) && suckReach(1000, 9.5) > 5);
+assert.equal(pullOf(1000, 300, 9.5, suckReach(1000, 9.5) + 0.1, false), 0); // outside the reach: nothing
+// ring: tighter (0.09 of the arena, was 0.176), earlier (100 s before the bell, was 60) and it holds long enough to force fights
+assert.ok(ringArea(1100) <= 0.1 && RING_K === 0.3 && RING_AT >= 90 && RING_AT <= MATCH_T / 2);
+assert.ok(MATCH_T - RING_AT >= 120 && RING_AT - RING_WARN - RING_SHRINK >= 60, 'ring holds >= 60 s at full squeeze');
+// snow-rain beacon: first one early, then a steady beat, and it lands close to the player
+assert.ok(RAIN_FIRST <= 30 && RAIN_GAP[1] <= 60 && RAIN_GAP[0] >= 40 && RAIN_NEAR[1] <= 350 && RAIN_NEAR[0] >= 100);
+
 // English: patterns that used to be shadowed by the generic 'x: y' trash-talk pattern must translate
 globalThis.localStorage = { getItem: () => 'en', setItem() {} };
 const { t } = await import('../src/i18n.js');
@@ -111,6 +159,8 @@ assert.equal(t('ODADASIN: ABCDE'), "YOU'RE IN THE ROOM: ABCDE");
 assert.equal(t('RAKİP: Mert'), 'RIVAL: Mert');
 assert.equal(t('SON 1 DAKİKA! Çember daralıyor'), 'LAST MINUTE! The ring is closing in');
 assert.equal(t('Mert: selam'), 'Mert: hi'); // trash talk still works (last pattern)
+assert.equal(t('YUTTUN: Mert'), 'SWALLOWED: Mert'); assert.equal(t('Kara Delik 2/3'), 'Black Hole 2/3');
+for (const k of ['BUZ ÇEMBERİ! Dövüş zamanı', 'TAHTA OTURDUN ♛', 'Herkes seni avlıyor', 'Tahtı kaybettin ♛', 'TOPARLANMA: yem +%35, hız +%5', 'KÜRSÜ ÖDÜLÜ', '✔ Kara Delik açıldı', 'Kürsü Kralı']) assert.notEqual(t(k), k, k);
 for (const k of ['▶ OYNA', '🌐 ÇEVRİMİÇİ', 'ANLADIM', 'ODA SAHİBİ AYRILDI', '🤖 BOTLARLA DEVAM', 'Botlarla devam ediyorsun', '5 haneli kodu gir.', 'RAKİBİNİ YUTTUN! +bonus', 'Oda kapandı. Botlarla devam edebilirsin.',
   'Çevrimiçi odalarda başka oyuncularla karşılaşırsın. İsimler filtrelenir, sohbet yalnızca hazır cümlelerle yapılır.']) assert.notEqual(t(k), k, k);
 // HUD rank line: every title and tier name must translate on its own (the joined 'title · tier' string has no entry)

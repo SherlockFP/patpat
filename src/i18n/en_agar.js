@@ -87,6 +87,13 @@ export const words = {
   'Yardım!': 'Help!',
   "4 dakikada ilk 3'e gir!": 'Reach the top 3 in 4 minutes!',
   'SON 1 DAKİKA!': 'LAST MINUTE!',
+  'BUZ ÇEMBERİ! Dövüş zamanı': 'ICE RING! Fight time',
+  'TAHTA OTURDUN ♛': 'YOU TOOK THE THRONE ♛',
+  'Herkes seni avlıyor': 'Everyone is hunting you',
+  'Tahtı kaybettin ♛': 'You lost the throne ♛',
+  'TOPARLANMA: yem +%35, hız +%5': 'COMEBACK: pellets +35%, speed +5%',
+  'KÜRSÜ ÖDÜLÜ': 'PODIUM REWARD',
+  '✔ Kara Delik açıldı': '✔ Black Hole unlocked',
   'MAÇ BİTTİ!': 'MATCH OVER!',
   'sıran': 'your rank',
   'durum': 'status',
@@ -215,6 +222,8 @@ export const words = {
 
 // Replacement functions receive (match, ...groups).
 export const patterns = [
+  [/^YUTTUN: (.+)$/, (m, n) => 'SWALLOWED: ' + n],
+  [/^Kara Delik (\d+)\/(\d+)$/, (m, a, b) => 'Black Hole ' + a + '/' + b],
   [/^Madalya bonusu: \+(\d+) ❄️$/, (m, n) => 'Medal bonus: +' + n + ' ❄️'],
   // kill feed / events (Turkish accusative suffixes handled by S)
   [new RegExp('^Sen ➜ (.+?)' + S + ' yuttun!$'), (m, n) => 'You ➜ swallowed ' + n + '!'],

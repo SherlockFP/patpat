@@ -6,7 +6,8 @@ const NUM = (n) => Math.round(n).toLocaleString(getLang() === 'en' ? 'en-US' : '
 import { Track, flightDist, LANES, setLanes } from './track.js';
 import { Obstacles } from './obstacles.js';
 import { ABILITIES, SKINS, trailStyle } from '../skins.js';
-import { fxOf, hopGeometry, Glyphs } from '../cosmetics.js';
+import { fxOf, equipped, hopGeometry, Glyphs } from '../cosmetics.js';
+import { buildYetiAcc } from '../accessories.js';
 import { Environment, biomeAt, trackPalette, musicStyleAt } from './biomes.js';
 import * as Biomes from './biomes.js';
 import { BuffSet, BUFFS, rollBuff, BUFF_LEN, DESTRUCTION, destructionTier, RUN_PERK_BY_ID, rollPerks, synergyFor } from './perks.js';
@@ -563,7 +564,7 @@ export class Runner {
       if (this.glyphs) this.glyphs.setEmit(ts.emit); }
     // KARAKTER ability (endless Rush only)
     { let id = null; try { id = this.level ? null : this.ctx.save.selected?.('skin'); } catch (e) { id = null; }
-      this.abil = ABILITIES[id] ? id : null; this.simitUsed = false; this.simitN = 0; this.gapBonus = 0; this._gemNext = 0;
+      this.abil = ABILITIES[id] ? (ABILITIES[id].as || id) : null; this.simitUsed = false; this.simitN = 0; this.gapBonus = 0; this._gemNext = 0;
       let cl = 1; try { cl = this.ctx.meta?.charLevel?.(id) ?? 1; } catch (e) { cl = 1; }       // KARAKTER level 1..5 strengthens the passive (step 0..4)
       this.cs = this.abil ? charStep(cl) : 0; this.simitMax = 1 + (this.cs >= 3 ? 1 : 0);
       if (this.abil === 'nazar') { this.gapBonus = 3 + this.cs; this.gap += 3 + this.cs; }
@@ -5342,12 +5343,14 @@ function makeYeti(scene, lib, save) {
     eyes.frustumCulled = false;
     mesh.add(eyes);
   }
+  let acc = null;      // YETİ AKS.: a hat / scarf / glasses riding on the head bone
+  if (gl) { const hb = mesh.getObjectByName('head'), ya = equipped(save, 'yacc'); if (hb && ya.fx.m) { acc = buildYetiAcc(ya.id); if (acc) hb.add(acc.group); } }
   group.add(mesh);
   group.visible = false;
   scene.add(group);
   // ~3.3 m tall: big next to the ball, but it must not wall off the chase camera.
   const scale = gl ? RCFG.yetiH / 3.34 : def ? RCFG.yetiH / Math.max(0.5, def.height) : RCFG.yetiH / 3.2;
-  return { group, mesh, mat, mixer, runA, roarA, scale, t: 0, u: 0, spr: 0, roar: 0, heat: -1, fit: 1, dispose: () => { mat.dispose(); mixer?.stopAllAction(); if (eyes) { em.dispose(); eg.dispose(); eyes.dispose(); } if (!gl && !def) geo.dispose(); } };
+  return { group, mesh, mat, mixer, runA, roarA, scale, t: 0, u: 0, spr: 0, roar: 0, heat: -1, fit: 1, dispose: () => { mat.dispose(); acc?.dispose(); mixer?.stopAllAction(); if (eyes) { em.dispose(); eg.dispose(); eyes.dispose(); } if (!gl && !def) geo.dispose(); } };
 }
 
 function makeAvalanche(scene) {

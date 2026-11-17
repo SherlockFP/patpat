@@ -17,6 +17,7 @@ import { save, CIG_LEVELS } from './save.js';
 import { dailySeed, dailyNumber } from './rng.js';
 import { PostFX, VISUAL_MODES, SU, patchMaterial, makeGovernor } from './shaders.js';
 import { makeSkin, disposeSkin, trailStyle, setGoldBall } from './skins.js';
+import { BallRig } from './ballrig.js';
 import { Scenery, themeForLevel, skyOfTheme, SKY_CYCLE } from './scenery.js';
 import { loadModels } from './assets.js';
 import { loadGlbs } from './glb.js';
@@ -131,6 +132,9 @@ const modelsP = Promise.all([loadModels().then((m) => { Object.assign(lib, m); }
 const afterModels = (fn) => (modelsDone ? fn() : modelsP.then(fn));
 const propMat = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
 const ball = new Ball(scene, lib, propMat);
+const rig = new BallRig();      // effect-ball particles + rings + the hat: rides on the ball group, does not spin with it
+ball.group.add(rig.root);
+const _dbs = new THREE.Vector2();
 const ui = new UI();
 const input = new Input(canvas);
 let world = null;
@@ -172,6 +176,17 @@ function applySkin(id) {
   ball.snow.material = next.material;
   if (skin) disposeSkin(skin);
   skin = next;
+  refreshRig();
+}
+let rigKey = '';
+function refreshRig() {
+  let hat = null; try { hat = save.selected('hat') || null; } catch { hat = null; }
+  if (hat === 'std') hat = null;
+  const key = skinId + '|' + skinLv + '|' + (hat || '');
+  if (key === rigKey) return;
+  rigKey = key;
+  rig.set({ skin: skinId, level: skinLv, hat });
+  if (rig.hat) patchMaterial(rig.hat.material);
 }
 // the character level ring follows meta.charLevel: rebuild only when the chosen ball or its level changed (menu / run start)
 function refreshSkin() {
@@ -200,6 +215,7 @@ function openWardrobe() {
     onSelect: (kind, id) => {
       if (kind === 'skin') { applySkin(id); meta.track('skin_select', { id }); }
       else if (kind === 'trail') { applyTrail(id); meta.track('trail_select', { id }); }
+      else if (kind === 'hat') { refreshRig(); meta.track('hat_select', { id }); }
       else meta.track(kind + '_select', { id });      // hop / stomp / blast / yeti / death / emote: the runner and the result screen read the pick when they need it
     },
     onClose: () => { closeShop = null; toMenu(); },
@@ -1559,6 +1575,8 @@ function frame(now) {
   }
   SU.uTime.value = now / 1000;
   skin?.update?.(dt, now / 1000, ball.snow);
+  renderer.getDrawingBufferSize(_dbs);
+  rig.update(dt, now / 1000, ball.snow.scale.x, _dbs.y, ball.group.visible);
   updateBallUniform();
   post.render(scene, camera);
   adaptResolution(rawMs);
@@ -1635,6 +1653,7 @@ if (DEBUG) {
       return cigSummary();
     },
     setR(r) { ball.setRadius(r); G.peakR = r; ball.sync(); return +ball.r.toFixed(3); },
+    look(id, hat, yacc) { if (yacc !== undefined) save.select('yacc', yacc); if (id) { save.select('skin', id); refreshSkin(); } if (hat !== undefined) { save.select('hat', hat); refreshRig(); } return { skin: skinId, rig: rig.calls(), stage: rig.stage }; },      // (smoke: wear a ball / hat without the shop)
     gate() {
       const g = game?._next;
       return g ? { i: g.i, d: g.d, kind: g.kind, minR: +g.minR.toFixed(3), need: +(2 * g.minR).toFixed(2), ready: game._readyOf(g), cracks: g.cracks, bounces: g.bounces, supplyLeft: g.supplyLeft, broken: g.broken, locked: g.locked } : null;

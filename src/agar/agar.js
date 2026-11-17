@@ -14,7 +14,8 @@ import { ArenaProps, TIER_NAMES, TIER_HINT, tierOfM } from './props.js';
 import { meta } from '../meta.js';
 import { t } from '../i18n.js';
 import { takeArenaInvite, arenaInviteUrl } from './invite.js';
-const EAT_K = 1.1; // eat when 10% heavier (agar.io-like); closer than that the two balls bump
+import { SPD, EAT_K, KR, MATCH_T, speedFor, boostFor, pullOf, suckReach, tireMul, RING_AT, RING_K, RING_WARN, RAIN_FIRST, RAIN_GAP, RAIN_NEAR } from './chase.js';
+export { SPD };
 // bot personalities: 0 none(human/boss) 1 Avci 2 Korkak 3 Toplayici 4 Kurnaz 5 Zorba
 const PERS_PREY = [1, 1.7, 0.45, 0.5, 0.8, 1]; // prey scan range multiplier
 const PERS_THR = [1, 0.8, 1.7, 1, 0.6, 1]; // threat scan range multiplier
@@ -33,9 +34,7 @@ const NBUR = 8, BUR_R = 6, BUR_IN = 3.4, BUR_M = 80, BUR_T = 5, BUR_CD = 4; // G
 const BUR = (() => { const a = []; for (let k = 0; k < NBUR; k++) { const an = 0.35 + k * 0.7854 + (k % 2) * 0.12; let d = 330 + ((k * 3) % 4) * 140; for (let t = 0; t < 4; t++) { const x = Math.cos(an) * d, z = Math.sin(an) * d; if (FORT_POS.some(([fx, fz]) => Math.hypot(x - fx, z - fz) < 90)) d += 110; } a.push({ x: Math.cos(an) * d, z: Math.sin(an) * d }); } return a; })();
 const FLEE_ANG = [0.8, -0.8, 1.6, -1.6];
 const GS = 40, GN = 55; // food grid (GN * GS >= 2 * R)
-const KR = 0.3; // radius = KR * sqrt(mass)
 const MAXM = LIM.MAXM;
-const MATCH_T = 240; // solo match length (s): finish as high as you can when the clock runs out
 // bot personalities: each bot settles at its own share of the dynamic bot cap (0.55x .. 1.6x), so the leaderboard never
 // shows a flat wall of equal masses and there are always a few bigger fish worth hunting
 const capK = (id) => 0.55 + 1.05 * ((((id + 3) * 2654435761) >>> 0) % 997) / 996;
@@ -58,8 +57,6 @@ const FOOD_PAL = [0xff5c8a, 0x3fb0ff, 0xffd02e, 0x3fe08a, 0xa86cff, 0xff8a3d, 0x
 const VOWELS = 'aeıioöuü';
 const BAD = new Set(['amk', 'aq', 'mk', 'orospu', 'piç', 'pic', 'siktir', 'sik', 'sikik', 'yarrak', 'yarak', 'göt', 'oç', 'ananı', 'anani', 'amına', 'amina', 'amcık', 'amcik', 'sikerim', 'bok']);
 
-export const SPD = 1.265; // +15% then +10% movement speed for every cell (players and bots alike)
-const speedFor = (m) => 17 * SPD * Math.pow(m, -0.12);
 const rnd = (a, b) => a + Math.random() * (b - a);
 const clampN = (v, a, b) => (v < a ? a : v > b ? b : v);
 const fmtM = (m) => (m >= 100000 ? Math.floor(m / 1000) + 'k' : String(Math.floor(m)));
@@ -158,9 +155,10 @@ export class AgarMode {
     this.terrain = new Terrain(R); this.seed = 1; this.uTime = { value: 0 };
     this.storm = { on: false, x: 0, z: 0, dx: 0, dz: 0, t: 0, next: 40, r: 170 }; this.stormSndT = 0; this.rain = { st: 0, x: 0, z: 0, t: 0, next: 150 + Math.random() * 60, acc: 0 };
     this.duel = { on: false, a: -1, b: -1, ia: -1, ib: -1, cx: 0, cz: 0, nx: 1, nz: 0, r: 20, s: 0, t: 0, cd: 12, bt: [0, 0] };
-    this.zn = { st: 0, t: 0, cx: 0, cz: 0, r: R, rt: R * 0.42, next: 300 }; this.sessT = 0; this.wo = { st: 0, t: 0, next: 240 + Math.random() * 120, k: 0 }; this.dirCalm = 25;
+    this.zn = { st: 0, t: 0, cx: 0, cz: 0, r: R, rt: R * RING_K, next: 300 }; this.sessT = 0; this.wo = { st: 0, t: 0, next: 240 + Math.random() * 120, k: 0 }; this.dirCalm = 25;
     this.av = { st: 0, t: 0, next: 150 + Math.random() * 60, a: 0, off: 0, w: 55, id: 0, rum: 0, s: 0 }; this.tipT = 0; this.tipDone = false; this.boss = { id: -1, hp: 0, max: 0, next: 280 + Math.random() * 40, hitCd: 0, t: 0 };
     this.titleIdx = 0; this.meZone = 0; this.lastMyMass = 0; this.botChatT = 20; this.botCap = 400;
+    this.under = false; this.vacT = 0; this.vacX = this.vacZ = this.vacR = 0; this.hitT = 0; this.chainPts = 0; this.prevKing = -1; this.podium = null;
     this.chatLog = []; this.lastChat = 0;
     this.trN = 0;
     this.resultEl = null; this.screenEl = null;
@@ -189,7 +187,7 @@ export class AgarMode {
     for (let i = 0; i < NOWN; i++) {
       const o = {
         id: i, name: '', col: 0xffffff, cr: 1, cg: 1, cb: 1, bot: true, human: null, alive: false, wasAlive: false, cellN: 0, mass: 0, cx: 0, cz: 0, lx: 0, lz: 0, maxR: 1, maxM: 0, ext: 0,
-        dx: 0, dz: 1, mag: 0, ldx: 0, ldz: 1, boostT: 0, boostCd: 0, trailT: 0, splitCd: 0, shield: 0, magnet: 0, speed: 0, away: false, respawnT: 0, aiT: Math.random(), tx: 0, tz: 0, wanderT: 0, dumbT: 0,
+        dx: 0, dz: 1, mag: 0, ldx: 0, ldz: 1, boostT: 0, boostCd: 0, boostMul: 2.4, boostCdMax: 2.4, tire: 0, tiring: false, hadThr: false, reactT: 0, trailT: 0, splitCd: 0, shield: 0, magnet: 0, speed: 0, away: false, respawnT: 0, aiT: Math.random(), tx: 0, tz: 0, wanderT: 0, dumbT: 0,
         bc: 0, hideT: 0, burCd: 0, fleeT: 0, bur: -1, kills: 0, xpRun: 0, t0: 0, bestRank: 99, maxMass: 0, seen: 0, killer: -1, sprite: null, tex: null, spriteName: '', pers: 0, emoteAt: -9,
       };
       this.owners.push(o);
@@ -573,7 +571,7 @@ export class AgarMode {
     const p = { x: 0, z: 0 };
     this.fs = 1;
     this.genTerrain((Math.random() * 2147483647) | 0);
-    this.zn.st = 0; this.zn.r = R; this.zn.next = 290 + Math.random() * 40;
+    this.zn.st = 0; this.zn.r = R; this.zn.next = 150 + Math.random() * 30;
     this.rain.st = 0; this.rain.next = 150 + Math.random() * 60; this.storm.on = false; this.storm.next = 35 + Math.random() * 25; this.stormA.visible = this.stormB.visible = false;
     this.wo.st = 0; this.wo.k = 0; this.wo.next = 240 + Math.random() * 120; this.dirCalm = 25; this.boss.id = -1; this.boss.next = 280 + Math.random() * 40; this.av.st = 0; this.av.next = 150 + Math.random() * 60; for (const f of this.forts) { f.own = -1; f.prog = 0; f.cand = -1; }
     this.trails.clear();
@@ -645,7 +643,7 @@ export class AgarMode {
   newCell(o, x, z, m) {
     for (let i = 0; i < CAP; i++) {
       const c = this.cells[i];
-      if (!c.on) { c.on = true; c.o = o.id; c.x = c.tx = x; c.z = c.tz = z; c.vx = c.vz = 0; c.m = m; c.r = KR * Math.sqrt(m); c.merge = 0; c.killer = -1; c.mvx = c.mvz = 0; c.qx = c.qy = c.qz = 0; c.qw = 1; c.px0 = x; c.pz0 = z; c.lsx = x; c.lsz = z; c.rampT = 0; c.pcd = 0; c.bt = 0; return c; }
+      if (!c.on) { c.on = true; c.o = o.id; c.x = c.tx = x; c.z = c.tz = z; c.vx = c.vz = 0; c.pop = 0; c.m = m; c.r = KR * Math.sqrt(m); c.merge = 0; c.killer = -1; c.mvx = c.mvz = 0; c.qx = c.qy = c.qz = 0; c.qw = 1; c.px0 = x; c.pz0 = z; c.lsx = x; c.lsz = z; c.rampT = 0; c.pcd = 0; c.bt = 0; return c; }
     }
     return null;
   }
@@ -675,7 +673,7 @@ export class AgarMode {
     this.props.clearStuck(o.id);
     if (o.id === this.me) { this.titleIdx = 0; this.msIdx = 0; }
     o.away = false; o.alive = true; o.wasAlive = true; o.cellN = 1; o.mass = m; o.cx = p.x; o.cz = p.z; o.lx = p.x; o.lz = p.z;
-    o.boostT = o.boostCd = o.splitCd = o.magnet = o.speed = 0; o.hideT = o.burCd = o.fleeT = 0; o.shield = o.bot ? 0 : (o.id === this.me ? 60 : 6); o.prot = !o.bot && o.id === this.me;
+    o.boostT = o.boostCd = o.splitCd = o.magnet = o.speed = 0; o.hideT = o.burCd = o.fleeT = 0; o.tire = o.reactT = 0; o.hadThr = o.tiring = false; o.shield = o.bot ? 0 : (o.id === this.me ? 60 : 6); o.prot = !o.bot && o.id === this.me;
     o.kills = 0; o.xpRun = 0; o.t0 = this.time; o.bestRank = 99; o.maxMass = m; o.killer = -1;
     o.pers = o.bot && !o.boss ? 1 + ((Math.random() * 5) | 0) : 0;
     o.tx = p.x; o.tz = p.z; o.wanderT = 0; o.mag = 0;
@@ -699,7 +697,7 @@ export class AgarMode {
 
   playSolo() {
     if (this.mp) return;
-    this.deaths = 0; this.bestStreak = 0; this.kStreak = 0;
+    this.deaths = 0; this.bestStreak = 0; this.kStreak = 0; this.chainPts = 0;
     this.startMatch();
     this.state = 'play';
     this.clearScreen();
@@ -719,7 +717,7 @@ export class AgarMode {
     this.matchDone = false;
     this.rival = -1; this.rivalT = 0;
     if (this.match) { this.zn.st = 0; this.zn.r = R; this.zn.next = 1e9; } // online rooms keep their ring; the ring of a solo match belongs to the last minute only
-    if (this.match) this.toast("4 dakikada ilk 3'e gir!", 3500);
+    if (this.match) { this.rain.st = 0; this.rain.next = RAIN_FIRST + Math.random() * 6; this.toast("4 dakikada ilk 3'e gir!", 3500); }
   }
   /** one named rival: a bit heavier than you, it hunts you (think) and is marked on the leaderboard; eating it pays a bonus */
   rivalTick(dt) {
@@ -741,7 +739,7 @@ export class AgarMode {
     M.t -= dt;
     if (M.t > 0) {
       this.rivalTick(dt);
-      if (!M.w1 && M.t < 60) { M.w1 = 1; this.toast('SON 1 DAKİKA! Çember daralıyor', 2200); this.audio?.milestone?.(2); this.zoneBegin(); }
+      if (!M.w1 && M.t < RING_AT) { M.w1 = 1; this.toast('BUZ ÇEMBERİ! Dövüş zamanı', 2200); this.audio?.milestone?.(2); this.zoneBegin(); }
       const s = Math.ceil(M.t);
       if (M.t < 6 && s !== M.s) { M.s = s; this.toast(String(s), 700); this.snd('tick'); }
       return;
@@ -756,10 +754,11 @@ export class AgarMode {
     if (o.alive) {
       rank = 1;
       for (let k = 0; k < NOWN; k++) { const q = this.owners[k]; if (q !== o && q.alive && q.mass > o.mass) rank++; }
-      this.bank(o); o.shield = 1e9; o.mag = 0; // frozen and untouchable under the result card
+      this.matchRank = rank; this.bank(o); o.shield = 1e9; o.mag = 0; // frozen and untouchable under the result card
     }
     this.inp.mag = 0; this.stickId = null; this.hud.stick.style.display = 'none';
     this.matchRank = rank;
+    this.podium = this.owners.filter((q) => q.alive && !q.boss).sort((a, b) => b.mass - a.mass).slice(0, 3).map((q) => ({ n: q.name, m: q.mass, me: q === o }));
     const bonus = rank === 1 ? 100 : rank <= 3 ? 50 : rank <= 10 ? 25 : 0;
     this.matchBonus = bonus;
     if (bonus > 0) { this.earned = (this.earned || 0) + bonus; try { if (this.save && typeof this.save.addCoins === 'function') this.save.addCoins(bonus); } catch { /* ignore */ } }
@@ -946,7 +945,7 @@ export class AgarMode {
     if (o.hideT > 0) { this.burOut(o); return false; }
     if (!o.alive || o.boostCd > 0 || o.mass < 30) return false;
     for (let i = 0; i < CAP; i++) { const c = this.cells[i]; if (c.on && c.o === o.id) c.m = Math.max(15, c.m * 0.97); }
-    o.boostT = 0.4; o.boostCd = 2.4; o.trailT = 0;
+    const B = boostFor(o.mass); o.boostT = B.t; o.boostMul = B.mul; o.boostCd = o.boostCdMax = B.cd * (o.bot ? 1.5 : 1); o.trailT = 0; // big balls charge longer/harder/more often; bots recover slower (no endless counter-boosting)
     if (o.id === this.me || o.human === 'host') this.audio?.whoosh?.();
     return true;
   }
@@ -999,6 +998,16 @@ export class AgarMode {
     const wa = cb.m / (ca.m + cb.m), wb = 1 - wa;
     this.bounceOff(ca, this.owners[ca.o], -nx, -nz, ov * wa, 0);
     this.bounceOff(cb, this.owners[cb.o], nx, nz, ov * wb, 0);
+  }
+
+  /** EMME: the heavier ball drags a smaller one that slips past its edge toward its centre; reach and pull grow with size (chase.js pullOf) */
+  suck(ca, cb, d2, dt) {
+    const big = ca.m > cb.m ? ca : cb, sm = big === ca ? cb : ca, so = this.owners[sm.o], bo = this.owners[big.o];
+    if (so.shield > 0 || so.hideT > 0 || so.boss || bo.boss || bo.hideT > 0) return;
+    const d = Math.sqrt(d2) + 1e-4, p = pullOf(big.m, sm.m, big.r, d - big.r - sm.r, false);
+    if (p <= 0) return;
+    const k = Math.min(0.9, p * dt / d); sm.x += (big.x - sm.x) * k; sm.z += (big.z - sm.z) * k;
+    if (big.o === this.me || sm.o === this.me || !(this.vacT > 0)) { this.vacT = 0.2; this.vacX = big.x; this.vacZ = big.z; this.vacR = big.r + suckReach(big.m, big.r); }
   }
 
   popCell(c, vi) {
@@ -1062,6 +1071,7 @@ export class AgarMode {
       if (o.magnet > 0) o.magnet -= dt;
       if (o.speed > 0) o.speed -= dt;
       if (o.fleeT > 0) o.fleeT -= dt;
+      o.tire = clampN(o.tire + (o.tiring ? dt * (o.pers === 4 ? 0.6 : o.pers === 2 ? 1.2 : 1) : -dt * 0.5), 0, 8);
       if (o.hideT > 0) {
         if (!o.alive) o.hideT = 0;
         else { o.hideT -= dt; const hc = cells[o.bc]; if (hc && hc.on && hc.o === o.id) hc.m = Math.min(MAXM, hc.m + dt * 0.9); if (o.hideT <= 0) this.burOut(o); continue; }
@@ -1097,14 +1107,15 @@ export class AgarMode {
       if (this.duel.on && (i === this.duel.ia || i === this.duel.ib)) continue;
       this.act[n++] = i;
       const zone = this.terrain.zone(c.x, c.z);
-      let sp = speedFor(c.m) * (o.speed > 0 ? 1.45 : 1) * (zone === 2 ? 0.62 : 1) * (o.preyT > this.time ? 0.72 : 1);
+      let sp = speedFor(c.m) * (o.speed > 0 ? 1.45 : 1) * (zone === 2 ? 0.62 : 1) * (o.preyT > this.time ? 0.72 : 1) * (o.tire > 0 ? tireMul(o.tire) : 1) * (this.under && c.o === this.me ? 1.05 : 1);
       let dx = o.dx, dz = o.dz, mg = o.mag;
-      if (o.boostT > 0) { sp *= 2.4; dx = o.ldx; dz = o.ldz; mg = 1; }
+      if (o.boostT > 0) { sp *= o.boostMul; dx = o.ldx; dz = o.ldz; mg = 1; }
       // ice: the velocity only slowly follows the steering (slide + momentum); everywhere else it snaps to it
       const ik = zone === 1 ? Math.min(1, dt * 0.9) : 1;
       c.mvx += (dx * sp * mg - c.mvx) * ik; c.mvz += (dz * sp * mg - c.mvz) * ik;
       if (zone === 2) c.m = Math.min(MAXM, c.m + dt * clampN(c.m * 0.003, 0.5, 5)); // deep snow: slow, but it packs on mass
       if (c.rampT > 0) c.rampT -= dt;
+      if (c.pop > 0) c.pop -= dt;
       if (c.bt > 0) c.bt -= dt;
       else if (this.terrain.rampAt(c.x, c.z, c.r) >= 0) {
         c.rampT = 1.2;
@@ -1122,8 +1133,8 @@ export class AgarMode {
       if (d2 > lim * lim) { const k = lim / Math.sqrt(d2); c.x *= k; c.z *= k; }
       if (o.burCd <= 0 && c.m < BUR_M && o.cellN === 1 && this.mp !== 'client' && (!o.bot || o.fleeT > 0)) { for (let b = 0; b < NBUR; b++) { const bx = BUR[b].x - c.x, bz = BUR[b].z - c.z; if (bx * bx + bz * bz < BUR_IN * BUR_IN) { this.burIn(o, c, b); break; } } }
       if (o.bot && c.m > this.botCap * capK(o.id)) c.m -= c.m * 0.012 * dt;
-      if (c.m > 400) c.m -= c.m * 0.0012 * dt; // big balls slowly shrink: growth stays gradual
-      if (this.zn.st === 2 && this.mp !== 'client' && c.m > 10 && !(o.shield > 0 && o.prot)) { const zx = c.x - this.zn.cx, zz = c.z - this.zn.cz; if (zx * zx + zz * zz > this.zn.r * this.zn.r) c.m = Math.max(10, c.m - (c.m * 0.015 + 0.4) * dt); }
+      if (c.m > 400) c.m -= c.m * 0.0006 * dt; // big balls slowly shrink: growth stays gradual (halved: a big ball is not punished for being big)
+      if (this.zn.st === 2 && this.mp !== 'client' && c.m > 10 && !(o.shield > 0 && o.prot)) { const zx = c.x - this.zn.cx, zz = c.z - this.zn.cz; if (zx * zx + zz * zz > this.zn.r * this.zn.r) c.m = Math.max(10, c.m - (c.m * 0.025 + 0.6) * dt); }
     }
     // cell vs cell
     const gk = Math.min(1, dt * 10);
@@ -1136,7 +1147,7 @@ export class AgarMode {
         const dx = cb.x - ca.x, dz = cb.z - ca.z;
         if (dx > 150 || dx < -150 || dz > 150 || dz < -150) continue;
         const d2 = dx * dx + dz * dz, rs = ca.r + cb.r;
-        if (d2 >= rs * rs) continue;
+        if (d2 >= rs * rs) { if (ca.o !== cb.o && this.mp !== 'client' && (ca.m >= 60 || cb.m >= 60)) this.suck(ca, cb, d2, dt); continue; }
         if (ca.o === cb.o) {
           if (ca.merge > 0 || cb.merge > 0) {
             const d = Math.sqrt(d2) + 0.001, push = (rs - d) * 0.5 * gk;
@@ -1153,6 +1164,7 @@ export class AgarMode {
         // EAT_K: how much heavier you must be to eat (was 1.25 — with the bounce that read as "I can't eat it, we just collide")
         if (ca.m > cb.m * EAT_K && d2 < Math.pow(ca.r - cb.r * 0.25, 2)) this.eatCell(ca, cb);
         else if (cb.m > ca.m * EAT_K && d2 < Math.pow(cb.r - ca.r * 0.25, 2)) this.eatCell(cb, ca);
+        else if (this.mp !== 'client' && (ca.m >= 60 || cb.m >= 60)) this.suck(ca, cb, d2, dt); // overlapping but not inside yet: keep reeling it in
         // near-equal balls just pass through each other (agar.io) — bumping them read as "we can't eat each other, we only collide"
       }
     }
@@ -1176,7 +1188,7 @@ export class AgarMode {
               let pv = o.bot ? v * (this.time - this.sessT < 150 ? 0.5 : this.time - this.sessT < 240 ? 0.75 : 1) : v;
               if (o.bot && c.m > this.botCap * capK(o.id)) pv *= 0.1;
               for (const f of this.forts) if (f.pa > 0.5 && f.pc === c.o) { const px = this.fx[i] - f.x, pz = this.fz[i] - f.z; if (px * px + pz * pz < PAINT_R * PAINT_R) { pv *= 1.2; break; } }
-              if (!o.bot && c.o === this.me) { const ag = this.time - o.t0; if (ag < 45) pv *= 1 + 1.6 * (1 - ag / 45); } // early-game reward: pellets feed up to 2.6x for the first 45 s
+              if (!o.bot && c.o === this.me) { const ag = this.time - o.t0; if (ag < 45) pv *= 1 + 1.6 * (1 - ag / 45); if (this.under) pv *= 1.35; } // early-game reward: pellets feed up to 2.6x for the first 45 s
               c.m = Math.min(MAXM, c.m + pv); o.xpRun += v;
               if (c.o === this.me) { this.snd('pellet'); if (!this.firstEat && this.state === 'play') { this.firstEat = true; this.toast('İLK YEMEK! 🎉'); this.audio?.milestone?.(1); } }
               if (i < FOOD) { const p = this.tmpP || (this.tmpP = { x: 0, z: 0 }); this.foodPos(p); this.foodPlace(i, p.x, p.z, this.baseVal(i)); } else this.foodPlace(i, 0, 0, 0);
@@ -1390,7 +1402,10 @@ export class AgarMode {
     if (this.mp === 'client' || this.state !== 'play') return;
     if (r.st === 0) {
       r.next -= dt;
-      if (r.next <= 0 && this.dirOk()) { const a = Math.random() * 6.2832, d = Math.sqrt(Math.random()) * (R - 140); r.x = Math.cos(a) * d; r.z = Math.sin(a) * d; r.st = 1; r.t = 5; this.toast('PELET YAĞMURU GELİYOR!'); this.pushFeed('Pelet yağmuru geliyor! Haritadaki işarete koş'); this.audio?.milestone?.(2); }
+      if (r.next <= 0 && (this.match ? this.boss.id < 0 && this.av.st === 0 && this.wo.st === 0 : this.dirOk())) { const a = Math.random() * 6.2832, me = this.owners[this.me];
+        if (this.match && me.alive) { const d = RAIN_NEAR[0] + Math.random() * (RAIN_NEAR[1] - RAIN_NEAR[0]); r.x = me.lx + Math.cos(a) * d; r.z = me.lz + Math.sin(a) * d; } else { const d = Math.sqrt(Math.random()) * (R - 140); r.x = Math.cos(a) * d; r.z = Math.sin(a) * d; } // match: it lands near you, so the crowd meets you there
+        const lim = this.zn.st === 2 ? this.zn.r - 70 : R - 140, ex = r.x - (this.zn.st === 2 ? this.zn.cx : 0), ez = r.z - (this.zn.st === 2 ? this.zn.cz : 0), el = Math.hypot(ex, ez); if (el > lim) { const k = lim / el, ox = this.zn.st === 2 ? this.zn.cx : 0, oz = this.zn.st === 2 ? this.zn.cz : 0; r.x = ox + ex * k; r.z = oz + ez * k; }
+        r.st = 1; r.t = 5; this.toast('PELET YAĞMURU GELİYOR!'); this.pushFeed('Pelet yağmuru geliyor! Haritadaki işarete koş'); this.audio?.milestone?.(2); }
       return;
     }
     r.t -= dt;
@@ -1398,7 +1413,7 @@ export class AgarMode {
     r.acc += dt * 45;
     const hex = [0xff4f86, 0xffc400, 0x2fd67a, 0x3fa8ff, 0xb070ff];
     while (r.acc >= 1) { r.acc--; const a = Math.random() * 6.2832, d = Math.sqrt(Math.random()) * 65; this.spawnPellet(r.x + Math.cos(a) * d, r.z + Math.sin(a) * d, 6, hex[(Math.random() * 5) | 0]); }
-    if (r.t <= 0) { r.st = 0; r.next = 150 + Math.random() * 60; }
+    if (r.t <= 0) { r.st = 0; r.next = this.match ? RAIN_GAP[0] + Math.random() * (RAIN_GAP[1] - RAIN_GAP[0]) : 150 + Math.random() * 60; }
   }
   // ------------------------------------------------------------------ snow storm
   stormTick(dt) {
@@ -1444,13 +1459,13 @@ export class AgarMode {
     if (z.t < 12) z.r = R - (R - z.rt) * sm(z.t / 12);
     else if (z.t < 48) z.r = z.rt;
     else if (z.t < 60) z.r = z.rt + (R - z.rt) * sm((z.t - 48) / 12);
-    else { z.st = 0; z.r = R; z.next = 270 + Math.random() * 60; this.pushFeed('Buz çemberi çözüldü'); }
+    else { z.st = 0; z.r = R; z.next = 150 + Math.random() * 40; this.pushFeed('Buz çemberi çözüldü'); }
   }
 
   zoneBegin() {
     const z = this.zn;
     if (z.st !== 0) return;
-    z.st = 1; z.t = 8; z.rt = R * 0.42; const a = Math.random() * 6.2832, d = Math.random() * R * 0.3; z.cx = Math.cos(a) * d; z.cz = Math.sin(a) * d; z.r = R;
+    z.st = 1; z.t = RING_WARN; z.rt = R * RING_K; const a = Math.random() * 6.2832, d = Math.random() * R * 0.3; z.cx = Math.cos(a) * d; z.cz = Math.sin(a) * d; z.r = R;
     this.pushFeed('❄ BUZ ÇEMBERİ! Çember daralıyor'); this.audio?.milestone?.(3);
   }
 
@@ -1463,7 +1478,11 @@ export class AgarMode {
     z.tgt = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 128).rotateX(-Math.PI / 2), bm(0xff5a4d, 0.9)); z.tgt.position.y = 0.75;
     z.beam = new THREE.Mesh(new THREE.CylinderGeometry(4, 6, 140, 16, 1, true), bm(0xfff09a, 0.38)); z.beam.position.y = 70;
     z.glow = new THREE.Mesh(new THREE.CircleGeometry(24, 40).rotateX(-Math.PI / 2), bm(0xffe680, 0.5)); z.glow.position.y = 0.8;
-    for (const m of [z.ring, z.wall, z.out, z.tgt, z.beam, z.glow]) { m.visible = false; m.frustumCulled = false; sc.add(m); }
+    this.vacRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 64).rotateX(-Math.PI / 2), bm(0xc9a0ff, 0.6)); this.vacRing.position.y = 0.9; // EMME: the pull reach of a big ball (shrinks inward)
+    const nm = (col, op) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false, fog: false, side: D }); // normal blending: an additive ring vanishes on the white snow
+    this.rainBeam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.5, 1, 14, 1, true), nm(0xff9a10, 0.35)); // PELET YAĞMURU beacon
+    this.rainRing = new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 64).rotateX(-Math.PI / 2), nm(0xff8a00, 0.8)); this.rainRing.position.y = 0.9;
+    for (const m of [z.ring, z.wall, z.out, z.tgt, z.beam, z.glow, this.vacRing, this.rainBeam, this.rainRing]) { m.visible = false; m.frustumCulled = false; sc.add(m); }
   }
 
   // ------------------------------------------------------------------ avalanche event (CIG OLAYI)
@@ -1636,10 +1655,19 @@ export class AgarMode {
     let s = null; for (let i = 0; i < 3; i++) { if (this.shk[i].t < 0) { s = this.shk[i]; break; } } if (!s) s = this.shk[0];
     s.t = 0; s.r = pred.r * 2 + 6 + big * 18; s.m.position.set(pred.x, 0.6, pred.z); s.m.visible = true;
     this.camKick = Math.max(this.camKick, 0.05 + big * 0.1);
+    pred.pop = 0.3; if (gain >= 25) this.hitT = Math.max(this.hitT, Math.min(0.09, 0.04 + gain / 4000));
     this.audio?.arena?.('gulp', 1, this.swStreak);
     this.platform?.haptic?.('light');
     this.floatTxt('+' + Math.round(gain) + ' kütle', pred.x, pred.z - pred.r, '#7dffb0');
     if (po) this.pushFeed('Sen ➜ ' + po.name + accSuffix(po.name) + ' yuttun!', true);
+  }
+
+  /** big centre-top call-out ('YUTTUN: Mert' + chain line); one reused element, the CSS animation restarts on every call */
+  callOut(text, sub) {
+    let el = this.hud.call;
+    if (!el) { el = this.hud.call = document.createElement('div'); el.className = 'ag-call'; el.innerHTML = '<b></b><small></small>'; this.hud.root.appendChild(el); }
+    el.firstChild.textContent = text; el.lastChild.textContent = sub || '';
+    el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
   }
 
   /** big prop swallowed (called by props.js) */
@@ -1661,6 +1689,7 @@ export class AgarMode {
 
   /** per frame: emote bubble placement/fade + shockwave rings (no allocations) */
   fxTick(dt) {
+    if (this.vacT > 0) this.vacT -= dt;
     for (let i = 0; i < 4; i++) {
       const e = this.emo[i];
       if (e.until < this.time) { if (e.sp.visible) e.sp.visible = false; continue; }
@@ -1701,6 +1730,7 @@ export class AgarMode {
       }
     }
     let tx = 0, tz = 0, mode = 0, pk = -1;
+    if (thr) { if (!o.hadThr) { o.hadThr = true; o.reactT = this.time + (pe === 2 ? 0.15 : 0.35) + Math.random() * 0.4; } if (this.time < o.reactT) thr = null; } else o.hadThr = false; // late reaction: the threat is noticed 0.35-0.75 s after it shows up
     if (thr) {
       mode = 1;
       tx = cx - (thr.x - cx); tz = cz - (thr.z - cz);
@@ -1714,7 +1744,7 @@ export class AgarMode {
         for (let b = 0; b < NBUR; b++) { const d = Math.hypot(BUR[b].x - cx, BUR[b].z - cz); if (d < bdd) { bdd = d; bb = b; } }
         if (bb >= 0) { tx = BUR[bb].x; tz = BUR[bb].z; o.fleeT = 1.2; }
       }
-      if (thrD < orr * 1.5 + 4 && o.boostCd <= 0 && om > 40 && Math.random() < 0.5) this.boost(o);
+      if (thrD < orr * 1.5 + 4 && o.boostCd <= 0 && om > 40 && Math.random() < 0.18) this.boost(o);
       if (pe === 2 && Math.random() < 0.3) this.emote(o, 'kaç!');
     } else if (o.id === this.rival && this.rivalGo(o)) {
       mode = 2; const me = this.owners[this.me];
@@ -1733,6 +1763,8 @@ export class AgarMode {
       tx = lurk.x + (-(lurk.z - cz) / ld) * st; tz = lurk.z + ((lurk.x - cx) / ld) * st; // circle the big one at a safe distance, wait for a split
     } else if (this.king && this.king.alive && this.king !== o && o.id % 4 === 1 && om > this.king.mass * 0.5 && Math.hypot(this.king.lx - cx, this.king.lz - cz) < 240) {
       mode = 2; tx = this.king.lx; tz = this.king.lz;
+    } else if (this.rain.st > 0 && o.id % 2 === 0 && Math.hypot(this.rain.x - cx, this.rain.z - cz) < 650) {
+      mode = 3; tx = this.rain.x; tz = this.rain.z; // the PELET YAĞMURU beacon gathers the crowd
     } else if (o.id % 3 !== 1 && (pk = this.pickupNear(cx, cz, 70 + orr * 2)) >= 0) {
       mode = 3; tx = this.px[pk]; tz = this.pz[pk]; // contest power-ups with the player
     } else if (om > 50 && o.id % 3 === 0 && this.fortGoal(o)) {
@@ -1768,6 +1800,11 @@ export class AgarMode {
           if (T.zone(cx + nx * la, cz + nz * la) !== 1) { dx = nx; dz = nz; break; }
         }
       }
+    }
+    o.tiring = mode === 1;
+    if (mode === 1) {
+      if (thrD < orr * 1.2 + 3 && Math.random() < (pe === 4 ? 0.1 : 0.3)) { const a = (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.8), cs = Math.cos(a), sn = Math.sin(a), px = dx * cs - dz * sn; dz = dx * sn + dz * cs; dx = px; } // panic: a wrong turn when the hunter is right there
+      if (Math.hypot(cx, cz) > R - 45 || (this.zn.st === 2 && Math.hypot(cx - this.zn.cx, cz - this.zn.cz) > this.zn.r - 40)) o.tire = Math.min(8, o.tire + 1.2); // cornered against the wall / ring: tires fast
     }
     if (this.storm.on) { const sx = cx - this.storm.x, sz = cz - this.storm.z, sd = Math.hypot(sx, sz); if (sd < this.storm.r + 30) { dx += (sx / (sd + 0.01)) * 1.3; dz += (sz / (sd + 0.01)) * 1.3; } }
     if (this.av.st > 0 && !this.avHidden(this._ah || (this._ah = { x: 0, z: 0, r: 0, m: 0 }), cx, cz, orr, om)) {
@@ -1889,7 +1926,7 @@ export class AgarMode {
       if (!(o.wasAlive && !o.alive)) { if (o.alive) o.wasAlive = true; continue; }
       o.wasAlive = false;
       const killer = o.killer >= 0 ? this.owners[o.killer] : null;
-      if (killer && killer !== o && killer.id === this.me && this.mp !== 'client') this.meKill();
+      if (killer && killer !== o && killer.id === this.me && this.mp !== 'client') this.meKill(o);
       if (killer && killer !== o) { killer.kills++; this.pushFeed(killer.name + ', ' + o.name + accSuffix(o.name) + ' yuttu!');
         if (killer.bot && this.time > (this._quipT || 0) && Math.random() < 0.4) { this._quipT = this.time + 9 + Math.random() * 8; const Q = ['yummy 😋', 'kaç kaç!', 'bu benim kalem!', 'ez gg', 'bir tane daha 😎', 'kar tanesi gibi eridin', 'sıradaki kim?', 'oha büyüdüm 🤩']; this.pushFeed(killer.name + ': ' + Q[(Math.random() * Q.length) | 0]); } }
       if (o.bot && !o.human) { o.respawnT = 3 + Math.random() * 3; if (killer) { if (Math.random() < 0.5) this.emote(o, '😭'); else if (killer.bot && Math.random() < 0.3) this.emote(killer, 'gg'); } }
@@ -1963,15 +2000,16 @@ export class AgarMode {
 
   // ------------------------------------------------------------------ result
   /** YUTUŞ SERİSİ: every bot you finish off pops a callout; kills within 6 s chain into a streak with a mass bonus */
-  meKill() {
+  meKill(v) {
     const me = this.owners[this.me];
     if (!me || !me.alive) return;
     const n = this.kStreak = this.time - (this.kLastT ?? -99) < 6 ? (this.kStreak || 0) + 1 : 1;
-    this.kLastT = this.time;
+    this.kLastT = this.time; this.chainPts = (this.chainPts | 0) + 5 * n; this.hitT = Math.max(this.hitT, 0.09);
+    if (v) this.callOut('YUTTUN: ' + v.name, n > 1 ? '🔥 x' + n : '');
     this.platform?.haptic?.(n > 1 ? 'success' : 'medium');
     this.camKick = Math.max(this.camKick, n > 1 ? 0.12 + 0.04 * Math.min(4, n) : 0.07);
     if (n < 2) return;
-    const bonus = Math.min(150, Math.round(me.mass * 0.05 * (n - 1)) + 4 * n);
+    const bonus = Math.min(600, Math.round(me.mass * 0.05 * (n - 1)) + 4 * n);
     const c = this.cells[me.bc];
     if (c && c.on && c.o === this.me) c.m = Math.min(MAXM, c.m + bonus);
     const T = ['', '', 'ÇİFTE YUTUŞ!', 'ÜÇLÜ YUTUŞ!', 'DÖRTLÜ YUTUŞ!'];
@@ -2080,11 +2118,11 @@ export class AgarMode {
 
   bank(o) {
     if (o.maxMass > this.best) { this.best = o.maxMass; lsSet(BEST_KEY, Math.floor(this.best)); this.newBest = true; } else this.newBest = false;
-    if (o.id === this.me && this._track) { try { this._track('arena_end', { mass: o.maxMass, streak: this.bestStreak || 0, rank: o.bestRank }); } catch (e) { /* ignore */ } }
+    if (o.id === this.me && this._track) { try { this._track('arena_end', { mass: o.maxMass, streak: this.bestStreak || 0, rank: o.bestRank, fin: this.matchDone ? this.matchRank : 99 }); } catch (e) { /* ignore */ } }
     this.xp += o.xpRun; lsSet(XP_KEY, Math.floor(this.xp));
     o.xpRun = 0;
     // ties into the main game's economy: snowflakes (coins) for the run
-    this.earned = Math.max(0, Math.floor(Math.sqrt(Math.max(0, o.maxMass)) * 1.2 + o.kills * 3));
+    this.earned = Math.max(0, Math.floor(Math.sqrt(Math.max(0, o.maxMass)) * 1.2 + o.kills * 3 + (this.chainPts | 0))); this.chainPts = 0;
     try { if (this.earned > 0 && this.save && typeof this.save.addCoins === 'function') this.save.addCoins(this.earned); } catch { /* ignore */ }
   }
 
@@ -2102,10 +2140,14 @@ export class AgarMode {
     const hook = rk > 3 ? `En iyi sıran #${rk} — ilk 3'e ${gap} kütle!` : rk >= 1 ? `En iyi sıran #${rk} — bir üstüne çık!` : 'Bir dahaki sefere sıralamaya gir!';
     const md = this.matchDone;
     const elim = md && this.matchRank >= NOWN; // dead at the final bell: no placement
-    card.innerHTML = (md ? '<div class="ag-logo sm">MAÇ BİTTİ!</div><div class="ag-earn" style="margin-bottom:4px"><small>' + (elim ? 'durum' : 'sıran') + '</small>' + (elim ? '<b>ELENDİN</b>' : '<b>#' + this.matchRank + (this.matchRank === 1 ? ' 🥇' : this.matchRank === 2 ? ' 🥈' : this.matchRank === 3 ? ' 🥉' : this.matchRank <= 10 ? ' 🏅' : '') + '</b>') + '</div>' : '<div class="ag-logo sm">YENDİN: <span class="kn"></span></div>') +
+    const pod = md && !elim && this.podium;
+    clearTimeout(this._tt); this.hud.toast.classList.remove('on');
+    card.innerHTML = (md ? '<div class="ag-logo sm">MAÇ BİTTİ!</div>' + (pod ? '<div class="pod-slot"></div>' : '') + '<div class="ag-earn" style="margin-bottom:4px' + (pod ? ';display:none' : '') + '"><small>' + (elim ? 'durum' : 'sıran') + '</small>' + (elim ? '<b>ELENDİN</b>' : '<b>#' + this.matchRank + (this.matchRank === 1 ? ' 🥇' : this.matchRank === 2 ? ' 🥈' : this.matchRank === 3 ? ' 🥉' : this.matchRank <= 10 ? ' 🏅' : '') + '</b>') + '</div>' : '<div class="ag-logo sm">YENDİN: <span class="kn"></span></div>') +
       `<div class="ag-earn"><small>kazanılan</small><b>+${this.earned || 0} ❄️</b></div>` +
       row('SÜRE', fmtT(this.time - o.t0)) + row('MAX KÜTLE', fmtM(o.maxMass) + (this.newBest ? ' 🏆 REKOR' : '')) + row('EN İYİ SIRA', rk ? '#' + rk : '-') + row('YEDİĞİN', o.kills) + (this.bestStreak >= 2 ? row('EN İYİ SERİ', '🔥 x' + this.bestStreak) : '') +
       '<div class="ag-sub" style="margin:8px 0;font-weight:800;color:#ffd23a"></div>';
+    if (pod) card.querySelector('.pod-slot').replaceWith(this.podiumEl());
+    if (md) { let pg = null; try { pg = meta.progress('ch_podium3'); } catch (e) { /* ignore */ } if (pg) card.querySelector('.ag-sub').insertAdjacentHTML('beforebegin', row('KÜRSÜ ÖDÜLÜ', pg.claimed || pg.done ? '✔ Kara Delik açıldı' : 'Kara Delik ' + pg.value + '/' + pg.goal)); }
     const kn = card.querySelector('.kn'); if (kn) kn.textContent = this.deadKiller || 'Kar Fırtınası';
     card.querySelector('.ag-sub').textContent = md ? (elim ? 'Süre dolmadan elendin.' : this.matchRank <= 10 ? 'Madalya bonusu: +' + this.matchBonus + ' ❄️' : "İlk 10'a girersen bonus kazanırsın.") : hook;
     const b1 = document.createElement('button'); b1.type = 'button'; b1.className = 'ag-btn go'; b1.textContent = md ? 'YENİ MAÇ' : 'TEKRAR DOĞ';
@@ -2116,6 +2158,20 @@ export class AgarMode {
     el.appendChild(card);
     this.hud.root.appendChild(el);
     this.resultEl = el;
+  }
+  /** MAÇ BİTTİ podium: the top 3 on 1-2-3 steps (centre = winner); a rank below 3 gets its own line */
+  podiumEl() {
+    const w = document.createElement('div'); w.className = 'ag-pod';
+    const P = this.podium, H = [60, 44, 32], MED = ['🥇', '🥈', '🥉'];
+    for (const i of [1, 0, 2]) {
+      const p = P[i]; if (!p) continue;
+      const c = document.createElement('div'); c.className = 'pc' + (p.me ? ' me' : '');
+      const m = document.createElement('span'), n = document.createElement('b'), s = document.createElement('small'), bar = document.createElement('i');
+      m.textContent = MED[i]; n.textContent = p.n; s.textContent = fmtM(p.m); bar.style.height = H[i] + 'px'; bar.textContent = String(i + 1);
+      c.append(m, n, s, bar); w.appendChild(c);
+    }
+    if (this.matchRank > 3 && this.matchRank < NOWN) { const r = document.createElement('div'); r.className = 'pme'; r.innerHTML = '<span>sıran</span><b></b>'; r.lastChild.textContent = '#' + this.matchRank; w.appendChild(r); }
+    return w;
   }
   closeResult() { if (this.resultEl) { this.resultEl.remove(); this.resultEl = null; } }
 
@@ -2728,6 +2784,7 @@ export class AgarMode {
   update(dt) {
     if (this.disposed) return;
     if (dt > 0.05) dt = 0.05;
+    if (this.hitT > 0) { this.hitT -= dt; dt *= 0.12; } // hit-stop on a big swallow
     if (this.slowT > 0) { this.slowT -= dt; dt *= 0.4; } // slow-mo when swallowed
     this.time += dt;
     if (this.mp === 'client') this.clientSmooth(dt);
@@ -2868,7 +2925,8 @@ export class AgarMode {
         c.qw = nw * nl; c.qx = nx * nl; c.qy = ny * nl; c.qz = nz * nl;
       }
       const sq = o.boostT > 0, bk = c.bt > 0 ? Math.sin(Math.min(1, c.bt / 0.24) * Math.PI) * 0.2 : 0; // bump: short squash
-      const sx = (sq ? r * 1.12 : r) * (1 + bk * 0.6), sy = (sq ? r * 0.8 : r) * (1 - bk);
+      const pp = c.pop > 0 ? 1 + Math.sin(Math.min(1, c.pop / 0.3) * Math.PI) * 0.2 : 1; // swallow pop
+      const sx = (sq ? r * 1.12 : r) * (1 + bk * 0.6) * pp, sy = (sq ? r * 0.8 : r) * (1 - bk) * pp;
       const se = this.skinEntry(o.boss ? 'classic' : o.skin), k16 = se.n++;
       wmq(se.mesh.instanceMatrix.array, k16 * 16, c.x, sy, c.z, sx, sy, sx, c.qx, c.qy, c.qz, c.qw);
       wm(sa, n * 16, c.x + r * 0.12, 0, c.z + r * 0.18, r * 1.6);
@@ -2970,6 +3028,9 @@ export class AgarMode {
     const cr = this.crown;
     if (king && king.alive) { const cs = Math.max(king.maxR * 1.1, camH * 0.06); { const bm = this.beam, bh = camH * 1.6, bw = Math.max(king.maxR * 0.5, camH * 0.012); bm.visible = true; bm.position.set(king.lx, bh * 0.5, king.lz); bm.scale.set(bw, bh, bw); const kd = me.alive ? Math.hypot(king.lx - me.lx, king.lz - me.lz) / (camH * 0.9) : 1; bm.material.opacity = (0.26 + 0.1 * Math.sin(this.time * 4)) * Math.min(1, Math.max(0.15, kd * kd)); } cr.visible = true; cr.position.set(king.lx, king.maxR * 2 + cs * 0.5, king.lz); cr.scale.setScalar(cs); if (this.qLv < 2) cr.rotation.y = this.time * 1.6; } else { cr.visible = false; if (this.beam) this.beam.visible = false; }
     this.burRingM.opacity = 0.45 + 0.25 * Math.sin(this.time * 3);
+    if (me.alive) mr.material.color.setHex(king === me ? 0xffd23a : 0xffffff); // the king of the arena is ringed in gold under its crown
+    { const v = this.vacRing; if (this.vacT > 0) { const q = (this.time * 2.4) % 1; v.visible = true; v.position.x = this.vacX; v.position.z = this.vacZ; v.scale.setScalar(this.vacR * (1.12 - 0.3 * q)); v.material.opacity = 0.7 * (1 - q * q); } else v.visible = false; }
+    { const rn = this.rain, b = this.rainBeam, g = this.rainRing; if (rn.st > 0) { const bh = camH * 1.6, bw = Math.max(camH * 0.012, 2.5); b.visible = g.visible = true; b.position.set(rn.x, bh * 0.5, rn.z); b.scale.set(bw, bh, bw); b.material.opacity = (rn.st === 1 ? 0.2 : 0.38) + 0.12 * Math.sin(this.time * 6); g.position.x = rn.x; g.position.z = rn.z; g.scale.setScalar(rn.st === 1 ? 65 * (0.7 + 0.3 * pls) : 65); g.material.opacity = rn.st === 1 ? 0.5 : 0.85; } else b.visible = g.visible = false; }
     this.discover(me, king, camH);
     {
       const cs = this.cones, cmesh = this.coneMesh;
@@ -3248,7 +3309,11 @@ export class AgarMode {
       for (let i = 0; i < NOWN; i++) if (this.owners[i].alive && !this.owners[i].boss) this.lb[n++] = this.owners[i];
       this.lbN = n; this.lb.length = n;
       this.lb.sort(this._lbCmp);
-      { const k0 = this.lb[0]; this.king = k0 && n >= 3 && k0.mass > 60 ? k0 : null; this.kingId = this.king ? this.king.id : -1; }
+      { const k0 = this.lb[0]; this.king = k0 && n >= 3 && k0.mass > 60 ? k0 : null; this.kingId = this.king ? this.king.id : -1;
+        if (this.kingId !== this.prevKing) { if (this.state === 'play' && me.alive) { if (this.kingId === this.me) { this.callOut('TAHTA OTURDUN ♛', 'Herkes seni avlıyor'); this.audio?.milestone?.(4); this.pulseT = 0; } else if (this.prevKing === this.me) this.pushFeed('Tahtı kaybettin ♛', true); } this.prevKing = this.kingId; }
+        const un = !!(this.king && me.alive && this.state === 'play' && this.king !== me && me.mass < this.king.mass * 0.3); // comeback help for small players
+        if (un && !this.under) this.pushFeed('TOPARLANMA: yem +%35, hız +%5', true);
+        this.under = un; }
       let myRank = -1;
       for (let i = 0; i < n; i++) if (this.lb[i] === me) { myRank = i; break; }
       for (let i = 0; i < 5; i++) {
@@ -3305,7 +3370,7 @@ export class AgarMode {
         if (t > 0 && !(i === 1 && me.prot)) { const c = h.chips[ci++]; c.style.display = 'block'; if (i === 1 && me.prot) { const q = Math.ceil(t); c.textContent = '🛡 KORUMA ' + Math.floor(q / 60) + ':' + ('0' + (q % 60)).slice(-2); c.style.fontSize = '11px'; } else { c.textContent = d.emoji + ' ' + Math.ceil(t) + 's'; c.style.fontSize = ''; } }
       }
       for (; ci < 3; ci++) h.chips[ci].style.display = 'none';
-      const cd = me.boostCd > 0 ? me.boostCd / 2.4 : 0;
+      const cd = me.boostCd > 0 ? me.boostCd / (me.boostCdMax || 2.4) : 0;
       if (cd !== this._cd) { this._cd = cd; h.cd.style.height = (cd * 100).toFixed(0) + '%'; }
     }
     {

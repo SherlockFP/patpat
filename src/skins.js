@@ -11,6 +11,7 @@
 // Materials are flat-shaded Lambert/Phong; none of them uses a custom onBeforeCompile except 'lav'.
 // Animated skins touch their buffers at <= ~30 Hz and never allocate per frame.
 import * as THREE from 'three';
+import { EFFECT_BALLS, buildEffectBall } from './effectballs.js';
 
 const TAU = Math.PI * 2;
 
@@ -21,6 +22,7 @@ export const RARITY = {
   rare: { rank: 1, label: 'NADİR', color: '#2f7dff' },
   epic: { rank: 2, label: 'EPİK', color: '#a855f7' },
   legendary: { rank: 3, label: 'EFSANE', color: '#ffb400' },
+  mythic: { rank: 4, label: 'MİTİK', color: '#ff4fd8' },
 };
 
 // Catalog items: { id, name, rarity, price, unlock?, preview }
@@ -128,6 +130,9 @@ export const SKINS = [
   { id: 'tac_top', name: 'Taç Topu', rarity: 'legendary', price: 0, unlock: { challenge: 'ch_arenaLead' }, preview: { a: '#ffe681', b: '#d8940c', c: '#7a4a00', pattern: 'tiles', glow: true } },
 ];
 
+// EFEKTLİ TOPLAR (effectballs.js): animated material + attached particles
+SKINS.push(...EFFECT_BALLS.map((d) => d.item));
+
 // KARAKTER snowballs: one small passive Rush ability each (endless Rush only; read by runner.js).
 export const ABILITIES = {
   kofte: { icon: '🧲', text: 'Mıknatıs %30 daha uzun sürer' },
@@ -139,6 +144,10 @@ export const ABILITIES = {
   kirpi: { icon: '🦔', text: 'Ezme sıçraması yüksek, kombo +1' },
   altin: { icon: '💎', text: 'Elmaslar daha sık çıkar' },
   penguen: { icon: '🐧', text: 'Penguen takipçisiyle başla (x1)' },
+  // MİTİK balls borrow a finished passive (as = the ability key the runner reads); their look evolves with the shard level
+  myth_anka: { icon: '🔥', text: 'Öfke ölçeri %20 hızlı dolar', as: 'kizilkaos', myth: 1 },
+  myth_evren: { icon: '💎', text: 'Elmaslar daha sık çıkar', as: 'altin', myth: 1 },
+  myth_kral: { icon: '🧊', text: 'Buz kaydırağı çifte hız verir', as: 'buzejder', myth: 1 },
 };
 
 export const TRAILS = [
@@ -180,6 +189,15 @@ export const TRAILS = [
   { id: 'simsek_zincir', name: 'Şimşek Zinciri', rarity: 'epic', price: 1800, new: true, preview: { a: '#d4f2ff', b: '#2f66ff', pattern: 'bands', glow: true } },
   { id: 'elmas_tozu', name: 'Elmas Tozu', rarity: 'legendary', price: 3800, new: true, preview: { a: '#e8fcff', b: '#7fe3ff', pattern: 'bands', glow: true } },
   { id: 'ejder_nefesi', name: 'Ejder Nefesi', rarity: 'legendary', price: 4500, new: true, unlock: { stars: 30 }, preview: { a: '#ffd23a', b: '#ff3a10', pattern: 'swirl', glow: true } },
+  // ---- YENİ (dalga 4)
+  { id: 'kar_tanesi_izi', name: 'Kar Tanesi İzi', rarity: 'common', price: 300, new: true, preview: { a: '#ffffff', b: '#9fd8ff', pattern: 'solid', glow: true } },
+  { id: 'zehir_kabarcigi', name: 'Zehir Kabarcığı', rarity: 'rare', price: 600, new: true, preview: { a: '#c4ff7a', b: '#1fc84a', pattern: 'solid', glow: true } },
+  { id: 'sakura_izi', name: 'Sakura İzi', rarity: 'rare', price: 650, new: true, preview: { a: '#ffd0e0', b: '#ff8fb8', pattern: 'swirl' } },
+  { id: 'ates_bocegi', name: 'Ateş Böceği', rarity: 'rare', price: 700, new: true, preview: { a: '#f4ff8a', b: '#9acd32', pattern: 'solid', glow: true } },
+  { id: 'hayalet_izi', name: 'Hayalet İzi', rarity: 'rare', price: 750, new: true, preview: { a: '#e8fbff', b: '#8ad0e8', pattern: 'solid', glow: true } },
+  { id: 'mor_ates', name: 'Mor Ateş', rarity: 'epic', price: 1600, new: true, preview: { a: '#e0b0ff', b: '#5a1aaa', pattern: 'bands', glow: true } },
+  { id: 'ay_tozu', name: 'Ay Tozu', rarity: 'epic', price: 1500, new: true, preview: { a: '#f4f8ff', b: '#8aa4d8', pattern: 'solid', glow: true } },
+  { id: 'disko_izi', name: 'Disko İzi', rarity: 'epic', price: 1800, new: true, preview: { a: '#ff6ad5', b: '#6ad5ff', pattern: 'swirl', glow: true } },
   // ---- GÖREVLER ödülü (özel), bkz. SKINS
   { id: 'lg_kp', name: 'Kartopu Ligi İzi', rarity: 'rare', price: 0, unlock: { challenge: 'lg_kp' }, preview: { a: '#9fd0ff', b: '#ffffff', pattern: 'solid', glow: true } },
   { id: 'rs_iz', name: 'Rekor İzi', rarity: 'epic', price: 0, unlock: { challenge: 'rs_5' }, preview: { a: '#ffe681', b: '#ff7a1a', pattern: 'solid', glow: true } },
@@ -228,6 +246,14 @@ const TRAIL_STYLES = {
   simsek_zincir: { color: 0xd4f2ff, color2: 0x2f66ff, rainbow: false, glow: true, jag: 0.5, emit: { s: 'bolt', rate: 4, cols: [0xd4f2ff, 0x9fb8ff], size: 0.55, up: 0.6, sp: 2, life: 0.5, add: 1 } },
   elmas_tozu: { color: 0xe8fcff, color2: 0x7fe3ff, rainbow: false, glow: true, emit: { s: 'glint', rate: 11, cols: [0xffffff, 0x9fefff, 0xe8fcff], size: 0.5, up: 0.5, sp: 2, life: 0.9, add: 1, spin: 1 } },
   ejder_nefesi: { color: 0xffd23a, color2: 0xff3a10, rainbow: false, glow: true, emit: { s: 'spark', rate: 16, cols: [0xffd23a, 0xff5a10, 0xff3a10], size: 0.5, up: 2.6, sp: 1.8, life: 0.7, add: 1 } },
+  kar_tanesi_izi: { color: 0xeaf6ff, color2: 0x9fd8ff, rainbow: false, glow: true, emit: { s: 'flake', rate: 7, cols: [0xffffff, 0xbfeaff], size: 0.6, up: 0.6, sp: 2, life: 1.3, spin: 1 } },
+  zehir_kabarcigi: { color: 0x7dff4a, color2: 0x12a82a, rainbow: false, glow: true, emit: { s: 'bubble', rate: 8, cols: [0xbfff7a, 0x7dff4a, 0xffffff], size: 0.5, up: 2.4, sp: 1.6, life: 1.2 } },
+  sakura_izi: { color: 0xffb3d1, rainbow: true, glow: false, palette: [0xffb3d1, 0xff8fb8, 0xffe0ec], emit: { s: 'petal', rate: 9, cols: [0xffb3d1, 0xff8fb8, 0xffffff], size: 0.55, up: 0.9, sp: 2.2, life: 1.5, spin: 1 } },
+  ates_bocegi: { color: 0xe8ff7a, color2: 0x6a9a1a, rainbow: false, glow: true, emit: { s: 'glint', rate: 8, cols: [0xf4ff8a, 0xc8ff4a], size: 0.38, up: 0.9, sp: 2.6, life: 1.2, add: 1 } },
+  hayalet_izi: { color: 0xe8fbff, color2: 0x8ad0e8, rainbow: false, glow: true, emit: { s: 'smoke', rate: 8, cols: [0xe8fbff, 0xbfeaff], size: 1.1, up: 0.7, sp: 1.2, life: 1.3, grow: 1 } },
+  mor_ates: { color: 0xc070ff, color2: 0x3a1090, rainbow: true, glow: true, palette: [0xe0b0ff, 0xa040ff, 0x5a1aaa, 0xc070ff], emit: { s: 'spark', rate: 16, cols: [0xe0b0ff, 0xa040ff, 0xffffff], size: 0.5, up: 2.4, sp: 1.8, life: 0.7, add: 1 } },
+  ay_tozu: { color: 0xf4f8ff, color2: 0x8aa4d8, rainbow: false, glow: true, emit: { s: 'star', rate: 8, cols: [0xffffff, 0xcfe0ff, 0xfff3a0], size: 0.45, up: 0.7, sp: 2, life: 1.1, add: 1, spin: 1 } },
+  disko_izi: { color: 0xff6ad5, rainbow: true, glow: true, palette: [0xff6ad5, 0x6ad5ff, 0xfff36a, 0x7dff9a], emit: { s: 'glint', rate: 14, cols: [0xff6ad5, 0x6ad5ff, 0xfff36a, 0xffffff], size: 0.45, up: 0.8, sp: 3, life: 0.6, add: 1, spin: 1 } },
 };
 
 export function trailStyle(id) {
@@ -2563,6 +2589,7 @@ function skinAyTopu() {
     paint: (x, y, z, c) => { const n = cr(x, y, z); c.copy(n > 0.64 ? D : n > 0.6 ? rim : A); } });
 }
 
+export const TK = { buildSphere, noise3, fbm3, smooth, clamp01, hash3, lambert, phong };
 const BUILDERS = {
   lahmacun: () => skinGen('dots', 0xe9b26a, 0xb5501f, 0x6fb23c, 0xf0b070),
   kiraz: () => skinGen('dots', 0xff3b5c, 0x8a0820, 0xffe0e6, 0xff7a8a),
@@ -2636,6 +2663,8 @@ const BUILDERS = {
   hali: skinHali,
 };
 
+for (const d of EFFECT_BALLS) BUILDERS[d.item.id] = (lv) => buildEffectBall(d, TK, lv);
+
 // ---- golden snowball secret (10 quick taps on the lobby ball): the CLASSIC skin turns gold for the rest of the session ----
 let activeSkin = null;
 const liveSkins = []; // every built-and-not-yet-disposed skin; the newest live one is the 'active' one (arena exit falls back to the menu ball's skin)
@@ -2658,7 +2687,7 @@ export function setGoldBall(on) {
 /** level (1-5, KARAKTER skins only) lights the level ring on the ball (ball.js reads material.userData.level); 0 / omitted = no ring. */
 export function makeSkin(id, level = 0) {
   const key = BUILDERS[id] ? id : 'classic';
-  const skin = BUILDERS[key]();
+  const skin = BUILDERS[key](level | 0);
   skin.id = key;
   if (skin.material && !Array.isArray(skin.material)) {
     skin.material.userData.skinId = key; // (shaders / ball.js may key on it)

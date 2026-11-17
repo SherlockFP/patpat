@@ -187,7 +187,7 @@ ok('new UI strings have English entries and are not swallowed by catch-alls', ba
   const { dailyOffers, bundleInfo } = await import('../src/shop.js');
   const { ACHIEVEMENTS } = await import('../src/meta.js');
   const SESSION = 250;      // flakes per session in the model above (5 runs, ~50 each)
-  const CAP = { common: 700, rare: 1300, epic: 2700, legendary: 7000 };      // highest price of a rarity (a legendary must stay within ~28 sessions of income)
+  const CAP = { common: 700, rare: 1300, epic: 2700, legendary: 7000, mythic: 9000 };      // highest price of a rarity (a legendary must stay within ~28 sessions of income)
   const MAX_STARS = 200;
   const seenIds = [], bad = [], unobt = [], capBad = [], names = new Set();
   let total = 0, nNew = 0;
@@ -212,7 +212,7 @@ ok('new UI strings have English entries and are not swallowed by catch-alls', ba
   ok('wardrobe: nothing is unobtainable (price, stars <= 200, matching challenge, secret or act)', unobt.length === 0, JSON.stringify(unobt));
   ok('wardrobe: price caps per rarity (no legendary priced above 7000: kristal / güneş tacı were 7500 / 9000)', capBad.length === 0, JSON.stringify(capBad));
   const kindsWithItems = KINDS.filter((kd) => catalog(kd.k).length >= 5).length;
-  ok('wardrobe: 8 sellable kinds, at least 40 new sellable items', kindsWithItems === 8 && nNew >= 40, `${kindsWithItems} kinds, ${nNew} new items`);
+  ok('wardrobe: 10 sellable kinds (incl. hats + yeti gear), at least 40 new sellable items', kindsWithItems === 10 && nNew >= 40, `${kindsWithItems} kinds, ${nNew} new items`);
   cheap.sort((a, b) => a - b);
   ok('wardrobe pace: the 3 cheapest items cost at most 4 sessions of income', cheap[0] + cheap[1] + cheap[2] <= 4 * SESSION, cheap.slice(0, 3).join('+'));
   console.log(`wardrobe: ${seenIds.length} items, ${nNew} new, whole shop = ${Math.round(total / SESSION)} sessions of modelled income, cheapest 5 = ${cheap.slice(0, 5).join('/')}`);

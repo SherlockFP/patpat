@@ -225,6 +225,9 @@ ach('lg_buz', 'Buz Ligi', 'Yeti Rush: Buz ligine çık (4.500 puan). [özel]', '
 ach('lg_cig', 'Çığ Ligi', 'Yeti Rush: Çığ ligine çık (13.000 puan). [özel]', '🌨️', 1, { skin: 'lg_cig' }, ['endless_end'], (S, d, cur) => Math.max(cur, tierOf(num(d.score)) >= 10 ? 1 : 0), { auto: true });
 ach('lg_avci', 'Yeti Avcısı Ligi', 'Yeti Rush: Yeti Avcısı ligine çık (35.000 puan). [özel]', '🦣', 1, { skin: 'lg_avci' }, ['endless_end'], (S, d, cur) => Math.max(cur, tierOf(num(d.score)) >= 13 ? 1 : 0), { auto: true });
 ach('lg_efsane', 'Efsane Lig', 'Yeti Rush: Efsane ligine çık (100.000 puan). [özel]', '👑', 1, { skin: 'lg_efsane' }, ['endless_end'], (S, d, cur) => Math.max(cur, tierOf(num(d.score)) >= 16 ? 1 : 0), { auto: true });
+ach('lg_anka', 'Anka Ligi', 'Yeti Rush: Efsane liginin zirvesine çık (250.000 puan). [özel]', '🔥', 1, { skin: 'myth_anka' }, ['endless_end'], (S, d, cur) => Math.max(cur, tierOf(num(d.score)) >= 18 ? 1 : 0), { auto: true });
+ach('rs_3', 'Rekor Serisi 3', 'Yeti Rush: art arda 3 gün rekor kır. [özel]', '👻', 3, { skin: 'fx_hayalet' }, ['endless_end'], (S, d, cur) => Math.max(cur, num(d.recStreak)), { auto: true });
+ach('rs_14', 'Rekor Serisi 14', 'Yeti Rush: art arda 14 gün rekor kır. [özel]', '👑', 14, { skin: 'myth_kral' }, ['endless_end'], (S, d, cur) => Math.max(cur, num(d.recStreak)), { auto: true });
 ach('rs_5', 'Rekor Serisi 5', 'Yeti Rush: art arda 5 gün rekor kır. [özel]', '🔥', 5, { trail: 'rs_iz' }, ['endless_end'], (S, d, cur) => Math.max(cur, num(d.recStreak)), { auto: true });
 ach('rs_7', 'Rekor Serisi 7', 'Yeti Rush: art arda 7 gün rekor kır. [özel]', '☄️', 7, { skin: 'rs_ates' }, ['endless_end'], (S, d, cur) => Math.max(cur, num(d.recStreak)), { auto: true });
 ach('ch_stomp100', 'Yaratık Avcısı', 'Toplam 100 yaratık ez.', '🦶', 100, { crystals: 1 }, ['stomp'], (S) => S.st.stomps);
@@ -238,6 +241,7 @@ ach('ch_fever10', 'Çılgın Kar', 'Toplam 10 ÇIĞ ÇILGINLIĞI yaşa. [özel]'
 ach('ch_play7', 'Her Gün Kar', '7 gün üst üste oyna. [özel]', '📆', 7, { trail: 'seri_izi' }, ['session'], (S) => S.ps.streak);
 ach('ch_arena1000', 'Dev Kartopu', 'Arenada 1.000 kütleye ulaş. [özel]', '⚪', 1000, { skin: 'arena_kral' }, ['arena_end'], (S, d, cur) => Math.max(cur, Math.floor(num(d.mass))));
 ach('ch_arenaLead', 'Zirvedeki Top', 'Arenada liderliği ele geçir. [özel]', '👑', 1, { skin: 'tac_top' }, ['arena_end'], (S, d, cur) => Math.max(cur, d.rank === 1 ? 1 : 0));
+ach('ch_podium3', 'Kürsü Kralı', "Arena maçında 3 kez ilk 3'e gir. [özel]", '🥇', 3, { skin: 'fx_karadelik' }, ['arena_end'], (S, d, cur) => (d.fin >= 1 && d.fin <= 3 ? cur + 1 : cur), { auto: true });
 ach('ch_streak5', 'Yutuş Fırtınası', "Arenada 5'li yutma serisi yap.", '🌀', 5, { coins: 200 }, ['arena_end'], (S, d, cur) => Math.max(cur, num(d.streak)));
 ach('ch_feed20', 'Diken Besleyici', '20 buz dikeni besle.', '🧊', 20, { crystals: 1 }, ['arena_feed'], (S) => S.st.arenaFeeds);
 
@@ -609,7 +613,7 @@ function addXp(n) {
 
 // ---- GÜÇ values, run-end bonuses, level rewards, KARAKTER shards ----
 const upVal = (id) => { const u = GUC_BY_ID[id]; return u ? u.values[Math.min(MAX_UP, S.u[id] | 0)] : 0; };
-const CHARS = Object.keys(ABILITIES);
+const CHARS = Object.keys(ABILITIES).filter((id) => !ABILITIES[id].myth);      // (the fixed rotations: level rewards / town shards; MİTİK balls only get shards from chests once owned)
 const SHARD_AT = [0, 3, 8, 15, 25]; // shards needed for KARAKTER level 1..5
 const charLv = (n) => { let l = 1; for (let i = 1; i < SHARD_AT.length; i++) if (n >= SHARD_AT[i]) l = i + 1; return l; };
 function giveShards(id, n) {
@@ -620,7 +624,7 @@ function giveShards(id, n) {
   return charLv(S.sh[id]);
 }
 const shardPick = () => { // prefer a character the player owns; else any
-  const own = CHARS.filter((id) => wallet().isOwned('skin', id));
+  const own = Object.keys(ABILITIES).filter((id) => wallet().isOwned('skin', id));
   const pool = own.length ? own : CHARS;
   return pool[Math.floor(rand() * pool.length)];
 };

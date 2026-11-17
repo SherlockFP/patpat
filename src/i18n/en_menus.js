@@ -161,7 +161,7 @@ export const words = {
   'Zirve Tırmanıcısı': 'Summit Climber', '25. dağa ulaş.': 'Reach mountain 25.', 'Günün Yolcusu': 'Daily Traveler', "Günün Dağı'nı 10 kez bitir. [özel]": 'Finish the Mountain of the Day 10 times. [special]',
   'Gece Yolcusu': 'Night Traveler', '5 gece temalı dağı bitir. [özel]': 'Finish 5 night-themed mountains. [special]', 'Çılgın Kar': 'Crazy Snow', 'Toplam 10 ÇIĞ ÇILGINLIĞI yaşa. [özel]': 'Experience 10 AVALANCHE FRENZIES. [special]',
   'Her Gün Kar': 'Snow Every Day', '7 gün üst üste oyna. [özel]': 'Play 7 days in a row. [special]', 'Dev Kartopu': 'Giant Snowball', 'Arenada 1.000 kütleye ulaş. [özel]': 'Reach 1,000 mass in the Arena. [special]',
-  'Zirvedeki Top': 'Top of the Board', 'Arenada liderliği ele geçir. [özel]': 'Take the lead in the Arena. [special]', 'Yutuş Fırtınası': 'Swallow Storm', "Arenada 5'li yutma serisi yap.": 'Get a 5x swallow streak in the Arena.',
+  'Kürsü Kralı': 'Podium King', "Arena maçında 3 kez ilk 3'e gir. [özel]": 'Finish a match in the top 3, three times. [special]', 'Zirvedeki Top': 'Top of the Board', 'Arenada liderliği ele geçir. [özel]': 'Take the lead in the Arena. [special]', 'Yutuş Fırtınası': 'Swallow Storm', "Arenada 5'li yutma serisi yap.": 'Get a 5x swallow streak in the Arena.',
   'Diken Besleyici': 'Spike Feeder', '20 buz dikeni besle.': 'Feed 20 ice spikes.', 'Buzları Kırdın': 'You Broke the Ice',
   'Orman Kurdu': 'Forest Wolf', 'Çimen Kralı': 'Grass King', 'Peri Bacası Ustası': 'Fairy Chimney Master', 'Kasaba Fatihi': 'Town Conqueror', 'Çöl Yolcusu': 'Desert Traveler',
   'Buz Kralı': 'Ice King', 'Şeker Krizi': 'Sugar Rush', 'Neon Işığı': 'Neon Light', 'Yanardağ Fatihi': 'Volcano Conqueror',
